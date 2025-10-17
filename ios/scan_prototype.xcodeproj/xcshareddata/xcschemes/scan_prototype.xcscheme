@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "Berri.app"
-               BlueprintName = "Berri"
-               ReferencedContainer = "container:Berri.xcodeproj">
+               BuildableName = "scan_prototype.app"
+               BlueprintName = "scan_prototype"
+               ReferencedContainer = "container:scan_prototype.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "BerriTests.xctest"
-               BlueprintName = "BerriTests"
-               ReferencedContainer = "container:Berri.xcodeproj">
+               BuildableName = "scan_prototypeTests.xctest"
+               BlueprintName = "scan_prototypeTests"
+               ReferencedContainer = "container:scan_prototype.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "Berri.app"
-            BlueprintName = "Berri"
-            ReferencedContainer = "container:Berri.xcodeproj">
+            BuildableName = "scan_prototype.app"
+            BlueprintName = "scan_prototype"
+            ReferencedContainer = "container:scan_prototype.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "Berri.app"
-            BlueprintName = "Berri"
-            ReferencedContainer = "container:Berri.xcodeproj">
+            BuildableName = "scan_prototype.app"
+            BlueprintName = "scan_prototype"
+            ReferencedContainer = "container:scan_prototype.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

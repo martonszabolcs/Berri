@@ -1,4 +1,4 @@
-package com.berri.app
+package com.scan_prototype
 
 import android.app.Application
 import com.facebook.react.PackageList
