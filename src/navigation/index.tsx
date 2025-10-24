@@ -2,12 +2,15 @@ import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import CameraScreen from '../screens/CameraScreen';
+import LaunchScreen from '../screens/LaunchScreen';
+import LoginScreen from '../screens/LoginScreen';
 
 type RootStackParamList = {
+  LaunchScreen: undefined;
   CameraScreen: undefined;
+  LoginScreen: undefined;
   HomeStack: undefined;
   AuthStack: undefined;
-  LoginScreen: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -17,41 +20,23 @@ const hideHeader = {
   gestureEnabled: true,
 };
 
-const HomeStack: React.FC = () => {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="CameraScreen"
-        component={CameraScreen}
-        options={hideHeader}
-      />
-    </Stack.Navigator>
-  );
-};
-const AuthStack: React.FC = () => {
-  return (
-    <Stack.Navigator>
-      <Stack.Screen
-        name="LoginScreen"
-        component={CameraScreen}
-        options={hideHeader}
-      />
-    </Stack.Navigator>
-  );
-};
-
-const Navigation: React.FC = () => {
+const Navigation = () => {
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="HomeStack">
+      <Stack.Navigator initialRouteName="LaunchScreen">
         <Stack.Screen
-          name="HomeStack"
-          component={HomeStack}
+          name="LaunchScreen"
+          component={LaunchScreen}
           options={hideHeader}
         />
         <Stack.Screen
-          name="AuthStack"
-          component={AuthStack}
+          name="CameraScreen"
+          component={CameraScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="LoginScreen"
+          component={LoginScreen}
           options={hideHeader}
         />
       </Stack.Navigator>
