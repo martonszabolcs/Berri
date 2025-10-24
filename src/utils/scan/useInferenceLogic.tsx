@@ -1371,6 +1371,7 @@ export const useInferenceLogic = (
         // Clean up matrices to prevent memory leaks
         OpenCV.clearBuffers();
       } catch (error) {
+        console.log('Inference error:', error);
         // Silent error handling for better performance
         const result: DetectionResult = {
           corners: [],
