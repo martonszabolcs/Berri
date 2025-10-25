@@ -47,7 +47,6 @@ const styles = StyleSheet.create({
   underline: {
     height: 1,
     backgroundColor: 'white',
-    marginTop: 4,
   },
   underlineFocused: {
     backgroundColor: 'white',

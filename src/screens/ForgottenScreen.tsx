@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Alert, Image, Touchable, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -61,6 +61,7 @@ const LoginScreen = () => {
           style={{ width: '60%', marginBottom: 20 }}
         />
         <View style={styles.form}>
+          <Text>Write your email address and we will send you a code</Text>
           <TextInput
             placeholder="email"
             value={email}
@@ -70,24 +71,14 @@ const LoginScreen = () => {
             style={styles.input}
           />
 
-          <TextInput
-            placeholder="password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            style={styles.input}
-          />
-
-          <TouchableOpacity
-            onPress={() => navigation.navigate('ForgottenScreen')}
-          >
+          <TouchableOpacity onPress={() => navigation.navigate('ForgottenScreen')}>
             <Text style={{ textAlign: 'right', marginBottom: 16 }}>
-              Forgotten password?
+              Back to login?
             </Text>
           </TouchableOpacity>
 
           <Button
-            title={isLoading ? 'Loading...' : 'Log in'}
+            title={isLoading ? 'Loading...' : 'Submit'}
             onPress={handleLogin}
             disabled={isLoading}
             size="large"

@@ -1,9 +1,10 @@
 import { useEffect, useCallback } from 'react';
-import { Text, StyleSheet } from 'react-native';
+import { Text, StyleSheet, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout } from '../components';
+import React from 'react';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
@@ -11,7 +12,10 @@ type RootStackParamList = {
   LoginScreen: undefined;
 };
 
-type LaunchScreenNavigationProp = StackNavigationProp<RootStackParamList, 'LaunchScreen'>;
+type LaunchScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  'LaunchScreen'
+>;
 
 const LaunchScreen = () => {
   const navigation = useNavigation<LaunchScreenNavigationProp>();
@@ -19,20 +23,20 @@ const LaunchScreen = () => {
   const checkToken = useCallback(async () => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-      
+
       // Add a small delay for better UX
       setTimeout(() => {
         if (token) {
           navigation.replace('CameraScreen');
         } else {
-          navigation.replace('LoginScreen');
+          navigation.replace('AuthScreen');
         }
       }, 1500);
     } catch (error) {
       console.error('Error checking token:', error);
       // If there's an error, navigate to login
       setTimeout(() => {
-        navigation.replace('LoginScreen');
+        navigation.replace('AuthScreen');
       }, 1500);
     }
   }, [navigation]);
@@ -43,7 +47,11 @@ const LaunchScreen = () => {
 
   return (
     <Layout type="default">
-      <Text style={styles.text}>BERRĪ</Text>
+      <Image
+        resizeMode="contain"
+        source={require('../assets/logo.png')}
+        style={{ width: '60%' }}
+      />
     </Layout>
   );
 };

@@ -31,12 +31,12 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-  <key>NSLocationAlwaysUsageDescription</key>
-     <string>Your location is not needed. This request has popped up due to a 3rd party framework used by the app in a context that does NOT need you to reveal you location. Do be sure to check audit trail for the location queries on ios 15 or later.</string>
-     <key>NSLocationWhenInUseUsageDescription</key>
-     <string>You will get zero benefit allowing this app accessing your location. You should never see this alert. If you do alert technical support at foo@bar.baz</string>
 	<key>NSCameraUsageDescription</key>
 	<string>$(PRODUCT_NAME) needs access to your Camera.</string>
+	<key>NSLocationAlwaysUsageDescription</key>
+	<string>Your location is not needed. This request has popped up due to a 3rd party framework used by the app in a context that does NOT need you to reveal you location. Do be sure to check audit trail for the location queries on ios 15 or later.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>You will get zero benefit allowing this app accessing your location. You should never see this alert. If you do alert technical support at foo@bar.baz</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Alert, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -17,13 +17,51 @@ type LoginScreenNavigationProp = StackNavigationProp<
   'LoginScreen'
 >;
 
+const LiText = ({ text }) => {
+  return (
+    <View
+      style={{
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 2,
+      }}
+    >
+      <View
+        style={{
+          marginRight: 8,
+          width: 10,
+          height: 10,
+          borderRadius: 20,
+          backgroundColor: 'white',
+        }}
+      />
+      <Text>{text}</Text>
+    </View>
+  );
+};
+
 const LoginScreen = () => {
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
   const handleLogin = async () => {
+    if (
+      password.length < 8 ||
+      password.search(/[a-z]/) === -1 ||
+      password.search(/[A-Z]/) === -1 ||
+      password.search(/[0-9]/) === -1 ||
+      password.search(/[^A-Za-z0-9]/) === -1
+    ) {
+      Alert.alert(
+        'Hiba',
+        'Password must contain at least 8 characters, one lowercase letter, one uppercase letter, one number, and one special character',
+      );
+      return;
+    }
+
     if (!email || !password) {
       Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
       return;
@@ -62,7 +100,14 @@ const LoginScreen = () => {
         />
         <View style={styles.form}>
           <TextInput
-            placeholder="email"
+            placeholder="name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="none"
+            style={styles.input}
+          />
+          <TextInput
+            placeholder="e-mail"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -78,16 +123,14 @@ const LoginScreen = () => {
             style={styles.input}
           />
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('ForgottenScreen')}
-          >
-            <Text style={{ textAlign: 'right', marginBottom: 16 }}>
-              Forgotten password?
-            </Text>
-          </TouchableOpacity>
+          <LiText text="minimum 8 characters" />
+          <LiText text="one lowercase letter" />
+          <LiText text="one uppercase letter" />
+          <LiText text="one number" />
+          <LiText text="one special character" />
 
           <Button
-            title={isLoading ? 'Loading...' : 'Log in'}
+            title={isLoading ? 'Loading...' : 'Sign up'}
             onPress={handleLogin}
             disabled={isLoading}
             size="large"
