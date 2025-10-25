@@ -1,10 +1,9 @@
-import { useEffect, useCallback } from 'react';
-import { Text, StyleSheet, Image } from 'react-native';
+import React, { useEffect, useCallback } from 'react';
+import { StyleSheet, Image } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout } from '../components';
-import React from 'react';
+import { Layout, Text } from '../components';
 
 type RootStackParamList = {
   LaunchScreen: undefined;

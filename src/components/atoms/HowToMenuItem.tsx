@@ -1,5 +1,6 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, Image, View } from 'react-native';
+import { TouchableOpacity, StyleSheet, Image, View } from 'react-native';
+import Text from './Text';
 
 interface HowToMenuItemProps {
   title: string;
@@ -37,7 +38,6 @@ const styles = StyleSheet.create({
   },
   menuTitle: {
     flex: 1,
-    color: 'white',
     fontSize: 16,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -48,7 +48,6 @@ const styles = StyleSheet.create({
     marginLeft: 16,
   },
   arrowText: {
-    color: 'white',
     fontSize: 20,
     fontWeight: 'bold',
   },

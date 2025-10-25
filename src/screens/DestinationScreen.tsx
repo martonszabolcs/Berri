@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
+import { View, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Header, Button, RadioButton, Toggle } from '../components';
+import { Layout, Button, RadioButton, Toggle, Text } from '../components';
 
 type RootStackParamList = {
   DestinationScreen: { destinationId: string };
@@ -44,9 +44,7 @@ const DestinationScreen = () => {
   };
 
   return (
-    <Layout type="default">
-      <Header title={`Type ${destinationId}`} />
-      
+    <Layout type="default" headerTitle={`Type ${destinationId}`}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Destination Info */}
         <View style={styles.destinationInfo}>
@@ -120,7 +118,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emailLabel: {
-    color: 'white',
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,
@@ -140,7 +137,6 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Extra space for tab bar
   },
   settingsTitle: {
-    color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,

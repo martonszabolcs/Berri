@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Alert } from 'react-native';
-import { Layout, Header, TextInput, Button } from '../components';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { Layout, TextInput, Button, Text } from '../components';
 
 const ResetPasswordScreen = () => {
   const [currentPassword, setCurrentPassword] = useState('');
@@ -37,9 +37,7 @@ const ResetPasswordScreen = () => {
   };
 
   return (
-    <Layout type="auth">
-      <Header title="Reset Password" showBackButton />
-      
+    <Layout type="auth" headerTitle="Reset Password" showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           <Text style={styles.instructionText}>

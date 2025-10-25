@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
-import { Layout, Header, Button } from '../components';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { Layout, Button, Text } from '../components';
 
 type TemplateOption = {
   id: string;
@@ -58,9 +58,7 @@ const FileNamingScreen = () => {
   };
 
   return (
-    <Layout type="default">
-      <Header title="File Naming Template" showBackButton />
-      
+    <Layout type="default" headerTitle="File Naming Template" showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           {/* Edit Label */}
@@ -128,7 +126,6 @@ const styles = StyleSheet.create({
     paddingBottom: 100, // Extra space for tab bar
   },
   editLabel: {
-    color: 'white',
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,
@@ -189,7 +186,6 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.3)',
   },
   optionText: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '500',
   },

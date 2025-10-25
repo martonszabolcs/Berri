@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
+import { View, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Header, Button, TextInput } from '../components';
+import { Layout, Button, TextInput, Text } from '../components';
 
 type RootStackParamList = {
   ChangeRecipientScreen: { destinationId: string };
@@ -77,9 +77,7 @@ const ChangeRecipientScreen = () => {
   };
 
   return (
-    <Layout type="default">
-      <Header title="Change Recipient" />
-      
+    <Layout type="default" headerTitle="Change Recipient">
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Destination Info */}
         <View style={styles.destinationInfo}>
@@ -156,7 +154,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emailLabel: {
-    color: 'white',
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,

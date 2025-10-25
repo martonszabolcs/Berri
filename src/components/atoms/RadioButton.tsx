@@ -1,4 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import Text from './Text';
 
 interface RadioButtonProps {
   options: string[];
@@ -34,7 +36,6 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   label: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 10,
@@ -64,7 +65,6 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
   },
   optionText: {
-    color: 'white',
     fontSize: 16,
   },
 });

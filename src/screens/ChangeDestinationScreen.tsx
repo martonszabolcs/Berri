@@ -1,7 +1,7 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useState } from 'react';
+import { View, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Layout, Header, Button } from '../components';
+import { Layout, Button, Text } from '../components';
 
 type RootStackParamList = {
   ChangeDestinationScreen: { destinationId: string };
@@ -43,9 +43,7 @@ const ChangeDestinationScreen = () => {
   };
 
   return (
-    <Layout type="default">
-      <Header title="Choose Destination" />
-      
+    <Layout type="default" headerTitle="Choose Destination">
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Current Destination Info */}
         <View style={styles.destinationInfo}>
@@ -114,7 +112,6 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   emailLabel: {
-    color: 'white',
     fontSize: 14,
     fontWeight: '600',
     marginBottom: 4,
@@ -140,7 +137,6 @@ const styles = StyleSheet.create({
     borderColor: 'white',
   },
   destinationOptionText: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '500',
   },

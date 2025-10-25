@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Linking } from 'react-native';
-import { Layout, Header, HowToMenuItem } from '../components';
+import { Layout, HowToMenuItem } from '../components';
 
 interface HowToItem {
   title: string;
@@ -42,9 +42,7 @@ const HowToScreen = () => {
   };
 
   return (
-    <Layout type="dark">
-      <Header title="How to / news" showBackButton />
-      
+    <Layout type="dark" headerTitle="How to / news" showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           {HOW_TO_ITEMS.map((item, index) => (

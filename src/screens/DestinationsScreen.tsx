@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout } from '../components';
+import { Layout, Text } from '../components';
 
 type RootStackParamList = {
   DestinationScreen: { destinationId: string };
@@ -70,7 +71,6 @@ const styles = StyleSheet.create({
     tintColor: 'white',
   },
   title: {
-    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
   },
@@ -85,7 +85,6 @@ const styles = StyleSheet.create({
     marginBottom: 15,
   },
   destinationText: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '500',
   },

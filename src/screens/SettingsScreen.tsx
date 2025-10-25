@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, ScrollView, Linking } from 'react-native';
+import { View, StyleSheet, Image, ScrollView, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Header, MenuListItem } from '../components';
+import { Layout, MenuListItem, Text } from '../components';
 
 type SettingsStackParamList = {
   SettingsScreen: undefined;
@@ -45,9 +45,7 @@ const SettingsScreen = () => {
   };
 
   return (
-    <Layout type="dark">
-      <Header title="Settings" />
-      
+    <Layout type="dark" headerTitle="Settings">
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* User Info Section */}
         <View style={styles.userSection}>
@@ -125,13 +123,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userLabel: {
-    color: 'white',
     fontSize: 12,
     opacity: 0.8,
     marginBottom: 4,
   },
   userEmail: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -155,7 +151,6 @@ const styles = StyleSheet.create({
     tintColor: 'white',
   },
   title: {
-    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
   },
@@ -164,7 +159,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   settingsText: {
-    color: 'white',
     fontSize: 16,
   },
 });

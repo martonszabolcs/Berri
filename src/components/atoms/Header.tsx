@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Button from './Button';
+import Text from './Text';
 
 interface HeaderProps {
   title: string;
@@ -79,12 +80,10 @@ const styles = StyleSheet.create({
     marginRight: 20,
   },
   backIcon: {
-    color: 'white',
     fontSize: 28,
     fontWeight: 'bold',
   },
   title: {
-    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
     textAlign: 'center',
@@ -96,7 +95,6 @@ const styles = StyleSheet.create({
     right: 20,
   },
   logoutButtonText: {
-    color: 'white',
   },
 });
 

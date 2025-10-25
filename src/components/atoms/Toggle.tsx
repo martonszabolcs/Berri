@@ -1,4 +1,6 @@
-import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import React from 'react';
+import { View, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import Text from './Text';
 import { useState, useRef, useEffect } from 'react';
 
 interface ToggleProps {
@@ -51,7 +53,6 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   label: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '500',
     flex: 1,

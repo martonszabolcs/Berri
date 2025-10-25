@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Layout, Header, Button, TextInput } from '../components';
+import { Layout, Header, Button, TextInput, Text } from '../components';
 
 type ProfileStackParamList = {
   ProfileScreen: undefined;
@@ -141,7 +141,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   userName: {
-    color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 8,
@@ -158,7 +157,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   detailLabel: {
-    color: 'white',
     fontSize: 16,
     fontWeight: '600',
   },
@@ -173,7 +171,6 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   logoutButtonText: {
-    color: 'white',
   },
 });
 
