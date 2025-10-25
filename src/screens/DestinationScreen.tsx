@@ -1,32 +1,101 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
-import { Layout } from '../components';
+import { StackNavigationProp } from '@react-navigation/stack';
+import { Layout, Header, Button, RadioButton, Toggle } from '../components';
 
 type RootStackParamList = {
   DestinationScreen: { destinationId: string };
+  ChangeDestinationScreen: { destinationId: string };
+  ChangeRecipientScreen: { destinationId: string };
 };
 
 type DestinationScreenRouteProp = RouteProp<RootStackParamList, 'DestinationScreen'>;
+type DestinationScreenNavigationProp = StackNavigationProp<RootStackParamList>;
 
 const DestinationScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<DestinationScreenNavigationProp>();
   const route = useRoute<DestinationScreenRouteProp>();
   const { destinationId } = route.params;
+  
+  const [fileType, setFileType] = useState('PDF');
+  const [bundleScans, setBundleScans] = useState(false);
+
+  // Get destination image based on type
+  const getDestinationImage = (type: string) => {
+    switch (type) {
+      case '1': return require('../assets/dest_1.png');
+      case '2': return require('../assets/dest_2.png');
+      case '3': return require('../assets/dest_3.png');
+      case '4': return require('../assets/dest_4.png');
+      case '5': return require('../assets/dest_5.png');
+      case '6': return require('../assets/dest_6.png');
+      case '7': return require('../assets/dest_7.png');
+      default: return require('../assets/dest_1.png');
+    }
+  };
+
+  const handleChangeDestination = () => {
+    navigation.navigate('ChangeDestinationScreen', { destinationId });
+  };
+
+  const handleChangeRecipient = () => {
+    navigation.navigate('ChangeRecipientScreen', { destinationId });
+  };
 
   return (
     <Layout type="default">
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
-            <Image source={require('../assets/left_arrow.png')} style={styles.backIcon} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Destination {destinationId}</Text>
+      <Header title={`Type ${destinationId}`} />
+      
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        {/* Destination Info */}
+        <View style={styles.destinationInfo}>
+          <Image 
+            source={getDestinationImage(destinationId)} 
+            style={styles.destinationImage}
+          />
+          <View style={styles.emailContainer}>
+            <Text style={styles.emailLabel}>Email</Text>
+            <Text style={styles.emailText}>test@email.com</Text>
+          </View>
         </View>
-        
-        <View style={styles.content}>
-          <Text style={styles.detailText}>Details for destination {destinationId}</Text>
+
+        {/* Action Buttons */}
+        <View style={styles.buttonsContainer}>
+          <Button
+            title="Change Recipient"
+            variant="outline"
+            size="medium"
+            buttonStyle={styles.actionButton}
+            onPress={handleChangeRecipient}
+          />
+          <Button
+            title="Change Destination"
+            variant="outline"
+            size="medium"
+            buttonStyle={styles.actionButton}
+            onPress={handleChangeDestination}
+          />
         </View>
-      </View>
+
+        {/* Destination Settings */}
+        <View style={styles.settingsContainer}>
+          <Text style={styles.settingsTitle}>Destination Settings</Text>
+          
+          <RadioButton
+            label="File Type"
+            options={['PDF', 'JPEG']}
+            selectedValue={fileType}
+            onValueChange={setFileType}
+          />
+          
+          <Toggle
+            label="Bundle Scans"
+            value={bundleScans}
+            onValueChange={setBundleScans}
+          />
+        </View>
+      </ScrollView>
     </Layout>
   );
 };
@@ -34,34 +103,47 @@ const DestinationScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    paddingHorizontal: 20,
   },
-  header: {
+  destinationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
+    marginBottom: 30,
+    paddingVertical: 20,
   },
-  backButton: {
+  destinationImage: {
+    width: 60,
+    height: 60,
     marginRight: 20,
   },
-  backIcon: {
-    width: 24,
-    height: 24,
-    tintColor: 'white',
-  },
-  title: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  content: {
+  emailContainer: {
     flex: 1,
-    paddingHorizontal: 20,
   },
-  detailText: {
+  emailLabel: {
     color: 'white',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  emailText: {
+    color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 16,
+  },
+  buttonsContainer: {
+    gap: 15,
+    marginBottom: 30,
+  },
+  actionButton: {
+    width: '100%',
+  },
+  settingsContainer: {
+    paddingBottom: 100, // Extra space for tab bar
+  },
+  settingsTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 20,
   },
 });
 

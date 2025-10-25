@@ -22,8 +22,12 @@ import ForgottenScreen from '../screens/ForgottenScreen';
 import HistoryScreen from '../screens/HistoryScreen';
 import DestinationsScreen from '../screens/DestinationsScreen';
 import DestinationScreen from '../screens/DestinationScreen';
+import ChangeDestinationScreen from '../screens/ChangeDestinationScreen';
+import ChangeRecipientScreen from '../screens/ChangeRecipientScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import HowToScreen from '../screens/HowToScreen';
+import FileNamingScreen from '../screens/FileNamingScreen';
+import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import React from 'react';
 
@@ -40,8 +44,12 @@ type RootStackParamList = {
   DestinationsStack: undefined;
   DestinationsScreen: undefined;
   DestinationScreen: { destinationId: string };
+  ChangeDestinationScreen: { destinationId: string };
+  ChangeRecipientScreen: { destinationId: string };
   ProfileScreen: undefined;
   HowToScreen: undefined;
+  FileNamingScreen: undefined;
+  ResetPasswordScreen: undefined;
   SettingsStack: undefined;
   SettingsScreen: undefined;
 };
@@ -177,6 +185,16 @@ const DestinationsStack = () => {
         component={DestinationScreen}
         options={hideHeader}
       />
+      <Stack.Screen
+        name="ChangeDestinationScreen"
+        component={ChangeDestinationScreen}
+        options={hideHeader}
+      />
+      <Stack.Screen
+        name="ChangeRecipientScreen"
+        component={ChangeRecipientScreen}
+        options={hideHeader}
+      />
     </Stack.Navigator>
   );
 };
@@ -188,6 +206,11 @@ const SettingsStack = () => {
       <Stack.Screen
         name="SettingsScreen"
         component={SettingsScreen}
+        options={hideHeader}
+      />
+      <Stack.Screen
+        name="FileNamingScreen"
+        component={FileNamingScreen}
         options={hideHeader}
       />
     </Stack.Navigator>
@@ -266,6 +289,13 @@ const MainTabs = () => {
       <Tab.Screen
         name="SettingsStack"
         component={SettingsStack}
+        options={{
+          tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
+        }}
+      />
+      <Tab.Screen
+        name="ResetPasswordScreen"
+        component={ResetPasswordScreen}
         options={{
           tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
         }}

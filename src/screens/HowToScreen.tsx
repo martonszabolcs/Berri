@@ -1,28 +1,62 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
-import { Layout } from '../components';
+import React from 'react';
+import { View, StyleSheet, ScrollView, Linking } from 'react-native';
+import { Layout, Header, HowToMenuItem } from '../components';
+
+interface HowToItem {
+  title: string;
+  imageUrl: string;
+  url: string;
+}
+
+const HOW_TO_ITEMS: HowToItem[] = [
+  {
+    title: 'SET UP DESTINATIONS',
+    imageUrl: 'https://picsum.photos/100/100?random=1',
+    url: 'https://www.google.com',
+  },
+  {
+    title: 'SCAN YOUR BERRĪBOOK',
+    imageUrl: 'https://picsum.photos/100/100?random=2',
+    url: 'https://www.google.com',
+  },
+  {
+    title: 'ERASE YOUR BERRĪBOOK',
+    imageUrl: 'https://picsum.photos/100/100?random=3',
+    url: 'https://www.google.com',
+  },
+  {
+    title: 'USE YOUR FRIXION PEN',
+    imageUrl: 'https://picsum.photos/100/100?random=4',
+    url: 'https://www.google.com',
+  },
+  {
+    title: 'BERRĪNEWS',
+    imageUrl: 'https://picsum.photos/100/100?random=5',
+    url: 'https://www.google.com',
+  },
+];
 
 const HowToScreen = () => {
-  const navigation = useNavigation();
-
-  const openDrawer = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
+  const handleItemPress = (url: string) => {
+    Linking.openURL(url);
   };
 
   return (
-    <Layout type="default">
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
-            <Image source={require('../assets/menu.png')} style={styles.menuIcon} />
-          </TouchableOpacity>
-          <Text style={styles.title}>How To</Text>
-        </View>
-        
+    <Layout type="dark">
+      <Header title="How to / news" showBackButton />
+      
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          <Text style={styles.instructionText}>How to use the app instructions</Text>
+          {HOW_TO_ITEMS.map((item, index) => (
+            <HowToMenuItem
+              key={index}
+              title={item.title}
+              imageUrl={item.imageUrl}
+              onPress={() => handleItemPress(item.url)}
+            />
+          ))}
         </View>
-      </View>
+      </ScrollView>
     </Layout>
   );
 };
@@ -30,34 +64,11 @@ const HowToScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  menuButton: {
-    marginRight: 20,
-  },
-  menuIcon: {
-    width: 24,
-    height: 24,
-    tintColor: 'white',
-  },
-  title: {
-    color: 'white',
-    fontSize: 24,
-    fontWeight: 'bold',
   },
   content: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
-  instructionText: {
-    color: 'white',
-    fontSize: 16,
+    paddingTop: 20,
+    paddingBottom: 100, // Extra space for tab bar
   },
 });
 

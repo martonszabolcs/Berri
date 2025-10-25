@@ -1,28 +1,122 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
-import { Layout } from '../components';
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Layout, Header, Button, TextInput } from '../components';
+
+type ProfileStackParamList = {
+  ProfileScreen: undefined;
+  ResetPasswordScreen: undefined;
+  AuthScreen: undefined;
+};
+
+type ProfileScreenNavigationProp = StackNavigationProp<ProfileStackParamList>;
 
 const ProfileScreen = () => {
-  const navigation = useNavigation();
+  const navigation = useNavigation<ProfileScreenNavigationProp>();
 
-  const openDrawer = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
+  const handleLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('authToken');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'AuthScreen' }],
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to logout');
+    }
+  };
+
+  const handleResetPassword = () => {
+    navigation.navigate('ResetPasswordScreen');
+  };
+
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Delete', 
+          style: 'destructive',
+          onPress: () => {
+            // Here you would call your API to delete the account
+            Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
+          }
+        }
+      ]
+    );
   };
 
   return (
     <Layout type="default">
-      <View style={styles.container}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
-            <Image source={require('../assets/menu.png')} style={styles.menuIcon} />
-          </TouchableOpacity>
-          <Text style={styles.title}>Profile</Text>
-        </View>
-        
+      <Header 
+        title="Profile" 
+        showBackButton={true}
+        rightComponent={
+          <Button
+            title="Log out"
+            variant="text"
+            size="small"
+            onPress={handleLogout}
+            textStyle={styles.logoutButtonText}
+          />
+        }
+      />
+      
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
-          <Text style={styles.profileText}>User Profile Settings</Text>
+          {/* Profile Image and Info */}
+          <View style={styles.profileSection}>
+            <Image 
+              source={require('../assets/logo.png')} 
+              style={styles.profileImage}
+            />
+            <Text style={styles.userName}>John Doe</Text>
+            <Text style={styles.joinedText}>Joined in March 2024</Text>
+          </View>
+
+          {/* User Details Boxes */}
+          <View style={styles.detailsSection}>
+            <View style={styles.detailBox}>
+              <Text style={styles.detailLabel}>Name</Text>
+              <TextInput
+                value="John Doe"
+                editable={false}
+              />
+            </View>
+            
+            <View style={styles.detailBox}>
+              <Text style={styles.detailLabel}>Email</Text>
+              <TextInput
+                value="user@example.com"
+                editable={false}
+              />
+            </View>
+          </View>
+
+          {/* Action Buttons */}
+          <View style={styles.actionsSection}>
+            <Button
+              title="Reset Password"
+              variant="outline"
+              size="medium"
+              onPress={handleResetPassword}
+              buttonStyle={styles.actionButton}
+            />
+            
+            <Button
+              title="Delete this account"
+              variant="text"
+              size="medium"
+              onPress={handleDeleteAccount}
+              buttonStyle={styles.deleteButton}
+            />
+          </View>
         </View>
-      </View>
+      </ScrollView>
     </Layout>
   );
 };
@@ -30,34 +124,56 @@ const ProfileScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
   },
-  menuButton: {
-    marginRight: 20,
+  content: {
+    paddingTop: 20,
+    paddingBottom: 100,
   },
-  menuIcon: {
-    width: 24,
-    height: 24,
-    tintColor: 'white',
+  profileSection: {
+    alignItems: 'center',
+    marginBottom: 40,
   },
-  title: {
+  profileImage: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 20,
+  },
+  userName: {
     color: 'white',
     fontSize: 24,
     fontWeight: 'bold',
+    marginBottom: 8,
   },
-  content: {
-    flex: 1,
-    paddingHorizontal: 20,
+  joinedText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 16,
   },
-  profileText: {
+  detailsSection: {
+    gap: 20,
+    marginBottom: 40,
+  },
+  detailBox: {
+    gap: 8,
+  },
+  detailLabel: {
     color: 'white',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  actionsSection: {
+    gap: 20,
+    alignItems: 'center',
+  },
+  actionButton: {
+    width: '100%',
+  },
+  deleteButton: {
+    marginTop: 20,
+  },
+  logoutButtonText: {
+    color: 'white',
   },
 });
 

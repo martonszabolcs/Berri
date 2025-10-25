@@ -11,7 +11,7 @@ import {
 
 interface ButtonProps extends TouchableOpacityProps {
   title: string;
-  variant?: 'normal' | 'outline';
+  variant?: 'normal' | 'outline' | 'destructive' | 'text';
   size?: 'small' | 'medium' | 'large';
   textStyle?: TextStyle;
   buttonStyle?: ViewStyle;
@@ -34,6 +34,10 @@ const Button = ({
     
     if (variant === 'outline') {
       baseStyle.push(styles.outlineButton);
+    } else if (variant === 'destructive') {
+      baseStyle.push(styles.destructiveButton);
+    } else if (variant === 'text') {
+      baseStyle.push(styles.textButton);
     } else {
       baseStyle.push(styles.normalButton);
     }
@@ -58,6 +62,10 @@ const Button = ({
     
     if (variant === 'outline') {
       baseStyle.push(styles.outlineText);
+    } else if (variant === 'destructive') {
+      baseStyle.push(styles.destructiveText);
+    } else if (variant === 'text') {
+      baseStyle.push(styles.textText);
     } else {
       baseStyle.push(styles.normalText);
     }
@@ -105,6 +113,14 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     borderColor: 'white',
   },
+  destructiveButton: {
+    backgroundColor: '#ff4444',
+    borderColor: 'white',
+  },
+  textButton: {
+    backgroundColor: 'transparent',
+    borderColor: 'transparent',
+  },
   
   // Sizes
   small: {
@@ -144,6 +160,12 @@ const styles = StyleSheet.create({
   },
   outlineText: {
     color: 'white',
+  },
+  destructiveText: {
+    color: 'white',
+  },
+  textText: {
+    color: '#ff4444',
   },
   
   // States

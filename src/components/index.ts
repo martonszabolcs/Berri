@@ -1,4 +1,10 @@
 export { default as TextInput } from './atoms/TextInput';
 export { default as Button } from './atoms/Button';
 export { default as Layout } from './atoms/Layout';
+export { default as Header } from './atoms/Header';
+export { default as RadioButton } from './atoms/RadioButton';
+export { default as Toggle } from './atoms/Toggle';
 export { default as Text } from './atoms/Text';
+export { default as MenuListItem } from './atoms/MenuListItem';
+export { default as HowToMenuItem } from './atoms/HowToMenuItem';
+export { default as BackgroundOverlay } from './atoms/BackgroundOverlay';
