@@ -8,7 +8,7 @@ import React from 'react';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
-  CameraScreen: undefined;
+  MainTabs: undefined;
   LoginScreen: undefined;
 };
 
@@ -27,16 +27,16 @@ const LaunchScreen = () => {
       // Add a small delay for better UX
       setTimeout(() => {
         if (token) {
-          navigation.replace('CameraScreen');
+          navigation.replace('MainTabs');
         } else {
-          navigation.replace('AuthScreen');
+          navigation.replace('LoginScreen');
         }
       }, 1500);
     } catch (error) {
       console.error('Error checking token:', error);
       // If there's an error, navigate to login
       setTimeout(() => {
-        navigation.replace('AuthScreen');
+        navigation.replace('LoginScreen');
       }, 1500);
     }
   }, [navigation]);

@@ -8,7 +8,7 @@ import React from 'react';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
-  CameraScreen: undefined;
+  MainTabs: undefined;
   LoginScreen: undefined;
 };
 
@@ -24,6 +24,7 @@ const LoginScreen = () => {
   const navigation = useNavigation<LoginScreenNavigationProp>();
 
   const handleLogin = async () => {
+    navigation.replace('MainTabs');
     if (!email || !password) {
       Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
       return;
@@ -43,7 +44,7 @@ const LoginScreen = () => {
       await AsyncStorage.setItem('authToken', mockToken);
 
       // Navigate to Camera screen
-      navigation.replace('CameraScreen');
+      navigation.replace('MainTabs');
     } catch (error) {
       console.error('Login error:', error);
       Alert.alert('Hiba', 'Bejelentkezési hiba történt!');
