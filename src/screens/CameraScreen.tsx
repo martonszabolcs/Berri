@@ -147,6 +147,17 @@ export default function App() {
   const [isCapturing, setIsCapturing] = useState(false);
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [showCapturedImage, setShowCapturedImage] = useState(false);
+  
+  // Auto capture states
+  const [autoCapturing, setAutoCapturing] = useState(false);
+  const [photosQueue, setPhotosQueue] = useState<Array<{
+    base64: string;
+    confidence: number;
+    sharpness?: number;
+    timestamp: number;
+  }>>([]);
+  const optimalConditionsStartRef = useRef<number | null>(null);
+  const autoCaptureTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [debugCorners, setDebugCorners] = useState<
     { index: number; x: number; y: number }[] | null
   >(null);
@@ -467,6 +478,138 @@ export default function App() {
     }
   }, [smoothedResults]);
 
+  // === AUTO CAPTURE FUNCTIONALITY ===
+  // Selects the best photo from the captured sequence
+  const selectBestPhoto = useCallback((photos: Array<{
+    base64: string;
+    confidence: number;
+    sharpness?: number;
+    timestamp: number;
+  }>) => {
+    if (photos.length === 0) return null;
+    
+    // Score photos based on confidence (primary) and timing (secondary)
+    const scoredPhotos = photos.map((photo, index) => ({
+      ...photo,
+      score: photo.confidence * 100 + (index === 1 ? 5 : 0), // Slightly prefer middle photo
+    }));
+
+    // Sort by score descending and return the best one
+    scoredPhotos.sort((a, b) => b.score - a.score);
+    return scoredPhotos[0];
+  }, []);
+
+  // Processes the automatically captured best photo
+  const processAutoCapture = useCallback(async (photoBase64: string) => {
+    if (smoothedResults.length === 0 || smoothedResults[0].corners.length !== 4) {
+      return;
+    }
+
+    // Save current detection data
+    const captureCorners = smoothedResults[0].processedCorners || smoothedResults[0].corners;
+    const captureQrPosition = smoothedResults[0].qrPosition;
+    const captureQrBounds = smoothedResults[0].qrBounds;
+    const captureFrameWidth = smoothedResults[0].frameWidth;
+    const captureFrameHeight = smoothedResults[0].frameHeight;
+
+    // Get photo dimensions
+    const photoSize = await new Promise<{ width: number; height: number }>(
+      (resolve, _reject) => {
+        Image.getSize(
+          `data:image/jpeg;base64,${photoBase64}`,
+          (width, height) => resolve({ width, height }),
+          error => {
+            console.warn('Failed to get image size:', error);
+            resolve({ width: 0, height: 0 });
+          },
+        );
+      },
+    );
+
+    const result = await scanDocument({
+      rawImageBase64: photoBase64,
+      corners: captureCorners,
+      currentQrPosition: captureQrPosition,
+      qrBounds: captureQrBounds,
+      photoWidth: photoSize.width,
+      photoHeight: photoSize.height,
+      frameWidth: captureFrameWidth,
+      frameHeight: captureFrameHeight,
+    });
+
+    if (result.success && result.imageBase64) {
+      setCapturedImageUri(result.imageBase64);
+      setDebugCorners(result.debugCorners || null);
+      setSelectedIcons(result.selectedIcons || []);
+      setSelectedIconNames(result.selectedIconNames || []);
+      setBrightnessInfo(result.brightnessInfo || null);
+      setShowCapturedImage(true);
+    }
+  }, [smoothedResults]);
+
+  // Starts automatic capture sequence - takes 3 photos and selects the best one
+  const startAutoCapture = useCallback(async () => {
+    if (!camera.current || autoCapturing) return;
+
+    try {
+      setAutoCapturing(true);
+      setPhotosQueue([]);
+      
+      // Pause frame processor during capture
+      setIsFrameProcessorActive(false);
+      
+      // Take 3 photos with minimal delays for speed
+      const photoPromises: Promise<{
+        base64: string;
+        confidence: number;
+        timestamp: number;
+      }>[] = [];
+
+      for (let i = 0; i < 3; i++) {
+        if (i > 0) {
+          await new Promise<void>(resolve => setTimeout(() => resolve(), 50)); // Ultra fast: only 50ms between photos
+        }
+        
+        // Start photo capture and file reading in parallel
+        const photoPromise = (async () => {
+          const photo = await camera.current!.takePhoto({
+            enableShutterSound: false, // Silent for auto capture
+          });
+
+          const photoBase64 = await FileSystem.readFile(photo.path, 'base64');
+          
+          // Get current detection data for this photo
+          const currentConfidence = smoothedResults.length > 0 ? smoothedResults[0].confidence : 0;
+          
+          return {
+            base64: photoBase64,
+            confidence: currentConfidence,
+            timestamp: Date.now(),
+          };
+        })();
+
+        photoPromises.push(photoPromise);
+      }
+
+      // Wait for all photos to be processed
+      const allCapturedPhotos = await Promise.all(photoPromises);
+
+      // Select the best photo based on confidence and other factors
+      const bestPhoto = selectBestPhoto(allCapturedPhotos);
+      
+      if (bestPhoto) {
+        await processAutoCapture(bestPhoto.base64);
+      }
+
+    } catch (error) {
+      console.error('Auto capture error:', error);
+    } finally {
+      setAutoCapturing(false);
+      setIsFrameProcessorActive(true);
+      setPhotosQueue([]);
+    }
+  }, [smoothedResults, autoCapturing, selectBestPhoto, processAutoCapture]);
+
   // === SHARE FUNCTIONALITY ===
   // Handles sharing the captured image
   const handleShare = useCallback(async () => {
@@ -504,6 +647,48 @@ export default function App() {
     },
     [cameraViewSize.width, cameraViewSize.height],
   );
+
+  // === AUTO CAPTURE LOGIC ===
+  // Checks if conditions are optimal for automatic photo capture
+  const isOptimalForCapture = useCallback(() => {
+    if (smoothedResults.length === 0 || smoothedResults[0].corners.length !== 4) {
+      return false;
+    }
+
+    const result = smoothedResults[0];
+    const hasQrCode = currentQrInfo?.includes('QR:✓');
+    const { isGood: isRectangleGood } = checkRectangleShape(result.corners);
+    const goodConfidence = result.confidence >= 0.8;
+
+    return hasQrCode && isRectangleGood && goodConfidence && !autoCapturing && !showCapturedImage;
+  }, [smoothedResults, currentQrInfo, checkRectangleShape, autoCapturing, showCapturedImage]);
+
+  // Automatically capture photos when optimal conditions are met
+  useEffect(() => {
+    const optimal = isOptimalForCapture();
+    
+    if (optimal) {
+      if (optimalConditionsStartRef.current === null) {
+        optimalConditionsStartRef.current = Date.now();
+      } else {
+        const timeInOptimal = Date.now() - optimalConditionsStartRef.current;
+        
+        // Start auto capture after 0.5 seconds of stable optimal conditions (much faster)
+        if (timeInOptimal >= 500 && !autoCapturing && autoCaptureTimeoutRef.current === null) {
+          // Immediate start - no countdown
+          startAutoCapture();
+        }
+      }
+    } else {
+      // Reset if conditions are no longer optimal
+      optimalConditionsStartRef.current = null;
+      if (autoCaptureTimeoutRef.current) {
+        clearTimeout(autoCaptureTimeoutRef.current);
+        autoCaptureTimeoutRef.current = null;
+      }
+      // No countdown to reset - removed for speed
+    }
+  }, [isOptimalForCapture, autoCapturing, startAutoCapture]);
 
   // === STATUS CALCULATION ===
   // Determines current UI state based on detection confidence and shape
@@ -551,10 +736,15 @@ export default function App() {
       }
 
       // High confidence - detected
+      const baseMessage = UI_MESSAGES.DETECTED(confidence);
+      const autoMessage = autoCapturing 
+          ? ' (Fotózás folyamatban...)'
+          : '';
+      
       return {
         isDetected: true,
         isRectangleGood,
-        message: UI_MESSAGES.DETECTED(confidence),
+        message: baseMessage + autoMessage,
         instruction:
           UI_MESSAGES.DETECTED_INSTRUCTION + rectangleWarning + qrMessage,
       };
@@ -838,12 +1028,13 @@ export default function App() {
               )}
           </View>
 
-          {/* Capture Button - csak ha van detektált dokumentum és legalább 70% confidence */}
+          {/* Manual Capture Button - csak ha nincs auto capture és van detektált dokumentum */}
           {smoothedResults.length > 0 &&
             smoothedResults[0].corners.length === 4 &&
             smoothedResults[0].confidence >= 0.7 &&
             currentStatus.isRectangleGood &&
-            !showCapturedImage && ( // Ne lehessen fotót készíteni ha a modal nyitva van!
+            !showCapturedImage &&
+            !autoCapturing && ( // Disable manual capture during auto capture (no countdown check needed)
               <TouchableOpacity
                 style={[
                   styles.captureButton,
@@ -858,8 +1049,16 @@ export default function App() {
               </TouchableOpacity>
             )}
 
-          {/* Loading Indicator - Photo capture közben */}
-          {isCapturing && (
+          {/* Auto Capturing Indicator */}
+          {autoCapturing && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#B2FBA5" />
+              <Text style={styles.loadingText}>Gyors 3 fotó készítése...</Text>
+            </View>
+          )}
+
+          {/* Loading Indicator - Manual photo capture közben */}
+          {isCapturing && !autoCapturing && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#B2FBA5" />
               <Text style={styles.loadingText}>Fotó készítése...</Text>

@@ -425,41 +425,44 @@ export const scanDocument = (
 
     // Threshold: MAGASABB érték hogy a szürke vonalakat is megfogja (nem csak a feketéket)
     const blackMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', grayForBlack, blackMask, 130, 255, 1); // 90-ről 130-ra: szürke vonalakat is megfogja
+    OpenCV.invoke('threshold', grayForBlack, blackMask, 140, 255, 1); // 130-ról 140-re: még több szürke vonalat fog
 
-    // EXTRA VASTAG fekete vonalak: még nagyobb kernelek és több dilate
+    // ULTRA VASTAG fekete vonalak: hatalmas kernelek és még több dilate (RB referencia alapján)
     const closeKernel = OpenCV.invoke(
       'getStructuringElement',
       0,
-      createSize(11, 11), // 7x7-ről 11x11-re - sokkal nagyobb!
+      createSize(15, 15), // 11x11-ről 15x15-re - HATALMAS!
     );
     const closedMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('morphologyEx', blackMask, closedMask, 3, closeKernel); // MORPH_CLOSE
 
-    // ÖTSZÖRÖS dilate a VASTAG fekete vonalakért (mint a referencia app)
+    // EXTRA ÖSSZEKÖTŐ LÉPÉS: nagyobb CLOSE kernel a szakadozott vonalak összekötéséhez
+    const extraCloseKernel = OpenCV.invoke(
+      'getStructuringElement',
+      0,
+      createSize(21, 21), // Nagy kernel a távolabb lévő fekete részek összekötéséhez
+    );
+    const extraClosed = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('morphologyEx', closedMask, extraClosed, 3, extraCloseKernel); // EXTRA MORPH_CLOSE
+
+    // HÁRMAS dilate a jobb vastagságért (7-ről 3-ra csökkentve)
     const dilateKernel = OpenCV.invoke(
       'getStructuringElement',
       0,
-      createSize(13, 13), // 9x9-ről 13x13-ra! HATALMAS kernel
+      createSize(13, 13), // Közepes kernel méret
     );
     const dilated1 = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', closedMask, dilated1, 1, dilateKernel); // 1. dilate
+    OpenCV.invoke('morphologyEx', extraClosed, dilated1, 1, dilateKernel); // 1. dilate
 
     const dilated2 = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('morphologyEx', dilated1, dilated2, 1, dilateKernel); // 2. dilate
-
-    const dilated3 = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', dilated2, dilated3, 1, dilateKernel); // 3. dilate
-
-    const dilated4 = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', dilated3, dilated4, 1, dilateKernel); // 4. dilate
 
     const blackMaskFinal = createMat(
       scaledHeight,
       scaledWidth,
       DataTypes.CV_8UC1,
     );
-    OpenCV.invoke('morphologyEx', dilated4, blackMaskFinal, 1, dilateKernel); // 5. dilate!
+    OpenCV.invoke('morphologyEx', dilated2, blackMaskFinal, 1, dilateKernel); // 3. dilate!
 
     // === 6. SZÍNES MASZK (eredeti képről) ===
     const hsvOriginal = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
@@ -558,7 +561,29 @@ export const scanDocument = (
       finalBeta,
     );
 
-    // === 12. WHITE MASK ===
+        // === 12. EXTRA VONALTELÍTÉSI ALGORITMUS ===
+    // A vékony/halvány vonalak telítése a fekete maszk alapján
+    const enhancedGray = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
+    cvtColorGray(scaledMat, enhancedGray);
+    
+    // Adaptív threshold a vékony vonalak jobb detektálásához
+    const adaptiveThresh = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('adaptiveThreshold', enhancedGray, adaptiveThresh, 255, 1, 1, 11, 10);
+    
+    // Kombinálás a fekete maszkkal - a vékony vonalakat is sötétíti
+    const enhancedBlackMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_or', blackMaskFinal, adaptiveThresh, enhancedBlackMask);
+    
+    // EXTRA DILATE STEP az enhanced maszkra - a vékony részeket is vastagítja
+    const finalEnhanceKernel = OpenCV.invoke(
+      'getStructuringElement',
+      0,
+      createSize(9, 9), // Közepes kernel a finomhangoláshoz
+    );
+    const finalBlackMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('morphologyEx', enhancedBlackMask, finalBlackMask, 1, finalEnhanceKernel); // Final dilate
+
+    // === 13. MASZKOK ALKALMAZÁSA ===
     const grayFinal = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
     cvtColorGray(finalBrightened, grayFinal);
 
@@ -590,7 +615,7 @@ export const scanDocument = (
       DataTypes.CV_8UC3,
     );
 
-    cvtColorGray2BGR(blackMaskFinal, blackMask3ch);
+    cvtColorGray2BGR(finalBlackMask, blackMask3ch);
     cvtColorGray2BGR(whiteMask, whiteMask3ch);
     cvtColorGray2BGR(colorMask, colorMask3ch);
 
@@ -599,7 +624,12 @@ export const scanDocument = (
     const whitePart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
     const colorPart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
 
-    OpenCV.invoke('bitwise_and', blackLayer, blackMask3ch, blackPart);
+    // Apply enhanced black mask to strengthen lines
+    const enhancedBlackPart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_and', blackLayer, blackMask3ch, enhancedBlackPart);
+    
+    // Strengthen line intensity (csökkentett erősítés hogy ne legyen túl fehér)
+    OpenCV.invoke('convertScaleAbs', enhancedBlackPart, blackPart, 1.1, 0);
     OpenCV.invoke('bitwise_and', whiteLayer, whiteMask3ch, whitePart);
     OpenCV.invoke('bitwise_and', colorLayerSaturated, colorMask3ch, colorPart);
 
