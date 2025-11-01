@@ -62,7 +62,7 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: 'white',
+    backgroundColor: '#F3CCFBEB',
   },
   optionText: {
     fontSize: 16,

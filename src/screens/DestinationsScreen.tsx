@@ -6,7 +6,7 @@ import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector } from '../store/hooks';
 
 type RootStackParamList = {
-  DestinationScreen: { destinationId: string };
+  DestinationScreen: { destination: any };
 };
 
 type DestinationsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
@@ -30,8 +30,8 @@ const DestinationsScreen = () => {
     navigation.dispatch(DrawerActions.openDrawer());
   };
 
-  const navigateToDestination = (destinationId: string) => {
-    navigation.navigate('DestinationScreen', { destinationId });
+  const navigateToDestination = (destination: any) => {
+    navigation.navigate('DestinationScreen', { destination });
   };
 
   return (
@@ -50,7 +50,7 @@ const DestinationsScreen = () => {
                 styles.destinationCard,
                 // destination.saved ? styles.savedCard : styles.unsavedCard
               ]} 
-              onPress={() => navigateToDestination(destination.type.toString())}
+              onPress={() => navigateToDestination(destination)}
             >
               <View style={styles.cardContent}>
                 <DestinationIcon type={destination.type} variant="screen" />
