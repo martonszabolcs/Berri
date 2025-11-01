@@ -3,7 +3,8 @@ import { View, StyleSheet, ScrollView, Alert, TextInput as RNTextInput } from 'r
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, TextInput, Button, Text } from '../components';
-import { useAuth } from '../hooks/useAuth';
+import { useAppDispatch } from '../store/hooks';
+import { resetPassword } from '../store/appSlice';
 
 type RootStackParamList = {
   LoginScreen: undefined;
@@ -20,7 +21,7 @@ const ResetPasswordScreen = () => {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<ResetPasswordScreenNavigationProp>();
-  const { resetPassword } = useAuth();
+  const dispatch = useAppDispatch();
 
   // Refs for the code input fields
   const codeRefs = useRef<(RNTextInput | null)[]>([]);
@@ -71,9 +72,11 @@ const ResetPasswordScreen = () => {
     setIsLoading(true);
 
     try {
-      const result = await resetPassword(codeString, newPassword);
+      console.log('🚀 ResetPasswordScreen: Dispatching resetPassword thunk');
+      const result = await dispatch(resetPassword({ token: codeString, password: newPassword }));
       
-      if (result.success) {
+      if (resetPassword.fulfilled.match(result)) {
+        console.log('✅ ResetPasswordScreen: Reset password successful');
         Alert.alert(
           'Sikeres változtatás',
           'A jelszavad sikeresen megváltozott!',
@@ -85,10 +88,11 @@ const ResetPasswordScreen = () => {
           ]
         );
       } else {
-        Alert.alert('Hiba', result.error || 'Hiba történt a jelszó megváltoztatása során!');
+        console.error('❌ ResetPasswordScreen: Reset password failed', result.error);
+        Alert.alert('Hiba', result.error.message || 'Hiba történt a jelszó megváltoztatása során!');
       }
     } catch (error) {
-      console.error('Reset password error:', error);
+      console.error('❌ ResetPasswordScreen: Reset password exception', error);
       Alert.alert('Hiba', 'Hiba történt a jelszó megváltoztatása során!');
     } finally {
       setIsLoading(false);

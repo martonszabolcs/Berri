@@ -3,8 +3,8 @@ import { View, StyleSheet, Image, ScrollView, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Button, RadioButton, Toggle, Text, CloudStorageConnector } from '../components';
-import { useCloudStorage } from '../hooks';
-import { CloudStorageType } from '../store/api/cloudStorageManager';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { refreshConnectionStatus } from '../store/settingsSlice';
 
 type RootStackParamList = {
   DestinationScreen: { destinationId: string };
@@ -19,25 +19,25 @@ const DestinationScreen = () => {
   const navigation = useNavigation<DestinationScreenNavigationProp>();
   const route = useRoute<DestinationScreenRouteProp>();
   const { destinationId } = route.params;
+  const dispatch = useAppDispatch();
+  const { connectionStatus } = useAppSelector((state) => state.settings);
   
   const [fileType, setFileType] = useState('PDF');
   const [bundleScans, setBundleScans] = useState(false);
-  const [selectedStorage, setSelectedStorage] = useState<CloudStorageType | null>(null);
-  
-  const { connectionStatus, isConnected, refreshConnectionStatus } = useCloudStorage();
+  const [selectedStorage, setSelectedStorage] = useState<'googleDrive' | 'oneDrive' | 'dropbox' | null>(null);
 
   // Map destination types to storage types
-  const getStorageTypeForDestination = (destId: string): CloudStorageType => {
+  const getStorageTypeForDestination = (destId: string): 'googleDrive' | 'oneDrive' | 'dropbox' => {
     switch (destId) {
       case '1':
       case '2':
         return 'dropbox';
       case '3':
       case '4':
-        return 'googledrive';
+        return 'googleDrive';
       case '5':
       case '6':
-        return 'onedrive';
+        return 'oneDrive';
       default:
         return 'dropbox';
     }
@@ -49,16 +49,16 @@ const DestinationScreen = () => {
     setSelectedStorage(storageType);
     
     // Refresh connection status when component mounts
-    refreshConnectionStatus();
-  }, [destinationId, refreshConnectionStatus]);
+    dispatch(refreshConnectionStatus());
+  }, [destinationId, dispatch]);
 
-  const handleConnectionChange = (connected: boolean, storageType: CloudStorageType) => {
+  const handleConnectionChange = (connected: boolean, storageType: 'googleDrive' | 'oneDrive' | 'dropbox') => {
     console.log(`${storageType} connection changed:`, connected);
     
     if (connected) {
       Alert.alert(
         'Csatlakoztatva!',
-        `Most már tudsz fájlokat menteni a ${storageType === 'dropbox' ? 'Dropbox' : storageType === 'googledrive' ? 'Google Drive' : 'OneDrive'}-ba.`,
+        `Most már tudsz fájlokat menteni a ${storageType === 'dropbox' ? 'Dropbox' : storageType === 'googleDrive' ? 'Google Drive' : 'OneDrive'}-ba.`,
         [{ text: 'OK' }]
       );
     }
@@ -66,7 +66,7 @@ const DestinationScreen = () => {
 
   const canSaveFiles = (): boolean => {
     if (!selectedStorage) return false;
-    return isConnected(selectedStorage);
+    return connectionStatus[selectedStorage];
   };
 
   const handleTestConnection = async () => {
@@ -75,13 +75,13 @@ const DestinationScreen = () => {
     if (canSaveFiles()) {
       Alert.alert(
         'Kapcsolat aktív',
-        `A ${selectedStorage === 'dropbox' ? 'Dropbox' : selectedStorage === 'googledrive' ? 'Google Drive' : 'OneDrive'} kapcsolat aktív és használatra kész.`,
+        `A ${selectedStorage === 'dropbox' ? 'Dropbox' : selectedStorage === 'googleDrive' ? 'Google Drive' : 'OneDrive'} kapcsolat aktív és használatra kész.`,
         [{ text: 'OK' }]
       );
     } else {
       Alert.alert(
         'Nincs kapcsolat',
-        `Kérlek csatlakoztasd a ${selectedStorage === 'dropbox' ? 'Dropbox' : selectedStorage === 'googledrive' ? 'Google Drive' : 'OneDrive'}-ot a fájlok mentéséhez.`,
+        `Kérlek csatlakoztasd a ${selectedStorage === 'dropbox' ? 'Dropbox' : selectedStorage === 'googleDrive' ? 'Google Drive' : 'OneDrive'}-ot a fájlok mentéséhez.`,
         [{ text: 'OK' }]
       );
     }

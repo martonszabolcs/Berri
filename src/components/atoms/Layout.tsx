@@ -4,7 +4,8 @@ import {
   View, 
   StyleSheet, 
   ImageBackground, 
-  ViewStyle 
+  ViewStyle,
+  StatusBar
 } from 'react-native';
 import BackgroundOverlay from './BackgroundOverlay';
 import Header from './Header';
@@ -56,6 +57,7 @@ const Layout = ({
       style={[styles.container, style]}
       resizeMode="cover"
     >
+      <StatusBar  barStyle={'dark-content'} />
       {isDarkType && <BackgroundOverlay />}
       
       <View style={styles.content}>

@@ -3,7 +3,8 @@ import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
-import { useAuth } from '../hooks';
+import { useAppDispatch } from '../store/hooks';
+import { loginUser } from '../store/appSlice';
 import React from 'react';
 
 type RootStackParamList = {
@@ -20,13 +21,15 @@ type LoginScreenNavigationProp = StackNavigationProp<
 >;
 
 const LoginScreen = () => {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('weruss.kis@gmail.com');
+  const [password, setPassword] = useState('1234Aa!!!');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<LoginScreenNavigationProp>();
-  const { login } = useAuth();
+  const dispatch = useAppDispatch();
 
   const handleLogin = async () => {
+    console.log('🚀 LoginScreen: handleLogin started', { email });
+    
     if (!email || !password) {
       Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
       return;
@@ -35,17 +38,22 @@ const LoginScreen = () => {
     setIsLoading(true);
 
     try {
-      // Call the auth hook
-      const result = await login(email, password);
+      console.log('🚀 LoginScreen: Dispatching loginUser thunk');
+      // Use Redux thunk directly
+      const result = await dispatch(loginUser({ email, password }));
 
-      if (result.success) {
+      console.log('📊 LoginScreen: loginUser result', result);
+
+      if (loginUser.fulfilled.match(result)) {
+        console.log('✅ LoginScreen: Login successful, navigating to MainTabs');
         // Navigate to main tabs on success
         navigation.replace('MainTabs');
       } else {
-        Alert.alert('Hiba', result.error);
+        console.error('❌ LoginScreen: Login failed', result.error);
+        Alert.alert('Hiba', result.error.message || 'Bejelentkezési hiba');
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('❌ LoginScreen: Login exception', error);
       Alert.alert('Hiba', 'Bejelentkezési hiba történt!');
     } finally {
       setIsLoading(false);

@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { View, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { Text, Button } from '../index';
-import { useCloudStorage } from '../../hooks';
-import { CloudStorageType } from '../../store/api/cloudStorageManager';
+import { useAppDispatch, useAppSelector } from '../../store/hooks';
+import { connectCloudStorage, disconnectCloudStorage } from '../../store/settingsSlice';
 
 interface CloudStorageConnectorProps {
-  storageType: CloudStorageType;
-  onConnectionChange?: (isConnected: boolean, storageType: CloudStorageType) => void;
+  storageType: 'googleDrive' | 'oneDrive' | 'dropbox';
+  onConnectionChange?: (isConnected: boolean, storageType: 'googleDrive' | 'oneDrive' | 'dropbox') => void;
   style?: any;
 }
 
@@ -15,18 +15,19 @@ export const CloudStorageConnector: React.FC<CloudStorageConnectorProps> = ({
   onConnectionChange,
   style,
 }) => {
-  const { isConnected, connect, disconnect, isLoading } = useCloudStorage();
+  const dispatch = useAppDispatch();
+  const { connectionStatus, isLoading } = useAppSelector((state) => state.settings);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const connected = isConnected(storageType);
+  const connected = connectionStatus[storageType];
 
-  const getStorageDisplayName = (type: CloudStorageType): string => {
+  const getStorageDisplayName = (type: 'googleDrive' | 'oneDrive' | 'dropbox'): string => {
     switch (type) {
       case 'dropbox':
         return 'Dropbox';
-      case 'googledrive':
+      case 'googleDrive':
         return 'Google Drive';
-      case 'onedrive':
+      case 'oneDrive':
         return 'OneDrive';
       default:
         return type;
@@ -36,10 +37,11 @@ export const CloudStorageConnector: React.FC<CloudStorageConnectorProps> = ({
   const handleConnect = async () => {
     try {
       setIsProcessing(true);
+      console.log('🚀 CloudStorageConnector: Dispatching connectCloudStorage');
       
-      const result = await connect(storageType);
+      const result = await dispatch(connectCloudStorage(storageType));
       
-      if (result.isConnected) {
+      if (connectCloudStorage.fulfilled.match(result)) {
         Alert.alert(
           'Sikeresen csatlakoztatva!',
           `${getStorageDisplayName(storageType)} sikeresen csatlakoztatva.`,
@@ -49,7 +51,7 @@ export const CloudStorageConnector: React.FC<CloudStorageConnectorProps> = ({
       } else {
         Alert.alert(
           'Csatlakoztatás sikertelen',
-          result.error || `Nem sikerült csatlakozni a ${getStorageDisplayName(storageType)}-hoz.`,
+          result.error?.message || `Nem sikerült csatlakozni a ${getStorageDisplayName(storageType)}-hoz.`,
           [{ text: 'OK' }]
         );
       }
@@ -77,10 +79,11 @@ export const CloudStorageConnector: React.FC<CloudStorageConnectorProps> = ({
           onPress: async () => {
             try {
               setIsProcessing(true);
+              console.log('🚀 CloudStorageConnector: Dispatching disconnectCloudStorage');
               
-              const success = await disconnect(storageType);
+              const result = await dispatch(disconnectCloudStorage(storageType));
               
-              if (success) {
+              if (disconnectCloudStorage.fulfilled.match(result)) {
                 Alert.alert(
                   'Kapcsolat bontva',
                   `${getStorageDisplayName(storageType)} kapcsolat sikeresen bontva.`,

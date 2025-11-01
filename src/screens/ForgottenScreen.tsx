@@ -3,7 +3,8 @@ import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
-import { useAuth } from '../hooks/useAuth';
+import { useAppDispatch } from '../store/hooks';
+import { forgotPassword } from '../store/appSlice';
 import React from 'react';
 
 type RootStackParamList = {
@@ -21,7 +22,7 @@ const ForgottenScreen = () => {
   const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<ForgottenScreenNavigationProp>();
-  const { forgotPassword } = useAuth();
+  const dispatch = useAppDispatch();
 
   const handleForgotPassword = async () => {
     if (!email) {
@@ -32,9 +33,11 @@ const ForgottenScreen = () => {
     setIsLoading(true);
 
     try {
-      const result = await forgotPassword(email);
+      console.log('🚀 ForgottenScreen: Dispatching forgotPassword thunk');
+      const result = await dispatch(forgotPassword({ email }));
       
-      if (result.success) {
+      if (forgotPassword.fulfilled.match(result)) {
+        console.log('✅ ForgottenScreen: Forgot password successful');
         Alert.alert(
           'Sikeres kérés',
           'Elküldtük a visszaállítási kódot az email címedre.',
@@ -46,11 +49,12 @@ const ForgottenScreen = () => {
           ]
         );
       } else {
-        Alert.alert('Hiba', result.error || 'Hiba történt a kérés során!');
+        console.error('❌ ForgottenScreen: Forgot password failed', result.error);
+        Alert.alert('Hiba', result.error.message || 'Hiba történt a visszaállítási kérés során!');
       }
     } catch (error) {
-      console.error('Forgot password error:', error);
-      Alert.alert('Hiba', 'Hiba történt a kérés során!');
+      console.error('❌ ForgottenScreen: Forgot password exception', error);
+      Alert.alert('Hiba', 'Hiba történt a visszaállítási kérés során!');
     } finally {
       setIsLoading(false);
     }

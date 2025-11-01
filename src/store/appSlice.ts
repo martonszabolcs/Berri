@@ -1,17 +1,15 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Destination, authApi } from './api/authApi';
 
 interface AppState {
   currentScreen: string;
   isLoading: boolean;
   token: string | null;
   isAuthenticated: boolean;
-  user: {
-    id: string | null;
-    name: string | null;
-    email: string | null;
-    emailVerified: boolean | null;
-  };
+  user: any;
+  destinations: Destination[];
+  settings: any;
   error: string | null;
 }
 
@@ -22,10 +20,10 @@ const initialState: AppState = {
   isAuthenticated: false,
   user: {
     id: null,
-    name: null,
     email: null,
-    emailVerified: null,
   },
+  destinations: [],
+  settings: {},
   error: null,
 };
 
@@ -34,39 +32,110 @@ export const initializeAuth = createAsyncThunk(
   'app/initializeAuth',
   async (_, { dispatch }) => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
+      const token = await AsyncStorage.getItem('token');
+      
+      console.log('🚀 appSlice: initializeAuth thunk started, token found:', token);
+
       if (token) {
-        dispatch(setToken(token));
-        return token;
+        const user = await authApi.getMe(token);
+        
+        // Set destinations in store if available
+        if (user.destinations) {
+          dispatch(setDestinations(user.destinations));
+        }
+
+        if (user.settings) {
+          dispatch(setSettings(user.settings));
+        }
+        
+        return { user, token };
       }
+      
       return null;
     } catch (error) {
-      console.error('Error initializing auth:', error);
-      await AsyncStorage.removeItem('authToken');
-      return null;
+      console.log('❌ appSlice: initializeAuth failed', error);
+      await AsyncStorage.removeItem('token');
+      throw error;
     }
   }
 );
 
 export const loginUser = createAsyncThunk(
   'app/loginUser',
-  async ({ access_token, user }: { access_token: string; user: any }, { dispatch }) => {
+  async (credentials: { email: string; password: string }, { dispatch }) => {
     try {
-      // Store token in AsyncStorage
-      await AsyncStorage.setItem('authToken', access_token);
+      console.log('🚀 appSlice: loginUser thunk started', credentials);
       
-      // Set token and user in Redux
-      dispatch(setToken(access_token));
-      dispatch(setUser({
-        id: user.id.toString(),
-        name: user.name,
-        email: user.email,
-        emailVerified: user.emailVerified || false,
-      }));
+      const response = await authApi.login(credentials);
+      console.log('✅ appSlice: authApi.login successful', response);
       
-      return { access_token, user };
+      await AsyncStorage.setItem('token', response.access_token);
+      console.log('✅ appSlice: Token saved to AsyncStorage');
+      
+      const user = await authApi.getMe(response.access_token);
+      console.log('✅ appSlice: authApi.getMe successful', user);
+      
+      // Set destinations in store if available
+      if (user.destinations) {
+        console.log('📍 appSlice: Setting destinations', user.destinations);
+        dispatch(setDestinations(user.destinations));
+      }
+
+      if (user.settings) {
+        console.log('📍 appSlice: User settings found', user.settings);
+        // Potentially dispatch an action to set user settings in another slice
+        dispatch(setSettings(user.settings));
+      }
+
+      console.log('✅ appSlice: loginUser thunk completed successfully');
+      return { user, token: response.access_token };
     } catch (error) {
-      console.error('Error storing login data:', error);
+      console.error('❌ appSlice: loginUser thunk failed', error);
+      throw error;
+    }
+  }
+);
+
+export const resetPassword = createAsyncThunk(
+  'app/resetPassword',
+  async ({ token, password }: { token: string; password: string }) => {
+    try {
+      console.log('🚀 appSlice: resetPassword thunk started');
+      const response = await authApi.resetPassword({ token, password });
+      console.log('✅ appSlice: resetPassword successful', response);
+      return response;
+    } catch (error) {
+      console.error('❌ appSlice: resetPassword failed', error);
+      throw error;
+    }
+  }
+);
+
+export const forgotPassword = createAsyncThunk(
+  'app/forgotPassword',
+  async ({ email }: { email: string }) => {
+    try {
+      console.log('🚀 appSlice: forgotPassword thunk started', { email });
+      const response = await authApi.forgotPassword({ email });
+      console.log('✅ appSlice: forgotPassword successful', response);
+      return response;
+    } catch (error) {
+      console.error('❌ appSlice: forgotPassword failed', error);
+      throw error;
+    }
+  }
+);
+
+export const registerUser = createAsyncThunk(
+  'app/registerUser',
+  async (userData: { name?: string; email: string; password: string; googleDriveLink?: string; oneDriveLink?: string; dropboxLink?: string; newsletter?: boolean }) => {
+    try {
+      console.log('🚀 appSlice: registerUser thunk started', userData);
+      const response = await authApi.register(userData);
+      console.log('✅ appSlice: registerUser successful', response);
+      return response;
+    } catch (error) {
+      console.error('❌ appSlice: registerUser failed', error);
       throw error;
     }
   }
@@ -76,15 +145,18 @@ export const logoutUser = createAsyncThunk(
   'app/logoutUser',
   async (_, { dispatch }) => {
     try {
-      // Remove token from AsyncStorage
-      await AsyncStorage.removeItem('authToken');
+      console.log('🚀 appSlice: logoutUser thunk started');
+      // Remove token from AsyncStorage (correct key!)
+      await AsyncStorage.removeItem('token');
+      console.log('✅ appSlice: Token removed from AsyncStorage');
       
       // Clear Redux state
       dispatch(logout());
+      console.log('✅ appSlice: logoutUser thunk completed');
       
       return true;
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error('❌ appSlice: Error during logout:', error);
       // Even if AsyncStorage fails, clear Redux state
       dispatch(logout());
       return true;
@@ -125,6 +197,15 @@ const appSlice = createSlice({
         emailVerified: null,
       };
     },
+    setDestinations: (state, action: PayloadAction<Destination[]>) => {
+      state.destinations = action.payload;
+    },
+    setSettings: (state, action: PayloadAction<any>) => {
+      state.settings = action.payload;
+    },
+    clearDestinations: (state) => {
+      state.destinations = [];
+    },
     setError: (state, action: PayloadAction<string>) => {
       state.error = action.payload;
       state.isLoading = false;
@@ -141,6 +222,7 @@ const appSlice = createSlice({
         email: null,
         emailVerified: null,
       };
+      state.destinations = [];
       state.error = null;
     },
   },
@@ -154,7 +236,13 @@ const appSlice = createSlice({
       .addCase(initializeAuth.fulfilled, (state, action) => {
         state.isLoading = false;
         if (action.payload) {
-          state.token = action.payload;
+          state.token = action.payload.token;
+          state.user = {
+            id: action.payload.user.id?.toString() || null,
+            name: action.payload.user.name,
+            email: action.payload.user.email,
+            emailVerified: action.payload.user.emailVerified,
+          };
           state.isAuthenticated = true;
         }
       })
@@ -169,8 +257,16 @@ const appSlice = createSlice({
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(loginUser.fulfilled, (state) => {
+      .addCase(loginUser.fulfilled, (state, action) => {
         state.isLoading = false;
+        state.token = action.payload.token;
+        state.user = {
+          id: action.payload.user.id?.toString() || null,
+          name: action.payload.user.name,
+          email: action.payload.user.email,
+          emailVerified: action.payload.user.emailVerified,
+        };
+        state.isAuthenticated = true;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.isLoading = false;
@@ -186,7 +282,7 @@ const appSlice = createSlice({
       })
       .addCase(logoutUser.rejected, (state) => {
         state.isLoading = false;
-      });
+      })
   },
 });
 
@@ -197,6 +293,9 @@ export const {
   clearToken, 
   setUser, 
   clearUser, 
+  setDestinations,
+  setSettings,
+  clearDestinations,
   setError,
   clearError,
   logout 

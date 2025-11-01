@@ -1,6 +1,6 @@
 import axios, { AxiosResponse } from 'axios';
 import { store } from '../index';
-import { loginUser, logoutUser, setError } from '../appSlice';
+import { logoutUser, setError } from '../appSlice';
 import { API_CONFIG } from '../../config';
 
 // Base URL configuration
@@ -42,6 +42,19 @@ export interface SocialLoginDto {
   nonce?: string;
 }
 
+export interface Destination {
+  id: number;
+  userId: number;
+  type: 1 | 2 | 3 | 4 | 5 | 6 | 7;
+  fileType: 'odf' | 'jpg';
+  bundled: boolean;
+  destination: 'email' | 'onedrive' | 'dropbox' | 'google_drive';
+  emails?: string;
+  createdAt: string;
+  updatedAt: string;
+  saved?: boolean;
+}
+
 export interface User {
   id: number;
   name: string;
@@ -56,6 +69,8 @@ export interface User {
   newsletter: boolean;
   createdAt: string;
   updatedAt: string;
+  destinations?: Destination[];
+  settings?: any;
 }
 
 export interface LoginResponse {
@@ -101,7 +116,7 @@ apiClient.interceptors.response.use(
   async (error) => {
     if (error.response?.status === 401) {
       // Token expired or invalid, logout user
-      store.dispatch(logoutUser());
+      // store.dispatch(logoutUser());
     }
     return Promise.reject(error);
   }
@@ -112,17 +127,12 @@ export const authApi = {
   // Login
   login: async (loginData: LoginDto): Promise<LoginResponse> => {
     try {
+      console.log('🚀 authApi: login started', loginData);
       const response: AxiosResponse<LoginResponse> = await apiClient.post('/auth/login', loginData);
-      
-      // Use Redux thunk to handle login
-      await store.dispatch(loginUser({
-        access_token: response.data.access_token,
-        user: response.data.user
-      }));
-      
+      console.log('✅ authApi: login response', response.data);
       return response.data;
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('❌ authApi: login error', error);
       store.dispatch(setError('Login failed'));
       throw error;
     }
@@ -180,13 +190,6 @@ export const authApi = {
   googleLogin: async (data: SocialLoginDto): Promise<LoginResponse> => {
     try {
       const response: AxiosResponse<LoginResponse> = await apiClient.post('/auth/google', data);
-      
-      // Use Redux thunk to handle login
-      await store.dispatch(loginUser({
-        access_token: response.data.access_token,
-        user: response.data.user
-      }));
-      
       return response.data;
     } catch (error) {
       console.error('Google login error:', error);
@@ -198,13 +201,6 @@ export const authApi = {
   facebookLogin: async (data: SocialLoginDto): Promise<LoginResponse> => {
     try {
       const response: AxiosResponse<LoginResponse> = await apiClient.post('/auth/facebook', data);
-      
-      // Use Redux thunk to handle login
-      await store.dispatch(loginUser({
-        access_token: response.data.access_token,
-        user: response.data.user
-      }));
-      
       return response.data;
     } catch (error) {
       console.error('Facebook login error:', error);
@@ -216,13 +212,6 @@ export const authApi = {
   appleLogin: async (data: SocialLoginDto): Promise<LoginResponse> => {
     try {
       const response: AxiosResponse<LoginResponse> = await apiClient.post('/auth/apple', data);
-      
-      // Use Redux thunk to handle login
-      await store.dispatch(loginUser({
-        access_token: response.data.access_token,
-        user: response.data.user
-      }));
-      
       return response.data;
     } catch (error) {
       console.error('Apple login error:', error);
@@ -231,13 +220,28 @@ export const authApi = {
     }
   },
 
-  // Get current user
-  getMe: async (): Promise<User> => {
+// Get current user
+  getMe: async (token?: string): Promise<User> => {
     try {
-      const response: AxiosResponse<User> = await apiClient.get('/users/me');
-      return response.data;
+      console.log('🚀 authApi: getMe started', { hasCustomToken: !!token });
+      
+      // Create custom config with token if provided
+      const config = token ? {
+        headers: {
+          Authorization: `Bearer ${token}`
+        }
+      } : {};
+      
+      const userResponse = await apiClient.get('/users/me', config);
+      console.log('✅ authApi: getMe response', userResponse.data);
+
+      const user: User = {
+        ...userResponse.data,
+      };
+      
+      return user;
     } catch (error) {
-      console.error('Get me error:', error);
+      console.error('❌ authApi: getMe error', error);
       throw error;
     }
   },

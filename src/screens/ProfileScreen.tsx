@@ -60,7 +60,7 @@ const ProfileScreen = () => {
             title="Log out"
             variant="text"
             size="small"
-            onPress={handleLogout}
+            onPress={() => handleLogout()}
             textStyle={styles.logoutButtonText}
           />
         }

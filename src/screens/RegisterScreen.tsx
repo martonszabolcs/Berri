@@ -3,7 +3,8 @@ import { View, StyleSheet, Alert, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
-import { useAuth } from '../hooks';
+import { useAppDispatch } from '../store/hooks';
+import { registerUser } from '../store/appSlice';
 import React from 'react';
 
 type RootStackParamList = {
@@ -37,7 +38,7 @@ const RegisterScreen = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<RegisterScreenNavigationProp>();
-  const { register } = useAuth();
+  const dispatch = useAppDispatch();
 
   const handleRegister = async () => {
     if (
@@ -62,10 +63,11 @@ const RegisterScreen = () => {
     setIsLoading(true);
 
     try {
-      // Call the auth hook
-      const result = await register(name, email, password);
+      console.log('🚀 RegisterScreen: Dispatching registerUser thunk');
+      const result = await dispatch(registerUser({ name, email, password }));
 
-      if (result.success) {
+      if (registerUser.fulfilled.match(result)) {
+        console.log('✅ RegisterScreen: Registration successful');
         Alert.alert(
           'Sikeres regisztráció',
           'Kérlek ellenőrizd az email-edet a verifikációért!',
@@ -77,10 +79,11 @@ const RegisterScreen = () => {
           ]
         );
       } else {
-        Alert.alert('Hiba', result.error);
+        console.error('❌ RegisterScreen: Registration failed', result.error);
+        Alert.alert('Hiba', result.error.message || 'Regisztrációs hiba történt!');
       }
     } catch (error: any) {
-      console.error('Register error:', error);
+      console.error('❌ RegisterScreen: Registration exception', error);
       Alert.alert('Hiba', 'Regisztrációs hiba történt!');
     } finally {
       setIsLoading(false);
