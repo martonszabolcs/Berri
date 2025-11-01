@@ -58,7 +58,7 @@ const FileNamingScreen = () => {
   };
 
   return (
-    <Layout type="default" headerTitle="File Naming Template" showBackButton={true}>
+    <Layout type="dark" headerTitle="File Naming Template" showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           {/* Edit Label */}

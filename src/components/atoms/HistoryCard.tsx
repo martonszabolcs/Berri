@@ -83,7 +83,6 @@ const HistoryCard = ({
 
   return (
     <TouchableOpacity style={styles.container} onPress={handlePress}>
-      {/* A4 size image on the left */}
       <View style={styles.imageContainer}>
         <Image 
           source={{ uri: history.imageUri }} 
@@ -125,13 +124,14 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   image: {
-    width: 60, // A4 aspect ratio approximation
-    height: 80, // A4 is roughly 1:1.4 ratio
-    borderRadius: 4,
+    width: 90,
+    height: 127,
   },
   textContainer: {
     flex: 1,
+    flexDirection: 'column',
     gap: 4,
+    alignSelf: "flex-start"
   },
   name: {
     fontSize: 16,
@@ -158,9 +158,10 @@ const styles = StyleSheet.create({
   gridTextContainer: {
     alignItems: 'center',
     gap: 4,
+    paddingHorizontal: 10,
   },
   gridName: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '600',
     textAlign: 'center',
   },

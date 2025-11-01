@@ -23,6 +23,8 @@ interface LayoutProps {
   showLogout?: boolean;
   showBackButton?: boolean;
   onLogout?: () => void;
+  onMenuPress?: () => void;
+  rightComponent?: ReactNode;
 }
 
 const Layout = ({ 
@@ -33,7 +35,9 @@ const Layout = ({
   headerTitle,
   showLogout = false,
   showBackButton = true,
-  onLogout
+  onLogout,
+  onMenuPress,
+  rightComponent
 }: LayoutProps) => {
   // Determine which background image to use
   const getBackgroundImage = () => {
@@ -67,6 +71,8 @@ const Layout = ({
             showBackButton={showBackButton}
             showLogout={showLogout}
             onLogout={onLogout}
+            onMenuPress={onMenuPress}
+            rightComponent={rightComponent}
             isDark={isDarkType}
           />
         )}

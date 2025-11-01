@@ -12,8 +12,8 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#252544',
-    zIndex: -1, // Behind content but above background image
+    backgroundColor: '#252544DB',
+    zIndex: 0, // Behind content but above background image
   },
 });
 

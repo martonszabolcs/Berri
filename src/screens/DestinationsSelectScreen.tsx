@@ -1,21 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector } from '../store/hooks';
 
-type RootStackParamList = {
-  DestinationScreen: { destinationId: string };
-};
-
-type DestinationsScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+// TODO SCANNER - destination kiválasztás + elküldés
 
 const DestinationsScreen = () => {
-  const navigation = useNavigation<DestinationsScreenNavigationProp>();
   const destinations = useAppSelector((state) => state.app.destinations);
   const user = useAppSelector((state) => state.app.user);
   const [allDestinations, setAllDestinations] = useState<any[]>([]);
+  const [selectedDestination, setSelectedDestination] = useState<number | null>(null);
 
   useEffect(() => {
     const all = [1,2,3,4,5,6,7];
@@ -26,19 +20,11 @@ const DestinationsScreen = () => {
     setAllDestinations(allDest);
   }, [destinations, user.email]);
 
-  const openDrawer = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
-  };
-
-  const navigateToDestination = (destinationId: string) => {
-    navigation.navigate('DestinationScreen', { destinationId });
-  };
 
   return (
     <Layout 
       type="dark"
-      headerTitle='Destinations'
-      onMenuPress={openDrawer}
+      headerTitle='Where should we send your scans?'
     >
       <ScrollView>
         <View style={styles.content}>
@@ -48,12 +34,11 @@ const DestinationsScreen = () => {
               key={destination.type}
               style={[
                 styles.destinationCard,
-                // destination.saved ? styles.savedCard : styles.unsavedCard
               ]} 
-              onPress={() => navigateToDestination(destination.type.toString())}
+              onPress={() => setSelectedDestination(destination.type)}
             >
               <View style={styles.cardContent}>
-                <DestinationIcon type={destination.type} variant="screen" />
+                <DestinationIcon type={destination.type} variant={selectedDestination ===  destination.type? "screen-selected" : "screen"} />
                 <View style={styles.destinationInfo}>
                   <Text style={styles.destinationText}>{destination.destination === "email" ? "E-mail" : destination.destination}</Text>
                   <Text style={styles.destinationText}>{destination.emails}</Text>

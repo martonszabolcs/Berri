@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import Button from './Button';
 import Text from './Text';
@@ -11,6 +11,7 @@ interface HeaderProps {
   rightComponent?: React.ReactNode;
   showLogout?: boolean;
   onLogout?: () => void;
+  onMenuPress?: () => void;
   isDark?: boolean;
 }
 
@@ -21,7 +22,7 @@ const Header = ({
   rightComponent,
   showLogout = false,
   onLogout,
-  isDark = false
+  onMenuPress,
 }: HeaderProps) => {
   const navigation = useNavigation();
 
@@ -33,15 +34,19 @@ const Header = ({
     }
   };
 
-  const containerStyle = isDark 
-    ? [styles.container, styles.darkContainer] 
-    : styles.container;
-
   return (
-    <View style={containerStyle}>
-      {showBackButton && (
+    <View style={styles.container}>
+      {onMenuPress ? (
+        <TouchableOpacity onPress={onMenuPress} style={styles.backButton}>
+          <Image source={require('../../assets/menu.png')} style={styles.menuIcon} />
+        </TouchableOpacity>
+      ) : showBackButton && (
         <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
-          <Text style={styles.backIcon}>‹</Text>
+          <Image 
+            source={require('../../assets/left_arrow.png')} 
+            style={styles.backIcon} 
+            resizeMode="contain"
+          />
         </TouchableOpacity>
       )}
       <Text style={styles.title}>{title}</Text>
@@ -72,23 +77,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 60,
     paddingBottom: 20,
-  },
-  darkContainer: {
     backgroundColor: '#252544',
   },
+  
   backButton: {
     marginRight: 20,
   },
+  menuIcon: {
+    width: 24,
+    height: 24,
+    tintColor: 'white',
+  },
   backIcon: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    width: 24,
+    height: 24,
+    tintColor: 'white',
   },
   title: {
-    fontSize: 24,
+    fontSize: 14,
+    textTransform: 'uppercase',
     fontWeight: 'bold',
     textAlign: 'center',
     flex: 1,
-    marginRight: 44, // Compensate for back button to center title
+    marginRight: 44,
   },
   rightComponent: {
     position: 'absolute',

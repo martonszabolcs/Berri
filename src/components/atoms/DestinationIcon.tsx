@@ -31,12 +31,12 @@ const DestinationIcon: React.FC<DestinationIconProps> = ({
     switch (variant) {
       case 'screen':
       case 'screen-selected':
-        return 100;
+        return 55;
       case 'history':
       case 'history-active':
-        return 60; // Increased from 40 to 60
+        return 32; // Increased from 40 to 60
       default:
-        return 60;
+        return 32;
     }
   };
 
@@ -47,25 +47,25 @@ const DestinationIcon: React.FC<DestinationIconProps> = ({
     switch (variant) {
       case 'screen':
         return {
-          iconColor: '#000000', // fekete ikon világos lila háttéren
-          backgroundColor: '#E8D5FF', // világos lila
-          backgroundType: 'solid'
+          iconColor: '#FFFFFF',
+          backgroundColor: null,
+          backgroundType: 'gradient-white-light-purple'
         };
       case 'screen-selected':
         return {
-          iconColor: '#FFFFFF', // fehér ikon gradiens háttéren
+          iconColor: '#FFFFFF',
           backgroundColor: null,
-          backgroundType: 'gradient-blue-purple'
+          backgroundType: 'gradient-light-blue-dark-blue'
         };
       case 'history':
         return {
-          iconColor: '#8B5CF6', // lila ikon fehér háttéren
-          backgroundColor: '#FFFFFF',
-          backgroundType: 'solid'
+          iconColor: '#9853A6',
+          backgroundColor: null,
+          backgroundType: 'gradient-white-purple-solid'
         };
       case 'history-active':
         return {
-          iconColor: '#8B5CF6', // lila ikon gradiens háttéren
+          iconColor: '#9853A6',
           backgroundColor: null,
           backgroundType: 'gradient-white-purple'
         };
@@ -141,6 +141,81 @@ const DestinationIcon: React.FC<DestinationIconProps> = ({
             cy={bgCenter}
             r={bgRadius}
             fill="url(#whiteToPurple)"
+          />
+        </>
+      );
+    }
+
+    if (colors.backgroundType === 'gradient-white-light-purple') {
+      return (
+        <>
+          <Defs>
+            <RadialGradient
+              id="whiteToLightPurple"
+              cx="50%"
+              cy="50%"
+              rx="50%"
+              ry="50%"
+            >
+              <Stop offset="0%" stopColor="rgba(255, 255, 255, 0.5)" stopOpacity="0.5" />
+              <Stop offset="100%" stopColor="rgba(255, 230, 255, 0.5)" stopOpacity="0.5" />
+            </RadialGradient>
+          </Defs>
+          <Circle
+            cx={bgCenter}
+            cy={bgCenter}
+            r={bgRadius}
+            fill="url(#whiteToLightPurple)"
+          />
+        </>
+      );
+    }
+
+    if (colors.backgroundType === 'gradient-white-purple-solid') {
+      return (
+        <>
+          <Defs>
+            <RadialGradient
+              id="whiteToPurpleSolid"
+              cx="50%"
+              cy="50%"
+              rx="50%"
+              ry="50%"
+            >
+              <Stop offset="0%" stopColor="#FFFFFF" stopOpacity="1" />
+              <Stop offset="100%" stopColor="#FFE6FF" stopOpacity="1" />
+            </RadialGradient>
+          </Defs>
+          <Circle
+            cx={bgCenter}
+            cy={bgCenter}
+            r={bgRadius}
+            fill="url(#whiteToPurpleSolid)"
+          />
+        </>
+      );
+    }
+
+    if (colors.backgroundType === 'gradient-light-blue-dark-blue') {
+      return (
+        <>
+          <Defs>
+            <RadialGradient
+              id="lightBlueToDarkBlue"
+              cx="50%"
+              cy="50%"
+              rx="50%"
+              ry="50%"
+            >
+              <Stop offset="0%" stopColor="rgba(189, 228, 255, 0.5)" stopOpacity="0.5" />
+              <Stop offset="100%" stopColor="rgba(0, 123, 209, 0.5)" stopOpacity="0.5" />
+            </RadialGradient>
+          </Defs>
+          <Circle
+            cx={bgCenter}
+            cy={bgCenter}
+            r={bgRadius}
+            fill="url(#lightBlueToDarkBlue)"
           />
         </>
       );

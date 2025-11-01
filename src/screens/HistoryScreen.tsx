@@ -94,8 +94,19 @@ const HistoryScreen = () => {
 
   return (
     <View style={styles.screenWrapper}>
-      <Layout type="default">
-        <View style={styles.container}>
+      <Layout 
+        type="default"
+        headerTitle="History"
+        onMenuPress={openDrawer}
+        rightComponent={
+          <TouchableOpacity 
+            onPress={() => setIsOverlayMode(true)} 
+            style={styles.dotsButton}
+          >
+            <Image source={require('../assets/dots.png')} style={styles.dotsIcon} />
+          </TouchableOpacity>
+        }
+      >
         {isSelectionMode ? (
           <View style={styles.selectionHeader}>
             <TouchableOpacity onPress={cancelSelection} style={styles.cancelButton}>
@@ -108,23 +119,11 @@ const HistoryScreen = () => {
               <Text style={styles.selectAllText}>Select All</Text>
             </TouchableOpacity>
           </View>
-        ) : (
-          <View style={styles.header}>
-            <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
-              <Image source={require('../assets/menu.png')} style={styles.menuIcon} />
-            </TouchableOpacity>
-            <Text style={styles.title}>History</Text>
-            <TouchableOpacity 
-              onPress={() => setIsOverlayMode(true)} 
-              style={styles.dotsButton}
-            >
-              <Image source={require('../assets/dots.png')} style={styles.dotsIcon} />
-            </TouchableOpacity>
-          </View>
-        )}
-        
+        ) : null}
+                <View style={styles.container}>
+
         {/* Search Input */}
-        <View style={styles.searchContainer}>
+        <View style={[styles.searchContainer, isSelectionMode && styles.searchContainerWithSelection]}>
           <View style={styles.searchInputContainer}>
             <Image 
               source={require('../assets/select.png')} 
@@ -351,26 +350,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 60,
-    paddingBottom: 20,
-  },
-  menuButton: {
-    marginRight: 20,
-  },
-  menuIcon: {
-    width: 24,
-    height: 24,
-    tintColor: 'white',
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    flex: 1,
-  },
   dotsButton: {
     padding: 8,
   },
@@ -382,6 +361,9 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  searchContainerWithSelection: {
+    paddingTop: 120, // Make room for selection header
   },
   searchInputContainer: {
     flexDirection: 'row',
@@ -602,6 +584,10 @@ const styles = StyleSheet.create({
   },
   // Selection Mode Styles
   selectionHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -609,6 +595,8 @@ const styles = StyleSheet.create({
     paddingTop: 60,
     paddingBottom: 20,
     backgroundColor: '#252544',
+    zIndex: 1000,
+    elevation: 1000,
   },
   cancelText: {
     color: '#3b82f6',
