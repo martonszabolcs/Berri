@@ -277,7 +277,7 @@ const MainTabs = () => {
         }}
       />
       <Tab.Screen
-        name="Destinations"
+        name="DestinationsScreen"
         component={DestinationsStack}
         options={{
           tabBarIcon: ({ color, size }) => (

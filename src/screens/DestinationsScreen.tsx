@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import { View, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Text } from '../components';
+import { Layout, Text, DestinationIcon } from '../components';
 
 type RootStackParamList = {
   DestinationScreen: { destinationId: string };
@@ -23,6 +23,7 @@ const DestinationsScreen = () => {
 
   return (
     <Layout type="default">
+      <ScrollView>
       <View style={styles.container}>
         <View style={styles.header}>
           <TouchableOpacity onPress={openDrawer} style={styles.menuButton}>
@@ -32,21 +33,21 @@ const DestinationsScreen = () => {
         </View>
         
         <View style={styles.content}>
-          <TouchableOpacity 
-            style={styles.destinationCard} 
-            onPress={() => navigateToDestination('1')}
-          >
-            <Text style={styles.destinationText}>Sample Destination 1</Text>
-          </TouchableOpacity>
-          
-          <TouchableOpacity 
-            style={styles.destinationCard} 
-            onPress={() => navigateToDestination('2')}
-          >
-            <Text style={styles.destinationText}>Sample Destination 2</Text>
-          </TouchableOpacity>
+          {[1, 2, 3, 4, 5, 6, 7].map((id) => (
+            <TouchableOpacity 
+              key={id}
+              style={styles.destinationCard} 
+              onPress={() => navigateToDestination(id.toString())}
+            >
+              <View style={styles.cardContent}>
+                <DestinationIcon type={id as 1 | 2 | 3 | 4 | 5 | 6 | 7} variant="history-active" />
+                <Text style={styles.destinationText}>Destination {id}</Text>
+              </View>
+            </TouchableOpacity>
+          ))}
         </View>
       </View>
+      </ScrollView>
     </Layout>
   );
 };
@@ -83,6 +84,11 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 10,
     marginBottom: 15,
+  },
+  cardContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
   },
   destinationText: {
     fontSize: 16,

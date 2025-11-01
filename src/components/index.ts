@@ -9,4 +9,8 @@ export { default as MenuListItem } from './atoms/MenuListItem';
 export { default as HowToMenuItem } from './atoms/HowToMenuItem';
 export { default as BackgroundOverlay } from './atoms/BackgroundOverlay';
 export { default as HistoryCard } from './atoms/HistoryCard';
+export { default as DestinationIcon } from './atoms/DestinationIcon';
 export { CloudStorageConnector } from './atoms/CloudStorageConnector';
+
+// Icons
+export * from './icons';
