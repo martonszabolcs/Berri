@@ -1,66 +1,139 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import React, { useState, useRef } from 'react';
+import { View, StyleSheet, ScrollView, Alert, TextInput as RNTextInput } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, TextInput, Button, Text } from '../components';
+import { useAuth } from '../hooks/useAuth';
+
+type RootStackParamList = {
+  LoginScreen: undefined;
+};
+
+type ResetPasswordScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  'LoginScreen'
+>;
 
 const ResetPasswordScreen = () => {
-  const [currentPassword, setCurrentPassword] = useState('');
+  const [code, setCode] = useState(['', '', '', '', '', '']);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const navigation = useNavigation<ResetPasswordScreenNavigationProp>();
+  const { resetPassword } = useAuth();
 
-  const handleResetPassword = () => {
-    if (!currentPassword || !newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields');
+  // Refs for the code input fields
+  const codeRefs = useRef<(RNTextInput | null)[]>([]);
+
+  const handleCodeChange = (value: string, index: number) => {
+    if (value.length > 1) return; // Only allow single character
+    
+    const newCode = [...code];
+    newCode[index] = value;
+    setCode(newCode);
+
+    // Auto focus next field
+    if (value && index < 5) {
+      codeRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleCodeKeyPress = (e: any, index: number) => {
+    // Handle backspace
+    if (e.nativeEvent.key === 'Backspace' && !code[index] && index > 0) {
+      codeRefs.current[index - 1]?.focus();
+    }
+  };
+
+  const handleResetPassword = async () => {
+    const codeString = code.join('');
+    
+    if (codeString.length !== 6) {
+      Alert.alert('Hiba', 'Kérlek add meg a 6 karakteres kódot!');
+      return;
+    }
+
+    if (!newPassword || !confirmPassword) {
+      Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'New passwords do not match');
+      Alert.alert('Hiba', 'A jelszavak nem egyeznek!');
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long');
+      Alert.alert('Hiba', 'A jelszónak legalább 6 karakter hosszúnak kell lennie!');
       return;
     }
 
-    // Here you would typically call your API to reset the password
-    Alert.alert(
-      'Success', 
-      'Password has been reset successfully!',
-      [{ text: 'OK', onPress: () => {
-        // Reset form
-        setCurrentPassword('');
-        setNewPassword('');
-        setConfirmPassword('');
-      }}]
-    );
+    setIsLoading(true);
+
+    try {
+      const result = await resetPassword(codeString, newPassword);
+      
+      if (result.success) {
+        Alert.alert(
+          'Sikeres változtatás',
+          'A jelszavad sikeresen megváltozott!',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('LoginScreen'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Hiba', result.error || 'Hiba történt a jelszó megváltoztatása során!');
+      }
+    } catch (error) {
+      console.error('Reset password error:', error);
+      Alert.alert('Hiba', 'Hiba történt a jelszó megváltoztatása során!');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
-    <Layout type="auth" headerTitle="Reset Password" showBackButton={true}>
+    <Layout type="auth" headerTitle="Jelszó visszaállítása" showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           <Text style={styles.instructionText}>
-            Enter your current password and choose a new one.
+            Add meg a 6 karakteres kódot amit emailben küldtünk, és válassz új jelszót.
           </Text>
 
           <View style={styles.formSection}>
-            <TextInput
-              placeholder="Current Password"
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              secureTextEntry
-            />
+            <Text style={styles.sectionTitle}>Visszaállítási kód</Text>
+            <View style={styles.codeContainer}>
+              {code.map((digit, index) => (
+                <RNTextInput
+                  key={index}
+                  ref={(ref) => {codeRefs.current[index] = ref}}
+                  style={styles.codeInput}
+                  value={digit}
+                  onChangeText={(value) => handleCodeChange(value, index)}
+                  onKeyPress={(e) => handleCodeKeyPress(e, index)}
+                  keyboardType="default"
+                  maxLength={1}
+                  autoCapitalize="characters"
+                  textAlign="center"
+                  placeholder="-"
+                  placeholderTextColor="rgba(255, 255, 255, 0.3)"
+                />
+              ))}
+            </View>
             
+            <Text style={styles.sectionTitle}>Új jelszó</Text>
             <TextInput
-              placeholder="New Password"
+              placeholder="Új jelszó"
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
             />
             
             <TextInput
-              placeholder="Confirm New Password"
+              placeholder="Új jelszó megerősítése"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -68,10 +141,11 @@ const ResetPasswordScreen = () => {
           </View>
 
           <Button
-            title="Reset Password"
+            title={isLoading ? 'Mentés...' : 'Jelszó megváltoztatása'}
             variant="normal"
             size="medium"
             onPress={handleResetPassword}
+            disabled={isLoading}
             buttonStyle={styles.resetButton}
           />
         </View>
@@ -99,6 +173,29 @@ const styles = StyleSheet.create({
   formSection: {
     gap: 20,
     marginBottom: 40,
+  },
+  sectionTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  codeContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  codeInput: {
+    width: 45,
+    height: 55,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 10,
+    color: 'white',
+    fontSize: 24,
+    fontWeight: 'bold',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   resetButton: {
     width: '100%',

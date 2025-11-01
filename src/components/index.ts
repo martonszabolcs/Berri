@@ -8,3 +8,5 @@ export { default as Text } from './atoms/Text';
 export { default as MenuListItem } from './atoms/MenuListItem';
 export { default as HowToMenuItem } from './atoms/HowToMenuItem';
 export { default as BackgroundOverlay } from './atoms/BackgroundOverlay';
+export { default as HistoryCard } from './atoms/HistoryCard';
+export { CloudStorageConnector } from './atoms/CloudStorageConnector';

@@ -1,53 +1,45 @@
 import { useState } from 'react';
 import { View, StyleSheet, Alert, Image } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
+import { useAuth } from '../hooks';
 import React from 'react';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
-  CameraScreen: undefined;
+  MainTabs: undefined;
   LoginScreen: undefined;
+  RegisterScreen: undefined;
 };
 
-type LoginScreenNavigationProp = StackNavigationProp<
+type RegisterScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
-  'LoginScreen'
+  'RegisterScreen'
 >;
 
-const LiText = ({ text }) => {
+interface LiTextProps {
+  text: string;
+}
+
+const LiText = ({ text }: LiTextProps) => {
   return (
-    <View
-      style={{
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 2,
-      }}
-    >
-      <View
-        style={{
-          marginRight: 8,
-          width: 10,
-          height: 10,
-          borderRadius: 20,
-          backgroundColor: 'white',
-        }}
-      />
+    <View style={styles.liContainer}>
+      <View style={styles.bullet} />
       <Text>{text}</Text>
     </View>
   );
 };
 
-const LoginScreen = () => {
+const RegisterScreen = () => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const navigation = useNavigation<LoginScreenNavigationProp>();
+  const navigation = useNavigation<RegisterScreenNavigationProp>();
+  const { register } = useAuth();
 
-  const handleLogin = async () => {
+  const handleRegister = async () => {
     if (
       password.length < 8 ||
       password.search(/[a-z]/) === -1 ||
@@ -62,7 +54,7 @@ const LoginScreen = () => {
       return;
     }
 
-    if (!email || !password) {
+    if (!name || !email || !password) {
       Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
       return;
     }
@@ -70,21 +62,26 @@ const LoginScreen = () => {
     setIsLoading(true);
 
     try {
-      // Simulate API call - replace with actual authentication
-      await new Promise<void>(resolve => setTimeout(resolve, 1000));
+      // Call the auth hook
+      const result = await register(name, email, password);
 
-      // For demo purposes, accept any email/password
-      // In real app, you would make an API call here
-      const mockToken = 'user_auth_token_' + Date.now();
-
-      // Store token in AsyncStorage
-      await AsyncStorage.setItem('authToken', mockToken);
-
-      // Navigate to Camera screen
-      navigation.replace('CameraScreen');
-    } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert('Hiba', 'Bejelentkezési hiba történt!');
+      if (result.success) {
+        Alert.alert(
+          'Sikeres regisztráció',
+          'Kérlek ellenőrizd az email-edet a verifikációért!',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('LoginScreen'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Hiba', result.error);
+      }
+    } catch (error: any) {
+      console.error('Register error:', error);
+      Alert.alert('Hiba', 'Regisztrációs hiba történt!');
     } finally {
       setIsLoading(false);
     }
@@ -96,7 +93,7 @@ const LoginScreen = () => {
         <Image
           resizeMode="contain"
           source={require('../assets/logo.png')}
-          style={{ width: '60%', marginBottom: 20 }}
+          style={styles.logo}
         />
         <View style={styles.form}>
           <TextInput
@@ -131,7 +128,7 @@ const LoginScreen = () => {
 
           <Button
             title={isLoading ? 'Loading...' : 'Sign up'}
-            onPress={handleLogin}
+            onPress={handleRegister}
             disabled={isLoading}
             size="large"
             buttonStyle={styles.loginButton}
@@ -148,6 +145,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
+  },
+  logo: {
+    width: '60%',
+    marginBottom: 20,
   },
   title: {
     color: 'white',
@@ -169,9 +170,21 @@ const styles = StyleSheet.create({
   input: {
     marginBottom: 24,
   },
+  liContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 2,
+  },
+  bullet: {
+    marginRight: 8,
+    width: 10,
+    height: 10,
+    borderRadius: 20,
+    backgroundColor: 'white',
+  },
   loginButton: {
     marginTop: 16,
   },
 });
 
-export default LoginScreen;
+export default RegisterScreen;

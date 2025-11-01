@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, Image, ScrollView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, StyleSheet, Image, ScrollView, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Button, RadioButton, Toggle, Text } from '../components';
+import { Layout, Button, RadioButton, Toggle, Text, CloudStorageConnector } from '../components';
+import { useCloudStorage } from '../hooks';
+import { CloudStorageType } from '../store/api/cloudStorageManager';
 
 type RootStackParamList = {
   DestinationScreen: { destinationId: string };
@@ -20,6 +22,70 @@ const DestinationScreen = () => {
   
   const [fileType, setFileType] = useState('PDF');
   const [bundleScans, setBundleScans] = useState(false);
+  const [selectedStorage, setSelectedStorage] = useState<CloudStorageType | null>(null);
+  
+  const { connectionStatus, isConnected, refreshConnectionStatus } = useCloudStorage();
+
+  // Map destination types to storage types
+  const getStorageTypeForDestination = (destId: string): CloudStorageType => {
+    switch (destId) {
+      case '1':
+      case '2':
+        return 'dropbox';
+      case '3':
+      case '4':
+        return 'googledrive';
+      case '5':
+      case '6':
+        return 'onedrive';
+      default:
+        return 'dropbox';
+    }
+  };
+
+  useEffect(() => {
+    // Set the storage type based on destination
+    const storageType = getStorageTypeForDestination(destinationId);
+    setSelectedStorage(storageType);
+    
+    // Refresh connection status when component mounts
+    refreshConnectionStatus();
+  }, [destinationId, refreshConnectionStatus]);
+
+  const handleConnectionChange = (connected: boolean, storageType: CloudStorageType) => {
+    console.log(`${storageType} connection changed:`, connected);
+    
+    if (connected) {
+      Alert.alert(
+        'Csatlakoztatva!',
+        `Most már tudsz fájlokat menteni a ${storageType === 'dropbox' ? 'Dropbox' : storageType === 'googledrive' ? 'Google Drive' : 'OneDrive'}-ba.`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  const canSaveFiles = (): boolean => {
+    if (!selectedStorage) return false;
+    return isConnected(selectedStorage);
+  };
+
+  const handleTestConnection = async () => {
+    if (!selectedStorage) return;
+    
+    if (canSaveFiles()) {
+      Alert.alert(
+        'Kapcsolat aktív',
+        `A ${selectedStorage === 'dropbox' ? 'Dropbox' : selectedStorage === 'googledrive' ? 'Google Drive' : 'OneDrive'} kapcsolat aktív és használatra kész.`,
+        [{ text: 'OK' }]
+      );
+    } else {
+      Alert.alert(
+        'Nincs kapcsolat',
+        `Kérlek csatlakoztasd a ${selectedStorage === 'dropbox' ? 'Dropbox' : selectedStorage === 'googledrive' ? 'Google Drive' : 'OneDrive'}-ot a fájlok mentéséhez.`,
+        [{ text: 'OK' }]
+      );
+    }
+  };
 
   // Get destination image based on type
   const getDestinationImage = (type: string) => {
@@ -75,6 +141,35 @@ const DestinationScreen = () => {
             onPress={handleChangeDestination}
           />
         </View>
+
+        {/* Cloud Storage Connection */}
+        {selectedStorage && (
+          <View style={styles.storageContainer}>
+            <Text style={styles.storageTitle}>Cloud Storage</Text>
+            <CloudStorageConnector
+              storageType={selectedStorage}
+              onConnectionChange={handleConnectionChange}
+              style={styles.storageConnector}
+            />
+            
+            {/* Connection Status Info */}
+            <View style={styles.statusContainer}>
+              <Text style={styles.statusText}>
+                {canSaveFiles() 
+                  ? '✅ Kész a fájlok mentésére' 
+                  : '⚠️ Csatlakoztatás szükséges a mentéshez'
+                }
+              </Text>
+              <Button
+                title="Kapcsolat tesztelése"
+                variant="outline"
+                size="small"
+                onPress={handleTestConnection}
+                buttonStyle={styles.testButton}
+              />
+            </View>
+          </View>
+        )}
 
         {/* Destination Settings */}
         <View style={styles.settingsContainer}>
@@ -132,6 +227,35 @@ const styles = StyleSheet.create({
   },
   actionButton: {
     width: '100%',
+  },
+  storageContainer: {
+    marginBottom: 30,
+  },
+  storageTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
+  storageConnector: {
+    marginBottom: 15,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderRadius: 8,
+  },
+  statusText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    marginRight: 12,
+  },
+  testButton: {
+    minWidth: 100,
   },
   settingsContainer: {
     paddingBottom: 100, // Extra space for tab bar

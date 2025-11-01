@@ -1,14 +1,15 @@
 import React, { useEffect, useCallback } from 'react';
 import { StyleSheet, Image } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Text } from '../components';
+import { Layout } from '../components';
+import { useAppDispatch, useAppSelector } from '../store/hooks';
+import { initializeAuth } from '../store/appSlice';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
   MainTabs: undefined;
-  LoginScreen: undefined;
+  AuthScreen: undefined;
 };
 
 type LaunchScreenNavigationProp = StackNavigationProp<
@@ -18,54 +19,49 @@ type LaunchScreenNavigationProp = StackNavigationProp<
 
 const LaunchScreen = () => {
   const navigation = useNavigation<LaunchScreenNavigationProp>();
+  const dispatch = useAppDispatch();
+  const { isAuthenticated, token } = useAppSelector((state) => state.app);
 
-  const checkToken = useCallback(async () => {
+  const initializeApp = useCallback(async () => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
-
-      // Add a small delay for better UX
+      // Initialize auth state from AsyncStorage using Redux thunk
+      await dispatch(initializeAuth());
+      
+      // Add a small delay for better UX, then check authentication
       setTimeout(() => {
-        if (token) {
+        if (isAuthenticated && token) {
           navigation.replace('MainTabs');
         } else {
-          navigation.replace('LoginScreen');
+          navigation.replace('AuthScreen');
         }
       }, 1500);
     } catch (error) {
-      console.error('Error checking token:', error);
-      // If there's an error, navigate to login
+      console.error('Error initializing app:', error);
+      // If there's an error, navigate to AuthScreen
       setTimeout(() => {
-        navigation.replace('LoginScreen');
+        navigation.replace('AuthScreen');
       }, 1500);
     }
-  }, [navigation]);
+  }, [navigation, dispatch, isAuthenticated, token]);
 
   useEffect(() => {
-    checkToken();
-  }, [checkToken]);
+    initializeApp();
+  }, [initializeApp]);
 
   return (
     <Layout type="default">
       <Image
         resizeMode="contain"
         source={require('../assets/logo.png')}
-        style={{ width: '60%' }}
+        style={styles.logo}
       />
     </Layout>
   );
 };
 
 const styles = StyleSheet.create({
-  text: {
-    color: 'white',
-    fontSize: 32,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    position: 'absolute',
-    top: '50%',
-    left: 0,
-    right: 0,
-    transform: [{ translateY: -16 }], // Half of font size to center vertically
+  logo: {
+    width: '60%',
   },
 });
 

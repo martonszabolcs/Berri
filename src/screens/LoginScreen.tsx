@@ -1,15 +1,17 @@
 import { useState } from 'react';
 import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
+import { useAuth } from '../hooks';
 import React from 'react';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
   MainTabs: undefined;
   LoginScreen: undefined;
+  ForgottenScreen: undefined;
+  RegisterScreen: undefined;
 };
 
 type LoginScreenNavigationProp = StackNavigationProp<
@@ -22,9 +24,9 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<LoginScreenNavigationProp>();
+  const { login } = useAuth();
 
   const handleLogin = async () => {
-    navigation.replace('MainTabs');
     if (!email || !password) {
       Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
       return;
@@ -33,19 +35,16 @@ const LoginScreen = () => {
     setIsLoading(true);
 
     try {
-      // Simulate API call - replace with actual authentication
-      await new Promise<void>(resolve => setTimeout(resolve, 1000));
+      // Call the auth hook
+      const result = await login(email, password);
 
-      // For demo purposes, accept any email/password
-      // In real app, you would make an API call here
-      const mockToken = 'user_auth_token_' + Date.now();
-
-      // Store token in AsyncStorage
-      await AsyncStorage.setItem('authToken', mockToken);
-
-      // Navigate to Camera screen
-      navigation.replace('MainTabs');
-    } catch (error) {
+      if (result.success) {
+        // Navigate to main tabs on success
+        navigation.replace('MainTabs');
+      } else {
+        Alert.alert('Hiba', result.error);
+      }
+    } catch (error: any) {
       console.error('Login error:', error);
       Alert.alert('Hiba', 'Bejelentkezési hiba történt!');
     } finally {
@@ -59,7 +58,7 @@ const LoginScreen = () => {
         <Image
           resizeMode="contain"
           source={require('../assets/logo.png')}
-          style={{ width: '60%', marginBottom: 20 }}
+          style={styles.logo}
         />
         <View style={styles.form}>
           <TextInput
@@ -82,7 +81,7 @@ const LoginScreen = () => {
           <TouchableOpacity
             onPress={() => navigation.navigate('ForgottenScreen')}
           >
-            <Text style={{ textAlign: 'right', marginBottom: 16 }}>
+            <Text style={styles.forgotPassword}>
               Forgotten password?
             </Text>
           </TouchableOpacity>
@@ -107,6 +106,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
+  logo: {
+    width: '60%',
+    marginBottom: 20,
+  },
   title: {
     color: 'white',
     fontSize: 48,
@@ -126,6 +129,10 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 24,
+  },
+  forgotPassword: {
+    textAlign: 'right',
+    marginBottom: 16,
   },
   loginButton: {
     marginTop: 16,

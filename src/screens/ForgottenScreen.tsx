@@ -1,52 +1,56 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, Image, Touchable, TouchableOpacity } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
+import { useAuth } from '../hooks/useAuth';
 import React from 'react';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
-  CameraScreen: undefined;
   LoginScreen: undefined;
+  ResetPasswordScreen: undefined;
 };
 
-type LoginScreenNavigationProp = StackNavigationProp<
+type ForgottenScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
-  'LoginScreen'
+  'ResetPasswordScreen'
 >;
 
-const LoginScreen = () => {
+const ForgottenScreen = () => {
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const navigation = useNavigation<LoginScreenNavigationProp>();
+  const navigation = useNavigation<ForgottenScreenNavigationProp>();
+  const { forgotPassword } = useAuth();
 
-  const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
+  const handleForgotPassword = async () => {
+    if (!email) {
+      Alert.alert('Hiba', 'Kérlek add meg az email címedet!');
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Simulate API call - replace with actual authentication
-      await new Promise<void>(resolve => setTimeout(resolve, 1000));
-
-      // For demo purposes, accept any email/password
-      // In real app, you would make an API call here
-      const mockToken = 'user_auth_token_' + Date.now();
-
-      // Store token in AsyncStorage
-      await AsyncStorage.setItem('authToken', mockToken);
-
-      // Navigate to Camera screen
-      navigation.replace('CameraScreen');
+      const result = await forgotPassword(email);
+      
+      if (result.success) {
+        Alert.alert(
+          'Sikeres kérés',
+          'Elküldtük a visszaállítási kódot az email címedre.',
+          [
+            {
+              text: 'OK',
+              onPress: () => navigation.navigate('ResetPasswordScreen'),
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Hiba', result.error || 'Hiba történt a kérés során!');
+      }
     } catch (error) {
-      console.error('Login error:', error);
-      Alert.alert('Hiba', 'Bejelentkezési hiba történt!');
+      console.error('Forgot password error:', error);
+      Alert.alert('Hiba', 'Hiba történt a kérés során!');
     } finally {
       setIsLoading(false);
     }
@@ -58,10 +62,12 @@ const LoginScreen = () => {
         <Image
           resizeMode="contain"
           source={require('../assets/logo.png')}
-          style={{ width: '60%', marginBottom: 20 }}
+          style={styles.logo}
         />
         <View style={styles.form}>
-          <Text>Write your email address and we will send you a code</Text>
+          <Text style={styles.description}>
+            Add meg az email címedet és küldünk egy kódot a jelszó visszaállításához
+          </Text>
           <TextInput
             placeholder="email"
             value={email}
@@ -71,18 +77,18 @@ const LoginScreen = () => {
             style={styles.input}
           />
 
-          <TouchableOpacity onPress={() => navigation.navigate('ForgottenScreen')}>
-            <Text style={{ textAlign: 'right', marginBottom: 16 }}>
-              Back to login?
+          <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')}>
+            <Text style={styles.backLink}>
+              Vissza a bejelentkezéshez?
             </Text>
           </TouchableOpacity>
 
           <Button
-            title={isLoading ? 'Loading...' : 'Submit'}
-            onPress={handleLogin}
+            title={isLoading ? 'Küldés...' : 'Kód küldése'}
+            onPress={handleForgotPassword}
             disabled={isLoading}
             size="large"
-            buttonStyle={styles.loginButton}
+            buttonStyle={styles.submitButton}
           />
         </View>
       </View>
@@ -97,29 +103,31 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 32,
   },
-  title: {
-    color: 'white',
-    fontSize: 48,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  subtitle: {
-    color: 'rgba(255, 255, 255, 0.8)',
-    fontSize: 18,
-    textAlign: 'center',
-    marginBottom: 48,
+  logo: {
+    width: '60%',
+    marginBottom: 20,
   },
   form: {
     width: '100%',
     maxWidth: 400,
   },
+  description: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    textAlign: 'center',
+    marginBottom: 32,
+  },
   input: {
     marginBottom: 24,
   },
-  loginButton: {
+  backLink: {
+    textAlign: 'right',
+    marginBottom: 16,
+    color: 'rgba(255, 255, 255, 0.8)',
+  },
+  submitButton: {
     marginTop: 16,
   },
 });
 
-export default LoginScreen;
+export default ForgottenScreen;

@@ -10,7 +10,8 @@ import {
   Image,
   Linking,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAppDispatch } from '../store/hooks';
+import { logoutUser } from '../store/appSlice';
 
 // Import screens
 import CameraScreen from '../screens/CameraScreen';
@@ -20,6 +21,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ForgottenScreen from '../screens/ForgottenScreen';
 import HistoryScreen from '../screens/HistoryScreen';
+import HistoryDetailScreen from '../screens/HistoryDetailScreen';
 import DestinationsScreen from '../screens/DestinationsScreen';
 import DestinationScreen from '../screens/DestinationScreen';
 import ChangeDestinationScreen from '../screens/ChangeDestinationScreen';
@@ -40,6 +42,14 @@ type RootStackParamList = {
   ForgottenScreen: undefined;
   MainTabs: undefined;
   HistoryScreen: undefined;
+  HistoryDetailScreen: { 
+    history: {
+      id: string;
+      name: string;
+      createdAt: string;
+      imageUri: string;
+    }
+  };
   NewScanStack: undefined;
   DestinationsStack: undefined;
   DestinationsScreen: undefined;
@@ -65,12 +75,18 @@ const hideHeader = {
 
 // Custom Drawer Content
 const CustomDrawerContent = ({ navigation }: any) => {
+  const dispatch = useAppDispatch();
+  
   const handleLogout = async () => {
-    await AsyncStorage.removeItem('authToken');
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'LaunchScreen' }],
-    });
+    try {
+      await dispatch(logoutUser());
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'LaunchScreen' }],
+      });
+    } catch (error) {
+      console.error('Logout error:', error);
+    }
   };
 
   const openSocialLink = (url: string) => {
@@ -226,6 +242,8 @@ const MainTabs = () => {
         tabBarStyle: {
           backgroundColor: 'rgba(0, 0, 0, 0.8)',
           borderTopWidth: 0,
+          zIndex: 1, // nagyon alacsony zIndex
+          elevation: 1, // Android-on is alacsony
         },
         tabBarActiveTintColor: '#fff',
         tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.5)',
@@ -293,13 +311,6 @@ const MainTabs = () => {
           tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
         }}
       />
-      <Tab.Screen
-        name="ResetPasswordScreen"
-        component={ResetPasswordScreen}
-        options={{
-          tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
-        }}
-      />
     </Tab.Navigator>
   );
 };
@@ -354,6 +365,16 @@ const Navigation = () => {
         <Stack.Screen
           name="ForgottenScreen"
           component={ForgottenScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="ResetPasswordScreen"
+          component={ResetPasswordScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="HistoryDetailScreen"
+          component={HistoryDetailScreen}
           options={hideHeader}
         />
       </Stack.Navigator>
