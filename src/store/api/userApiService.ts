@@ -1,22 +1,23 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_CONFIG } from '../../config';
+import { store } from '../index';
 
 // Helper service for user-related API calls
 class UserApiService {
   // Get current user ID
   async getCurrentUserId(): Promise<number | null> {
     try {
-      const jwtToken = await AsyncStorage.getItem('authToken');
-      if (!jwtToken) {
-        throw new Error('No auth token found');
+      const state = store.getState();
+      const token = state.app.token;
+      if (!token) {
+        throw new Error('No auth token found in Redux store');
       }
 
       const response = await axios.get(
         `${API_CONFIG.BASE_URL}/users/me`,
         {
           headers: {
-            'Authorization': `Bearer ${jwtToken}`,
+            'Authorization': `Bearer ${token}`,
           },
         }
       );
@@ -36,9 +37,10 @@ class UserApiService {
         throw new Error('Could not get current user ID');
       }
 
-      const jwtToken = await AsyncStorage.getItem('authToken');
-      if (!jwtToken) {
-        throw new Error('No auth token found');
+      const state = store.getState();
+      const token = state.app.token;
+      if (!token) {
+        throw new Error('No auth token found in Redux store');
       }
 
       const response = await axios.put(
@@ -46,7 +48,7 @@ class UserApiService {
         updateData,
         {
           headers: {
-            'Authorization': `Bearer ${jwtToken}`,
+            'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json',
           },
         }
@@ -59,18 +61,81 @@ class UserApiService {
     }
   }
 
-  // Update cloud storage token for current user
-  async updateCloudStorageToken(storageType: 'dropbox' | 'googledrive' | 'onedrive', accessToken: string): Promise<boolean> {
+  // Update cloud storage tokens for current user using the dedicated settings endpoint
+  async updateCloudStorageTokens(storageType: 'dropbox' | 'googledrive' | 'onedrive', tokens: { accessToken: string; refreshToken?: string }): Promise<boolean> {
     const tokenFieldMap = {
-      dropbox: 'dropboxAccessToken',
-      googledrive: 'googleDriveAccessToken', // Based on Swagger: User schema has this field
-      onedrive: 'oneDriveAccessToken', // Based on Swagger: User schema has this field
+      dropbox: {
+        accessToken: 'dropboxAccessToken',
+        refreshToken: 'dropboxRefreshToken'
+      },
+      googledrive: {
+        accessToken: 'googleDriveAccessToken',
+        refreshToken: 'googleDriveRefreshToken'
+      },
+      onedrive: {
+        accessToken: 'oneDriveAccessToken', 
+        refreshToken: 'oneDriveRefreshToken'
+      }
     };
 
-    const fieldName = tokenFieldMap[storageType];
-    const updateData = { [fieldName]: accessToken };
+    const fields = tokenFieldMap[storageType];
+    const updateData: any = { [fields.accessToken]: tokens.accessToken };
+    
+    // Add refresh token if provided
+    if (tokens.refreshToken) {
+      updateData[fields.refreshToken] = tokens.refreshToken;
+    }
 
-    return this.updateCurrentUser(updateData);
+    return this.updateUserSettings(updateData);
+  }
+
+  // Update user settings using the dedicated /settings endpoint
+  async updateUserSettings(updateData: any): Promise<boolean> {
+    try {
+      const state = store.getState();
+      const token = state.app.token;
+      if (!token) {
+        throw new Error('No auth token found in Redux store');
+      }
+
+      console.log('🚀 userApiService: Updating user settings', updateData);
+      console.log('🔑 userApiService: Using token:', token.substring(0, 50) + '...');
+      console.log('🌐 userApiService: API URL:', `${API_CONFIG.BASE_URL}/settings`);
+
+      const response = await axios.put(
+        `${API_CONFIG.BASE_URL}/settings`,
+        updateData,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('✅ userApiService: Settings updated successfully', response.data);
+      return response.status === 200;
+    } catch (error: any) {
+      console.error('❌ userApiService: Error updating user settings:', error);
+      
+      // Log detailed error information
+      if (error.response) {
+        console.error('❌ userApiService: Response status:', error.response.status);
+        console.error('❌ userApiService: Response data:', error.response.data);
+        console.error('❌ userApiService: Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('❌ userApiService: Request was made but no response received:', error.request);
+      } else {
+        console.error('❌ userApiService: Error setting up request:', error.message);
+      }
+      
+      return false;
+    }
+  }
+
+  // Update cloud storage token for current user (legacy method - kept for backwards compatibility)
+  async updateCloudStorageToken(storageType: 'dropbox' | 'googledrive' | 'onedrive', accessToken: string): Promise<boolean> {
+    return this.updateCloudStorageTokens(storageType, { accessToken });
   }
 }
 
@@ -79,7 +144,10 @@ export const userApiService = new UserApiService();
 // Export individual functions for easier importing
 export const getCurrentUserId = () => userApiService.getCurrentUserId();
 export const updateCurrentUser = (data: any) => userApiService.updateCurrentUser(data);
+export const updateUserSettings = (data: any) => userApiService.updateUserSettings(data);
 export const updateCloudStorageToken = (storageType: 'dropbox' | 'googledrive' | 'onedrive', accessToken: string) => 
   userApiService.updateCloudStorageToken(storageType, accessToken);
+export const updateCloudStorageTokens = (storageType: 'dropbox' | 'googledrive' | 'onedrive', tokens: { accessToken: string; refreshToken?: string }) =>
+  userApiService.updateCloudStorageTokens(storageType, tokens);
 
 export default userApiService;

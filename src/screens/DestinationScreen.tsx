@@ -3,6 +3,7 @@ import { View, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Button, RadioButton, Toggle, Text } from '../components';
+import { useAppSelector } from '../store/hooks';
 
 type RootStackParamList = {
   DestinationScreen: { destination: any };
@@ -18,6 +19,7 @@ const DestinationScreen = () => {
   const route = useRoute<DestinationScreenRouteProp>();
   const { destination } = route.params;
   const destinationId = destination.type.toString();
+    const user = useAppSelector((state) => state.app.user);
   
   const [fileType, setFileType] = useState('PDF');
   const [bundleScans, setBundleScans] = useState(false);
@@ -75,7 +77,7 @@ const DestinationScreen = () => {
           />
           <View style={styles.emailContainer}>
             <Text style={styles.emailLabel}>Email</Text>
-            <Text style={styles.emailText}>{destination.emails || 'No email set'}</Text>
+            <Text style={styles.emailText}>{user.email}</Text>
           </View>
         </View>
 

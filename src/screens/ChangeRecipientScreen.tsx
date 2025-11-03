@@ -3,6 +3,7 @@ import { View, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Button, TextInput, Text } from '../components';
+import { useAppSelector } from '../store/hooks';
 
 type RootStackParamList = {
   ChangeRecipientScreen: { destination: any };
@@ -21,6 +22,7 @@ const ChangeRecipientScreen = () => {
   const route = useRoute<ChangeRecipientScreenRouteProp>();
   const { destination } = route.params;
   const destinationId = destination.type.toString();
+      const user = useAppSelector((state) => state.app.user);
   
   const [emails, setEmails] = useState<EmailInput[]>([
     { id: '1', value: '' }
@@ -129,8 +131,8 @@ const ChangeRecipientScreen = () => {
             style={styles.destinationImage}
           />
           <View style={styles.emailContainer}>
-            <Text style={styles.emailLabel}>Current Emails</Text>
-            <Text style={styles.emailText}>{destination.emails || 'No emails set'}</Text>
+            <Text style={styles.emailLabel}>Email</Text>
+            <Text style={styles.emailText}>{user.email}</Text>
           </View>
         </View>
 

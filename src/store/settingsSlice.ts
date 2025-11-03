@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import { authApi } from './api/authApi';
+import { updateCloudStorageTokens } from './api/userApiService';
 
 export interface CloudConnectionStatus {
   googleDrive: boolean;
@@ -24,6 +25,35 @@ const initialState: SettingsState = {
 };
 
 // Async thunks for cloud storage operations
+export const saveDropboxToken = createAsyncThunk(
+  'settings/saveDropboxToken',
+  async (tokens: { accessToken: string; refreshToken?: string }, { dispatch }) => {
+    try {
+      console.log('🚀 settingsSlice: saveDropboxToken thunk started');
+      
+      // Update the tokens in the backend
+      const success = await updateCloudStorageTokens('dropbox', tokens);
+      
+      if (success) {
+        console.log('✅ settingsSlice: Dropbox tokens saved successfully');
+        
+        // Update the connection status
+        dispatch(updateConnectionStatus({ provider: 'dropbox', connected: true }));
+        
+        // Refresh full connection status to sync with backend
+        await dispatch(refreshConnectionStatus());
+        
+        return tokens;
+      } else {
+        throw new Error('Failed to save Dropbox tokens');
+      }
+    } catch (error) {
+      console.error('❌ settingsSlice: saveDropboxToken failed', error);
+      throw error;
+    }
+  }
+);
+
 export const refreshConnectionStatus = createAsyncThunk(
   'settings/refreshConnectionStatus',
   async (_, { dispatch }) => {
@@ -120,6 +150,20 @@ const settingsSlice = createSlice({
   },
   extraReducers: (builder) => {
     builder
+      // Save Dropbox Token
+      .addCase(saveDropboxToken.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveDropboxToken.fulfilled, (state) => {
+        state.isLoading = false;
+        // Connection status is updated via the updateConnectionStatus dispatch
+      })
+      .addCase(saveDropboxToken.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.error.message || 'Failed to save Dropbox token';
+      })
+      
       // Refresh Connection Status
       .addCase(refreshConnectionStatus.pending, (state) => {
         state.isLoading = true;

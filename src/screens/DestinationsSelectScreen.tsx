@@ -41,7 +41,7 @@ const DestinationsScreen = () => {
                 <DestinationIcon type={destination.type} variant={selectedDestination ===  destination.type? "screen-selected" : "screen"} />
                 <View style={styles.destinationInfo}>
                   <Text style={styles.destinationText}>{destination.destination === "email" ? "E-mail" : destination.destination}</Text>
-                  <Text style={styles.destinationText}>{destination.emails}</Text>
+                  <Text style={styles.destinationText}>{user.email}</Text>
                 </View>
                 <Image 
                   resizeMode='contain'

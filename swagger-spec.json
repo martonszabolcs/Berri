@@ -1,0 +1,1781 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "number"
+                        },
+                        "email": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "emailVerified": {
+                          "type": "boolean"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Invalid credentials"
+          }
+        },
+        "summary": "User login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "User registered successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "summary": "User registration",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/forgot-password": {
+      "post": {
+        "operationId": "AuthController_forgottenPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset email sent",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "summary": "Request password reset",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/reset-password": {
+      "post": {
+        "operationId": "AuthController_resetPassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Password reset successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or expired token"
+          }
+        },
+        "summary": "Reset password with token",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/verify-email": {
+      "post": {
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VerifyEmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Email verified successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "message": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid verification token"
+          }
+        },
+        "summary": "Verify email address",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/test-email": {
+      "post": {
+        "operationId": "AuthController_testEmail",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Test email sent successfully"
+          }
+        },
+        "summary": "Test email sending (MailHog)",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/google": {
+      "post": {
+        "operationId": "SocialAuthController_googleLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Google login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Google login failed"
+          }
+        },
+        "summary": "Google social login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/facebook": {
+      "post": {
+        "operationId": "SocialAuthController_facebookLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Facebook login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Facebook token"
+          },
+          "500": {
+            "description": "Facebook login failed"
+          }
+        },
+        "summary": "Facebook social login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/auth/apple": {
+      "post": {
+        "operationId": "SocialAuthController_appleLogin",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SocialLoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Apple login successful",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "access_token": {
+                      "type": "string"
+                    },
+                    "user": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid Apple token"
+          },
+          "500": {
+            "description": "Apple login failed"
+          }
+        },
+        "summary": "Apple social login",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/users": {
+      "get": {
+        "operationId": "UsersController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "List of all users",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/User"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "Get all users",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/me": {
+      "get": {
+        "operationId": "UsersController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Current user profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "Get current user profile",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/{id}": {
+      "get": {
+        "operationId": "UsersController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User ID",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "Get user by ID",
+        "tags": [
+          "users"
+        ]
+      },
+      "put": {
+        "description": "Update user profile. To connect Dropbox, include dropboxAccessToken in the request body.",
+        "operationId": "UsersController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User ID",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "Update user by ID",
+        "tags": [
+          "users"
+        ]
+      },
+      "delete": {
+        "operationId": "UsersController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "User ID",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "User deleted successfully"
+          },
+          "404": {
+            "description": "User not found"
+          }
+        },
+        "security": [
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "Delete user by ID",
+        "tags": [
+          "users"
+        ]
+      }
+    },
+    "/users/settings": {
+      "get": {
+        "operationId": "UserSettingsController_getSettings",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "User settings retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSettings"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get user settings",
+        "tags": [
+          "user-settings"
+        ]
+      },
+      "put": {
+        "operationId": "UserSettingsController_updateSettings",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserSettingsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "User settings updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserSettings"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Update user settings",
+        "tags": [
+          "user-settings"
+        ]
+      }
+    },
+    "/destinations": {
+      "get": {
+        "operationId": "DestinationsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Destinations retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Destination"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get all destinations for the current user",
+        "tags": [
+          "destinations"
+        ]
+      },
+      "post": {
+        "operationId": "DestinationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateDestinationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Destination created successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Destination"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request or type already exists"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Create a new destination",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/destinations/available-types": {
+      "get": {
+        "operationId": "DestinationsController_getAvailableTypes",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Available types retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  },
+                  "example": [
+                    1,
+                    3,
+                    5
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get available destination types for the user",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/destinations/{type}": {
+      "get": {
+        "operationId": "DestinationsController_findByType",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "path",
+            "description": "Destination type (1-7)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Destination found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Destination"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Destination not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get destination by type",
+        "tags": [
+          "destinations"
+        ]
+      },
+      "put": {
+        "operationId": "DestinationsController_update",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "path",
+            "description": "Destination type (1-7)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateDestinationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Destination updated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Destination"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Destination not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Update destination by type",
+        "tags": [
+          "destinations"
+        ]
+      },
+      "delete": {
+        "operationId": "DestinationsController_delete",
+        "parameters": [
+          {
+            "name": "type",
+            "required": true,
+            "in": "path",
+            "description": "Destination type (1-7)",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Destination deleted successfully"
+          },
+          "404": {
+            "description": "Destination not found"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Delete destination by type",
+        "tags": [
+          "destinations"
+        ]
+      }
+    },
+    "/history": {
+      "get": {
+        "operationId": "HistoryController_getHistory",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "Page number",
+            "schema": {
+              "default": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "Items per page",
+            "schema": {
+              "default": 20,
+              "type": "number"
+            }
+          },
+          {
+            "name": "provider",
+            "required": false,
+            "in": "query",
+            "description": "Filter by storage provider",
+            "schema": {
+              "enum": [
+                "dropbox",
+                "onedrive",
+                "google_drive"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "History retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/FileHistory"
+                      }
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "page": {
+                      "type": "number"
+                    },
+                    "limit": {
+                      "type": "number"
+                    },
+                    "totalPages": {
+                      "type": "number"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get file upload history for the current user",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/history/recent": {
+      "get": {
+        "operationId": "HistoryController_getRecentHistory",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Recent history retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FileHistory"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get recent file uploads (last 10)",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/history/stats": {
+      "get": {
+        "operationId": "HistoryController_getHistoryStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Statistics retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "totalFiles": {
+                      "type": "number",
+                      "description": "Total uploaded files"
+                    },
+                    "totalSize": {
+                      "type": "number",
+                      "description": "Total size in bytes"
+                    },
+                    "providerStats": {
+                      "type": "object",
+                      "description": "Files count by storage provider",
+                      "additionalProperties": {
+                        "type": "number"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Get file upload statistics",
+        "tags": [
+          "history"
+        ]
+      }
+    },
+    "/files/upload": {
+      "post": {
+        "description": "Uploads a file to the specified cloud storage provider (Dropbox, OneDrive, or Google Drive). The user must have previously connected their account for the selected provider.",
+        "operationId": "FilesController_uploadToCloudStorage",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "File to upload with storage type",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "File to upload (max 10MB)"
+                  },
+                  "storageType": {
+                    "type": "string",
+                    "enum": [
+                      "dropbox",
+                      "onedrive",
+                      "googledrive",
+                      "email"
+                    ],
+                    "description": "Cloud storage provider or email"
+                  }
+                },
+                "required": [
+                  "file",
+                  "storageType"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File uploaded successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    },
+                    "response": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad request - Invalid file or missing parameters"
+          },
+          "401": {
+            "description": "Unauthorized - Invalid or missing access token"
+          },
+          "500": {
+            "description": "Internal server error"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Upload file to cloud storage",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/upload-to-dropbox": {
+      "post": {
+        "description": "DEPRECATED: Use /upload with storageType parameter instead. Uploads a PDF file to the authenticated user's Dropbox account.",
+        "operationId": "FilesController_uploadToDropbox",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "description": "PDF file to upload",
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "PDF file to upload (max 10MB)"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "File uploaded successfully to Dropbox",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "message": {
+                      "type": "string"
+                    },
+                    "dropboxResponse": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": "string"
+                        },
+                        "path_lower": {
+                          "type": "string"
+                        },
+                        "size": {
+                          "type": "number"
+                        },
+                        "server_modified": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid file or missing Dropbox token"
+          },
+          "401": {
+            "description": "User not authenticated or invalid Dropbox token"
+          },
+          "500": {
+            "description": "Dropbox upload failed"
+          }
+        },
+        "security": [
+          {
+            "JWT-auth": []
+          }
+        ],
+        "summary": "Upload PDF to user's Dropbox (deprecated)",
+        "tags": [
+          "files"
+        ]
+      }
+    },
+    "/files/dropbox-files": {
+      "post": {
+        "description": "Returns a list of files uploaded to the user's Dropbox Scanned Documents folder",
+        "operationId": "FilesController_listDropboxFiles",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Files listed successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "name": {
+                            "type": "string"
+                          },
+                          "path_lower": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "type": "number"
+                          },
+                          "server_modified": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    },
+                    "folderPath": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "User not authenticated or invalid Dropbox token"
+          }
+        },
+        "security": [
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "List user's uploaded files from Dropbox",
+        "tags": [
+          "files"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Berri Backend API",
+    "description": "API for Berri mobile application",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "access_token": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "name": "JWT",
+        "description": "Enter JWT token",
+        "in": "header"
+      }
+    },
+    "schemas": {
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "User email address"
+          },
+          "password": {
+            "type": "string",
+            "description": "User password"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "User name"
+          },
+          "email": {
+            "type": "string",
+            "description": "User email address"
+          },
+          "password": {
+            "type": "string",
+            "description": "User password"
+          },
+          "googleDriveLink": {
+            "type": "string",
+            "description": "Google Drive link"
+          },
+          "oneDriveLink": {
+            "type": "string",
+            "description": "OneDrive link"
+          },
+          "dropboxLink": {
+            "type": "string",
+            "description": "Dropbox link"
+          },
+          "newsletter": {
+            "type": "boolean",
+            "description": "Newsletter subscription",
+            "default": false
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "ForgotPasswordDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "description": "User email address"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Reset token"
+          },
+          "password": {
+            "type": "string",
+            "description": "New password"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ]
+      },
+      "VerifyEmailDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "Email verification token"
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "SocialLoginDto": {
+        "type": "object",
+        "properties": {
+          "accessToken": {
+            "type": "string",
+            "description": "Access token from social provider"
+          },
+          "platform": {
+            "type": "string",
+            "description": "Platform (android/ios)"
+          },
+          "newsletter": {
+            "type": "boolean",
+            "description": "Newsletter subscription"
+          },
+          "nonce": {
+            "type": "string",
+            "description": "Nonce for Apple login"
+          }
+        },
+        "required": [
+          "accessToken"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "User ID"
+          },
+          "name": {
+            "type": "string",
+            "description": "User name"
+          },
+          "email": {
+            "type": "string",
+            "description": "User email address"
+          },
+          "googleDriveLink": {
+            "type": "string",
+            "description": "Google Drive link"
+          },
+          "oneDriveLink": {
+            "type": "string",
+            "description": "OneDrive link"
+          },
+          "dropboxLink": {
+            "type": "string",
+            "description": "Dropbox link"
+          },
+          "dropboxAccessToken": {
+            "type": "string",
+            "description": "Dropbox access token"
+          },
+          "oneDriveAccessToken": {
+            "type": "string",
+            "description": "OneDrive access token"
+          },
+          "googleDriveAccessToken": {
+            "type": "string",
+            "description": "Google Drive access token"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "description": "Email verification status"
+          },
+          "newsletter": {
+            "type": "boolean",
+            "description": "Newsletter subscription status"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "User creation date"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "User last update date"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "email",
+          "googleDriveLink",
+          "oneDriveLink",
+          "dropboxLink",
+          "emailVerified",
+          "newsletter",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "User name"
+          },
+          "googleDriveLink": {
+            "type": "string",
+            "description": "Google Drive link"
+          },
+          "oneDriveLink": {
+            "type": "string",
+            "description": "OneDrive link"
+          },
+          "dropboxLink": {
+            "type": "string",
+            "description": "Dropbox link"
+          },
+          "dropboxAccessToken": {
+            "type": "string",
+            "description": "Dropbox access token"
+          },
+          "newsletter": {
+            "type": "boolean",
+            "description": "Newsletter subscription"
+          }
+        }
+      },
+      "UserSettings": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "Settings ID"
+          },
+          "userId": {
+            "type": "number",
+            "description": "User ID"
+          },
+          "dropboxAccessToken": {
+            "type": "string",
+            "description": "Dropbox access token"
+          },
+          "dropboxRefreshToken": {
+            "type": "string",
+            "description": "Dropbox refresh token"
+          },
+          "dropboxTokenExpiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Dropbox token expiration date"
+          },
+          "dropboxFolderPath": {
+            "type": "string",
+            "description": "Dropbox folder path"
+          },
+          "oneDriveAccessToken": {
+            "type": "string",
+            "description": "OneDrive access token"
+          },
+          "oneDriveRefreshToken": {
+            "type": "string",
+            "description": "OneDrive refresh token"
+          },
+          "oneDriveTokenExpiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "OneDrive token expiration date"
+          },
+          "oneDriveFolderPath": {
+            "type": "string",
+            "description": "OneDrive folder path"
+          },
+          "googleDriveAccessToken": {
+            "type": "string",
+            "description": "Google Drive access token"
+          },
+          "googleDriveRefreshToken": {
+            "type": "string",
+            "description": "Google Drive refresh token"
+          },
+          "googleDriveTokenExpiresAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Google Drive token expiration date"
+          },
+          "googleDriveFolderName": {
+            "type": "string",
+            "description": "Google Drive folder name"
+          },
+          "fileNaming": {
+            "type": "string",
+            "description": "File naming template"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Settings creation date"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Settings last update date"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "UpdateUserSettingsDto": {
+        "type": "object",
+        "properties": {
+          "dropboxAccessToken": {
+            "type": "string",
+            "description": "Dropbox access token"
+          },
+          "dropboxRefreshToken": {
+            "type": "string",
+            "description": "Dropbox refresh token"
+          },
+          "dropboxFolderPath": {
+            "type": "string",
+            "description": "Dropbox folder path",
+            "default": "/Scanned Documents"
+          },
+          "oneDriveAccessToken": {
+            "type": "string",
+            "description": "OneDrive access token"
+          },
+          "oneDriveRefreshToken": {
+            "type": "string",
+            "description": "OneDrive refresh token"
+          },
+          "oneDriveFolderPath": {
+            "type": "string",
+            "description": "OneDrive folder path",
+            "default": "Scanned Documents"
+          },
+          "googleDriveAccessToken": {
+            "type": "string",
+            "description": "Google Drive access token"
+          },
+          "googleDriveRefreshToken": {
+            "type": "string",
+            "description": "Google Drive refresh token"
+          },
+          "googleDriveFolderName": {
+            "type": "string",
+            "description": "Google Drive folder name",
+            "default": "Scanned Documents"
+          },
+          "fileNaming": {
+            "type": "string",
+            "description": "File naming template",
+            "default": "{timestamp}_{originalname}"
+          }
+        }
+      },
+      "Destination": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "Destination ID"
+          },
+          "userId": {
+            "type": "number",
+            "description": "User ID"
+          },
+          "type": {
+            "type": "number",
+            "description": "Type number (1-7), unique per user",
+            "minimum": 1,
+            "maximum": 7
+          },
+          "fileType": {
+            "type": "string",
+            "description": "File type",
+            "enum": [
+              "odf",
+              "jpg"
+            ],
+            "example": "jpg"
+          },
+          "bundled": {
+            "type": "boolean",
+            "description": "Whether files should be bundled"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination provider",
+            "enum": [
+              "email",
+              "onedrive",
+              "dropbox",
+              "google_drive"
+            ],
+            "example": "email"
+          },
+          "emails": {
+            "type": "string",
+            "description": "Email addresses (comma-separated) or empty"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Destination creation date"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Destination last update date"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "type",
+          "fileType",
+          "bundled",
+          "destination",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateDestinationDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "number",
+            "description": "Type number (1-7), unique per user",
+            "minimum": 1,
+            "maximum": 7,
+            "example": 1
+          },
+          "fileType": {
+            "type": "string",
+            "description": "File type",
+            "enum": [
+              "odf",
+              "jpg"
+            ],
+            "example": "jpg"
+          },
+          "bundled": {
+            "type": "boolean",
+            "description": "Whether files should be bundled",
+            "example": false
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination provider",
+            "enum": [
+              "email",
+              "onedrive",
+              "dropbox",
+              "google_drive"
+            ],
+            "example": "email"
+          },
+          "emails": {
+            "type": "string",
+            "description": "Email addresses (comma-separated)",
+            "example": "user@example.com,admin@example.com"
+          }
+        },
+        "required": [
+          "type",
+          "fileType",
+          "bundled",
+          "destination"
+        ]
+      },
+      "UpdateDestinationDto": {
+        "type": "object",
+        "properties": {
+          "fileType": {
+            "type": "string",
+            "description": "File type",
+            "enum": [
+              "odf",
+              "jpg"
+            ]
+          },
+          "bundled": {
+            "type": "boolean",
+            "description": "Whether files should be bundled"
+          },
+          "destination": {
+            "type": "string",
+            "description": "Destination provider",
+            "enum": [
+              "email",
+              "onedrive",
+              "dropbox",
+              "google_drive"
+            ]
+          },
+          "emails": {
+            "type": "string",
+            "description": "Email addresses (comma-separated)"
+          }
+        }
+      },
+      "FileHistory": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "History ID"
+          },
+          "userId": {
+            "type": "number",
+            "description": "User ID"
+          },
+          "date": {
+            "format": "date-time",
+            "type": "string",
+            "description": "Upload date"
+          },
+          "filename": {
+            "type": "string",
+            "description": "Original filename"
+          },
+          "url": {
+            "type": "string",
+            "description": "Download/View URL"
+          },
+          "provider": {
+            "type": "string",
+            "description": "Storage provider (dropbox, onedrive, google_drive)"
+          },
+          "fileSize": {
+            "type": "number",
+            "description": "File size in bytes"
+          },
+          "mimeType": {
+            "type": "string",
+            "description": "File MIME type"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "History entry creation date"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "History entry last update date"
+          }
+        },
+        "required": [
+          "id",
+          "userId",
+          "date",
+          "filename",
+          "provider",
+          "createdAt",
+          "updatedAt"
+        ]
+      }
+    }
+  }
+}
