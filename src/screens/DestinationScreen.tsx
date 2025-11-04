@@ -4,6 +4,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Button, RadioButton, Toggle, Text } from '../components';
 import { useAppSelector } from '../store/hooks';
+import { updateDestinationSettings } from '../store/api/userApiService';
 
 type RootStackParamList = {
   DestinationScreen: { destination: any };
@@ -44,6 +45,24 @@ const DestinationScreen = () => {
 
   const handleChangeRecipient = () => {
     navigation.navigate('ChangeRecipientScreen', { destination });
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      console.log('🚀 Saving destination settings:', { fileType, bundleScans });
+      const success = await updateDestinationSettings(destinationId, { 
+        fileType: fileType.toLowerCase() === 'pdf' ? 'pdf' : 'jpg',
+        bundled: bundleScans 
+      });
+      
+      if (success) {
+        console.log('✅ Destination settings saved successfully');
+      } else {
+        console.error('❌ Failed to save destination settings');
+      }
+    } catch (error) {
+      console.error('❌ Error saving destination settings:', error);
+    }
   };
   
   const getFruitName = (type: string) => {
@@ -115,6 +134,14 @@ const DestinationScreen = () => {
             value={bundleScans}
             onValueChange={setBundleScans}
           />
+
+          <View style={styles.saveButtonContainer}>
+            <Button
+              title="Save Settings"
+              size="medium"
+              onPress={handleSaveSettings}
+            />
+          </View>
         </View>
       </ScrollView>
     </Layout>
@@ -157,12 +184,16 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   settingsContainer: {
-    paddingBottom: 100, // Extra space for tab bar
+    // Removed paddingBottom since it's now in saveButtonContainer
   },
   settingsTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,
+  },
+  saveButtonContainer: {
+    marginTop: 30,
+    paddingBottom: 100, // Extra space for tab bar
   },
 });
 

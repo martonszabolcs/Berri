@@ -4,6 +4,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Layout, Button, Text } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
+import { updateDestinationSettings } from '../store/api/userApiService';
 
 type RootStackParamList = {
   ChangeDestinationScreen: { 
@@ -94,6 +95,9 @@ const ChangeDestinationScreen = () => {
           };
           
           await dispatch(saveDropboxToken(tokens)).unwrap();
+          await saveDestinationSettings({ 
+            type: destinationId,
+            destination: 'dropbox' });
           console.log('✅ Dropbox tokens saved to backend successfully!');
           
           // Clear the code verifier
@@ -111,7 +115,7 @@ const ChangeDestinationScreen = () => {
     } catch (error) {
       console.error('❌ Error during token exchange:', error);
     }
-  }, [clientId, redirectUri, dispatch, navigation]);
+  }, [clientId, redirectUri, dispatch, navigation, destinationId]);
 
   // Exchange OneDrive authorization code for access token
   const exchangeOneDriveCodeForToken = useCallback(async (authCode: string, verifier: string) => {
@@ -155,6 +159,9 @@ const ChangeDestinationScreen = () => {
           };
           
           await dispatch(saveOneDriveToken(tokens)).unwrap();
+          await saveDestinationSettings({ 
+            type: destinationId,
+            destination: 'onedrive' });
           console.log('✅ OneDrive tokens saved to backend successfully!');
           
           // Clear the code verifier
@@ -172,8 +179,24 @@ const ChangeDestinationScreen = () => {
     } catch (error) {
       console.error('❌ Error during OneDrive token exchange:', error);
     }
-  }, [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation]);
+  }, [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation, destinationId]);
 
+
+  const saveDestinationSettings = async (dest: { type: string; destination: string }) => {
+    try {
+      console.log('🚀 Saving destination settings:', dest);
+      const success = await updateDestinationSettings(dest.type, { destination: dest.destination });
+      if (success) {
+        console.log('✅ Destination settings saved successfully');
+      } else {
+        console.error('❌ Failed to save destination settings');
+      }
+      return success;
+    } catch (error) {
+      console.error('❌ Error saving destination settings:', error);
+      return false;
+    }
+  };
   // Check for Dropbox token from React Navigation linking
   useEffect(() => {
     console.log('🎯 Route params:', { destination, access_token, token_type });
@@ -249,10 +272,17 @@ const ChangeDestinationScreen = () => {
     setSelectedDestination(destinationType);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('Saving destination:', selectedDestination);
     if (selectedDestination === 'Email') {
-      // Logic to set destination to email
+      // Set destination to email
+      const success = await saveDestinationSettings({ 
+        type: destinationId,
+        destination: 'email' 
+      });
+      if (success) {
+        navigation.goBack();
+      }
     } else if (selectedDestination === 'Google Drive') {
       // Logic to set destination to selected cloud service
     } else if (selectedDestination === 'Dropbox') {
