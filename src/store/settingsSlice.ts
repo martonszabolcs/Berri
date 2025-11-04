@@ -54,6 +54,35 @@ export const saveDropboxToken = createAsyncThunk(
   }
 );
 
+export const saveOneDriveToken = createAsyncThunk(
+  'settings/saveOneDriveToken',
+  async (tokens: { accessToken: string; refreshToken?: string }, { dispatch }) => {
+    try {
+      console.log('🚀 settingsSlice: saveOneDriveToken thunk started');
+      
+      // Update the tokens in the backend
+      const success = await updateCloudStorageTokens('onedrive', tokens);
+      
+      if (success) {
+        console.log('✅ settingsSlice: OneDrive tokens saved successfully');
+        
+        // Update the connection status
+        dispatch(updateConnectionStatus({ provider: 'oneDrive', connected: true }));
+        
+        // Refresh full connection status to sync with backend
+        await dispatch(refreshConnectionStatus());
+        
+        return tokens;
+      } else {
+        throw new Error('Failed to save OneDrive tokens');
+      }
+    } catch (error) {
+      console.error('❌ settingsSlice: saveOneDriveToken failed', error);
+      throw error;
+    }
+  }
+);
+
 export const refreshConnectionStatus = createAsyncThunk(
   'settings/refreshConnectionStatus',
   async (_, { dispatch }) => {
@@ -162,6 +191,20 @@ const settingsSlice = createSlice({
       .addCase(saveDropboxToken.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.error.message || 'Failed to save Dropbox token';
+      })
+      
+      // Save OneDrive Token
+      .addCase(saveOneDriveToken.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveOneDriveToken.fulfilled, (state) => {
+        state.isLoading = false;
+        // Connection status is updated via the updateConnectionStatus dispatch
+      })
+      .addCase(saveOneDriveToken.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.error.message || 'Failed to save OneDrive token';
       })
       
       // Refresh Connection Status
