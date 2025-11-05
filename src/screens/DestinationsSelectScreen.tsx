@@ -4,7 +4,8 @@ import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useRoute } from '@react-navigation/native';
 import { uploadAndSendFile } from '../store/uploadSlice';
-import { uploadToDropbox, uploadToOneDrive } from '../utils/uploadFunctions';
+import { uploadToOneDrive } from '../utils/uploadFunctions';
+import { sendFilesApiService } from '../store/api/sendFilesApi';
 
 // TODO SCANNER - destination kiválasztás + elküldés
 
@@ -28,7 +29,7 @@ const DestinationSelectScreen = () => {
   useEffect(() => {
     console.log('📁 DestinationSelectScreen received file path:', savedFilePath);
     setSelectedDestination(destinationType);
-  }, [savedFilePath]);
+  }, [savedFilePath, destinationType]);
 
   useEffect(() => {
     const all = [1,2,3,4,5,6,7];
@@ -90,9 +91,14 @@ const DestinationSelectScreen = () => {
       }
     } else if (selectedDest.destination === 'dropbox') {
       console.log('📤 Sending to Dropbox...');
-      // 
       
-      await uploadToDropbox(settings.dropboxAccessToken, savedFilePath);
+      try {
+        const fileName = `BERRI_Document_${Date.now()}.jpg`;
+        await sendFilesApiService.uploadToDropbox(settings.dropboxAccessToken, settings.dropboxRefreshToken, fileName, savedFilePath);
+        console.log('✅ File uploaded to Dropbox successfully');
+      } catch (error) {
+        console.error('❌ Error uploading to Dropbox:', error);
+      }
 
 
     } else if (selectedDest.destination === 'onedrive') {
