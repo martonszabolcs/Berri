@@ -20,6 +20,22 @@ import {
   Share,
 } from 'react-native';
 import { Dirs, FileSystem } from 'react-native-file-access';
+import { saveScannedDocument } from '../utils/saveImage';
+import { useNavigation } from '@react-navigation/native';
+import type { StackNavigationProp } from '@react-navigation/stack';
+
+// Navigation types
+type RootStackParamList = {
+  DestinationSelectScreen: { 
+    savedFilePath: string
+    destinationType?: number
+  };
+};
+
+type CameraScreenNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  'DestinationSelectScreen'
+>;
 
 interface DocumentCorner {
   x: number;
@@ -97,6 +113,9 @@ const UI_MESSAGES = {
 export default function App() {
   // === DEBUG FLAG - SZINKRONBAN A useInferenceLogic.tsx-ben lévővel ===
   const DEBUG_ON = true; // false = nincs debug kép, jobb teljesítmény!
+
+  // Navigation
+  const navigation = useNavigation<CameraScreenNavigationProp>();
 
   const device = useCameraDevice('back');
   const camera = useRef<Camera>(null); // Camera ref for tap-to-focus
@@ -616,7 +635,7 @@ export default function App() {
     if (!capturedImageUri) return;
 
     try {
-      // Save the base64 image to a temporary file
+      // Save the base64 image to a temporary file for sharing
       const tempPath = `${Dirs.CacheDir}/captured_document.jpg`;
 
       await FileSystem.writeFile(tempPath, capturedImageUri, 'base64');
@@ -625,12 +644,26 @@ export default function App() {
         url: `file://${tempPath}`,
         message: 'Beszkennelt BERRĪ füzet',
       });
+
+      // Save to permanent storage with unique filename
+      const savedPath = await saveScannedDocument(capturedImageUri);
+      
+      if (savedPath) {
+        console.log('✅ Document saved permanently:', savedPath);
+        
+        // Navigate to DestinationSelectScreen with the saved file path
+        navigation.navigate('DestinationSelectScreen', { 
+          savedFilePath: savedPath,
+          destinationType: 1,
+        });
+        
+      } else {
+        console.warn('⚠️ Failed to save document permanently');
+      }
     } catch (error) {
       console.error('Share error:', error);
     }
-  }, [capturedImageUri]);
-
-  // === TAP TO FOCUS ===
+  }, [capturedImageUri, navigation]);  // === TAP TO FOCUS ===
   // Focuses the camera at the tapped location
   const handleCameraTap = useCallback(
     async (event: any) => {

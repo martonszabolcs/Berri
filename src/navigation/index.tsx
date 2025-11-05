@@ -15,6 +15,7 @@ import { logoutUser } from '../store/appSlice';
 
 // Import screens
 import CameraScreen from '../screens/CameraScreen';
+import DestinationSelectScreen from '../screens/DestinationsSelectScreen';
 import LaunchScreen from '../screens/LaunchScreen';
 import AuthScreen from '../screens/AuthScreen';
 import RegisterScreen from '../screens/RegisterScreen';
@@ -54,6 +55,7 @@ type RootStackParamList = {
   DestinationsStack: undefined;
   DestinationsScreen: undefined;
   DestinationScreen: { destinationId: string };
+  DestinationSelectScreen: { savedFilePath: string };
   ChangeDestinationScreen: { destinationId: string };
   ChangeRecipientScreen: { destinationId: string };
   ProfileScreen: undefined;
@@ -181,6 +183,11 @@ const NewScanStack = () => {
       <Stack.Screen
         name="CameraScreen"
         component={CameraScreen}
+        options={hideHeader}
+      />
+      <Stack.Screen
+        name="DestinationSelectScreen"
+        component={DestinationSelectScreen}
         options={hideHeader}
       />
     </Stack.Navigator>

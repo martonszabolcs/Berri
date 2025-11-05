@@ -28,10 +28,23 @@
 		<key>CFBundleURLSchemes</key>
 		<array>
 		<string>berri</string>
+		<string>com.googleusercontent.apps.571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko</string>
 		</array>
 	</dict>
 	</array>
+	<key>GIDClientID</key>
+	<string>571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko.apps.googleusercontent.com</string>
 	
+
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+	<string>google</string>
+	<string>com.googleusercontent.apps.571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko</string>
+	</array>
+
+	<key>ASWebAuthenticationSessionWebBrowserSupportEnabled</key>
+	<false/>
+
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>

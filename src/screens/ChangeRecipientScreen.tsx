@@ -3,7 +3,9 @@ import { View, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Button, TextInput, Text } from '../components';
-import { useAppSelector } from '../store/hooks';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { updateDestinationSettings } from '../store/api/userApiService';
+import { refreshUser } from '../store/appSlice';
 
 type RootStackParamList = {
   ChangeRecipientScreen: { destination: any };
@@ -20,6 +22,7 @@ interface EmailInput {
 const ChangeRecipientScreen = () => {
   const navigation = useNavigation<ChangeRecipientScreenNavigationProp>();
   const route = useRoute<ChangeRecipientScreenRouteProp>();
+  const dispatch = useAppDispatch();
   const { destination } = route.params;
   const destinationId = destination.type.toString();
       const user = useAppSelector((state) => state.app.user);
@@ -93,12 +96,32 @@ const ChangeRecipientScreen = () => {
     });
   };
 
-  const handleSave = () => {
-    // Filter out empty emails for saving
-    const validEmails = emails.filter(email => email.value.trim().length > 0);
-    console.log('Saving emails:', validEmails.map(email => email.value));
-    // Here you would typically save to your state management or API
-    navigation.goBack();
+  const handleSave = async () => {
+    try {
+      // Filter out empty emails for saving
+      const validEmails = emails.filter(email => email.value.trim().length > 0);
+      const emailString = validEmails.map(email => email.value.trim()).join(', ');
+      
+      console.log('🚀 Saving emails:', emailString);
+      
+      const success = await updateDestinationSettings(destinationId, { 
+        emails: emailString 
+      });
+      
+      if (success) {
+        console.log('✅ Recipient emails saved successfully');
+        
+        // Refresh user data to get updated destinations
+        await dispatch(refreshUser());
+        console.log('✅ User data refreshed after recipient emails save');
+        
+        navigation.goBack();
+      } else {
+        console.error('❌ Failed to save recipient emails');
+      }
+    } catch (error) {
+      console.error('❌ Error saving recipient emails:', error);
+    }
   };
 
   const getDestinationName = (dest: any) => {

@@ -2,6 +2,17 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Destination, authApi } from './api/authApi';
 
+interface FileInfo {
+  filename: string;
+  url: string;
+}
+
+interface FileHistoryEntry {
+  timestamp: number;
+  destination: number;
+  files: FileInfo[];
+}
+
 interface AppState {
   currentScreen: string;
   isLoading: boolean;
@@ -10,6 +21,7 @@ interface AppState {
   user: any;
   destinations: Destination[];
   settings: any;
+  history: FileHistoryEntry[];
   error: string | null;
 }
 
@@ -24,8 +36,31 @@ const initialState: AppState = {
   },
   destinations: [],
   settings: {},
+  history: [],
   error: null,
 };
+
+const HISTORY_KEY = 'history';
+
+// Async thunk to load history from AsyncStorage
+export const loadHistory = createAsyncThunk(
+  'app/loadHistory',
+  async () => {
+    try {
+      const historyData = await AsyncStorage.getItem(HISTORY_KEY);
+      if (historyData) {
+        const history: FileHistoryEntry[] = JSON.parse(historyData);
+        console.log('✅ appSlice: History loaded from AsyncStorage', history.length, 'entries');
+        return history;
+      }
+      console.log('📝 appSlice: No history found in AsyncStorage');
+      return [];
+    } catch (error) {
+      console.log('❌ appSlice: Failed to load history from AsyncStorage', error);
+      return [];
+    }
+  }
+);
 
 // Async thunks for auth operations
 export const initializeAuth = createAsyncThunk(
@@ -47,6 +82,9 @@ export const initializeAuth = createAsyncThunk(
         if (user.settings) {
           dispatch(setSettings(user.settings));
         }
+
+        // Load history from AsyncStorage when user is authenticated
+        dispatch(loadHistory());
         
         return { user, token };
       }
@@ -86,6 +124,9 @@ export const loginUser = createAsyncThunk(
         // Potentially dispatch an action to set user settings in another slice
         dispatch(setSettings(user.settings));
       }
+
+      // Load history from AsyncStorage after successful login
+      dispatch(loadHistory());
 
       console.log('✅ appSlice: loginUser thunk completed successfully');
       return { user, token: response.access_token };
@@ -160,6 +201,29 @@ export const logoutUser = createAsyncThunk(
       // Even if AsyncStorage fails, clear Redux state
       dispatch(logout());
       return true;
+    }
+  }
+);
+
+export const refreshUser = createAsyncThunk(
+  'app/refreshUser',
+  async (_, { getState, rejectWithValue }) => {
+    try {
+      console.log('🚀 appSlice: refreshUser thunk started');
+      const state = getState() as any;
+      const token = state.app.token;
+      
+      if (!token) {
+        throw new Error('No token available for refresh');
+      }
+      
+      const user = await authApi.getMe(token);
+      console.log('✅ appSlice: refreshUser successful', user);
+      
+      return user;
+    } catch (error: any) {
+      console.error('❌ appSlice: refreshUser failed', error);
+      return rejectWithValue(error.message || 'Failed to refresh user data');
     }
   }
 );
@@ -282,6 +346,28 @@ const appSlice = createSlice({
       })
       .addCase(logoutUser.rejected, (state) => {
         state.isLoading = false;
+      })
+      
+      // Refresh User
+      .addCase(refreshUser.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(refreshUser.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.user = action.payload;
+        state.destinations = action.payload.destinations || [];
+        state.settings = action.payload.settings || {};
+        state.error = null;
+      })
+      .addCase(refreshUser.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string || 'Failed to refresh user data';
+      })
+
+      // Load History
+      .addCase(loadHistory.fulfilled, (state, action) => {
+        state.history = action.payload;
       })
   },
 });

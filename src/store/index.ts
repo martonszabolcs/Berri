@@ -1,6 +1,7 @@
 import { configureStore } from '@reduxjs/toolkit';
 import appReducer from './appSlice';
 import settingsReducer from './settingsSlice';
+import uploadReducer from './uploadSlice';
 
 // Console logger middleware for Chrome DevTools
 const consoleLoggerMiddleware = (store: any) => (next: any) => (action: any) => {
@@ -24,6 +25,7 @@ export const store = configureStore({
   reducer: {
     app: appReducer,
     settings: settingsReducer,
+    upload: uploadReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

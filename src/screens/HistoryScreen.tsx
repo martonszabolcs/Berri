@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, TouchableOpacity, Image, TextInput, Animated, ScrollView } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { Layout, Text, HistoryCard } from '../components';
+import { useSelector } from 'react-redux';
 
 const HistoryScreen = () => {
   const navigation = useNavigation();
@@ -15,21 +16,20 @@ const HistoryScreen = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
 
-  // Example history data
-  const historyData = [
-    {
-      id: '1',
-      name: 'Document_2024_10_25.pdf',
-      createdAt: '2024-10-25 14:30',
-      imageUri: 'https://picsum.photos/300/400?random=1',
-    },
-    {
-      id: '2', 
-      name: 'Meeting_Notes_October.pdf',
-      createdAt: '2024-10-24 09:15',
-      imageUri: 'https://picsum.photos/300/400?random=2',
-    }
-  ];
+  const history = useSelector((state: any) => state.app.history);
+  const [historyData, setHistoryData] = useState(history);
+
+  useEffect(() => {
+    // Filter history based on search text
+    const filtered = history.filter((item: any) =>
+      typeof item.destination === 'number' && item.files.length !== 0 
+    // && 
+    // (searchText !== '' && item.files.includes.some((file: any) =>  
+    //     file.filename.toLowerCase().includes(searchText.toLowerCase())
+    //   ))
+    );
+    setHistoryData(filtered);
+  }, [searchText, history]);
 
   const sortOptions = [
     'newest scan',
@@ -220,7 +220,7 @@ const HistoryScreen = () => {
                   <View style={styles.gridContainer}>
                     {historyData.map((history) => (
                       <HistoryCard 
-                        key={history.id} 
+                        key={history.id || history.timestamp} 
                         history={history} 
                         isGridView={isGridView}
                         isSelectionMode={isSelectionMode}

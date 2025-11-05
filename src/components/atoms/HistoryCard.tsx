@@ -53,7 +53,7 @@ const HistoryCard = ({
         {/* Image on top */}
         <View style={styles.gridImageContainer}>
           <Image 
-            source={{ uri: history.imageUri }} 
+            source={{ uri: history.files[0]?.url }} 
             style={styles.gridImage}
             resizeMode="cover"
           />

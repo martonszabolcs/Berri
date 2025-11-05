@@ -1,6 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { Layout, Button, Text } from '../components';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { updateUserSettings } from '../store/api/userApiService';
+import { useNavigation } from '@react-navigation/native';
+import { refreshUser } from '../store/appSlice';
 
 type TemplateOption = {
   id: string;
@@ -19,8 +23,41 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
 ];
 
 const FileNamingScreen = () => {
+  const navigation = useNavigation();
+  const settings = useAppSelector(state => state.app.settings);
+  const dispatch = useAppDispatch();
+  
   const [selectedOptions, setSelectedOptions] = useState<TemplateOption[]>([]);
   const [availableOptions, setAvailableOptions] = useState<TemplateOption[]>(TEMPLATE_OPTIONS);
+
+  // Initialize with existing fileNaming template from user settings
+  useEffect(() => {
+    console.log("settings", settings);
+    if (settings?.fileNaming) {
+      console.log('🔧 Initializing FileNaming with existing template:', settings.fileNaming);
+      
+      // Parse the existing template string to rebuild selected options
+      const templateString = settings.fileNaming;
+      const templateParts = templateString.split('_');
+      
+      const initialSelected: TemplateOption[] = [];
+      const remainingOptions = [...TEMPLATE_OPTIONS];
+      
+      templateParts.forEach((part: string) => {
+        const matchingOption = TEMPLATE_OPTIONS.find(opt => opt.value === part);
+        if (matchingOption) {
+          initialSelected.push(matchingOption);
+          const index = remainingOptions.findIndex(opt => opt.id === matchingOption.id);
+          if (index > -1) {
+            remainingOptions.splice(index, 1);
+          }
+        }
+      });
+      
+      setSelectedOptions(initialSelected);
+      setAvailableOptions(remainingOptions);
+    }
+  }, [settings]);
 
   const handleOptionSelect = (option: TemplateOption) => {
     // Add to selected options
@@ -46,15 +83,49 @@ const FileNamingScreen = () => {
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const templateString = selectedOptions.map(opt => opt.value).join('_');
     const displayString = selectedOptions.map(opt => opt.label).join(' + ');
     
-    Alert.alert(
-      'Template Saved',
-      `Selected template: ${displayString}\n\nGenerated template string: ${templateString || '(empty)'}`,
-      [{ text: 'OK' }]
-    );
+    console.log('💾 Saving fileNaming template:', templateString);
+    
+    try {
+      // Update user settings with the new fileNaming template
+      const success = await updateUserSettings({ fileNaming: templateString });
+      
+      if (success) {
+        console.log('✅ FileNaming template saved successfully');
+        
+        // Refresh user data to get updated settings
+        await dispatch(refreshUser());
+        console.log('✅ User data refreshed after fileNaming save');
+        
+        Alert.alert(
+          'Template Saved',
+          `Selected template: ${displayString}\n\nGenerated template string: ${templateString || '(empty)'}`,
+          [
+            { 
+              text: 'OK', 
+              onPress: () => navigation.goBack() 
+            }
+          ]
+        );
+      } else {
+        console.error('❌ Failed to save fileNaming template');
+        Alert.alert(
+          'Error',
+          'Failed to save template. Please try again.',
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('❌ Error saving fileNaming template:', error);
+      Alert.alert(
+        'Error',
+        'An error occurred while saving the template.',
+        [{ text: 'OK' }]
+      );
+    }
   };
 
   return (

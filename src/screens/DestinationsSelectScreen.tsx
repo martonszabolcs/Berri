@@ -1,15 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
-import { Layout, Text, DestinationIcon } from '../components';
-import { useAppSelector } from '../store/hooks';
+import { Layout, Text, DestinationIcon, Button } from '../components';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { useRoute } from '@react-navigation/native';
+import { uploadAndSendFile } from '../store/uploadSlice';
+import { uploadToDropbox, uploadToOneDrive } from '../utils/uploadFunctions';
 
 // TODO SCANNER - destination kiválasztás + elküldés
 
-const DestinationsScreen = () => {
+type RouteParams = {
+  savedFilePath: string;
+  destinationType?: number
+};
+
+const DestinationSelectScreen = () => {
+  const route = useRoute();
+  const dispatch = useAppDispatch();
+  const { savedFilePath, destinationType = 1 } = route.params as RouteParams;
+  
   const destinations = useAppSelector((state) => state.app.destinations);
   const user = useAppSelector((state) => state.app.user);
+  const settings = useAppSelector((state) => state.app.settings);
   const [allDestinations, setAllDestinations] = useState<any[]>([]);
-  const [selectedDestination, setSelectedDestination] = useState<number | null>(null);
+  const [selectedDestination, setSelectedDestination] = useState<number | null>(destinationType);
+
+  // Log the received file path
+  useEffect(() => {
+    console.log('📁 DestinationSelectScreen received file path:', savedFilePath);
+    setSelectedDestination(destinationType);
+  }, [savedFilePath]);
 
   useEffect(() => {
     const all = [1,2,3,4,5,6,7];
@@ -19,6 +38,75 @@ const DestinationsScreen = () => {
     });
     setAllDestinations(allDest);
   }, [destinations, user.email]);
+
+
+  const sendFileToDestination = async () => {
+    if (!selectedDestination) {
+      console.warn('No destination selected');
+      return;
+    }
+
+    console.log(`Sending file at ${savedFilePath} to destination type ${selectedDestination}`);
+    
+    // Find the selected destination
+    const selectedDest = allDestinations.find(dest => dest.type === selectedDestination);
+    
+    if (!selectedDest) {
+      console.error('Selected destination not found');
+      return;
+    }
+
+    // If destination is email, dispatch uploadAndSendFile
+    if (selectedDest.destination === 'email') {
+      console.log('📧 Sending via email to:', selectedDest.emails);
+      
+      try {
+        // Create a file object from the saved file path
+        const fileName = `BERRI_Document_${Date.now()}.jpg`;
+        const fileObject = {
+          uri: `file://${savedFilePath}`,
+          name: fileName,
+          type: 'image/jpeg',
+        };
+        
+        console.log('📁 File object created:', {
+          name: fileObject.name,
+          type: fileObject.type,
+          uri: fileObject.uri,
+        });
+        
+        const result = await dispatch(uploadAndSendFile({
+          type: selectedDest.type,
+          file: fileObject
+        }));
+
+        if (uploadAndSendFile.fulfilled.match(result)) {
+          console.log('✅ File sent successfully:', result.payload);
+        } else {
+          console.error('❌ Failed to send file:', result.error);
+        }
+      } catch (error) {
+        console.error('❌ Error sending file:', error);
+      }
+    } else if (selectedDest.destination === 'dropbox') {
+      console.log('📤 Sending to Dropbox...');
+      // 
+      
+      await uploadToDropbox(settings.dropboxAccessToken, savedFilePath);
+
+
+    } else if (selectedDest.destination === 'onedrive') {
+      console.log('📤 Sending to Onedrive... ');
+
+      await uploadToOneDrive(settings.oneDriveAccessToken, savedFilePath);
+
+    } else if (selectedDest.destination === 'google drive') {
+      console.log('📤 Sending to Google drive - not implemented yet');
+    } else {
+      // Handle other destination types (Google Drive, Dropbox, etc.)
+      console.log(`📤 Sending to ${selectedDest.destination} - not implemented yet`);
+    }
+  }; 
 
 
   return (
@@ -43,15 +131,24 @@ const DestinationsScreen = () => {
                   <Text style={styles.destinationText}>{destination.destination === "email" ? "E-mail" : destination.destination}</Text>
                   <Text style={styles.destinationText}>{user.email}</Text>
                 </View>
-                <Image 
+                {selectedDestination ===  destination.type && (<Image 
                   resizeMode='contain'
-                  source={require('../assets/left_arrow.png')} 
+                  source={require('../assets/select-destination.png')} 
                   style={styles.arrowIcon} 
-                />
+                />)}
               </View>
             </TouchableOpacity>
           ))}
         </View>
+        <Button 
+          title="Next"
+          onPress={() => 
+            
+            
+            
+            sendFileToDestination()}
+          style={styles.nextButton}
+        />
       </ScrollView>
     </Layout>
   );
@@ -75,8 +172,7 @@ const styles = StyleSheet.create({
   arrowIcon: {
     width: 20,
     height: 20,
-    tintColor: 'white',
-    transform: [{ rotate: '180deg' }],
+    tintColor: '#007BD1',
     marginRight: 20
   },
   destinationInfo: {
@@ -87,6 +183,10 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: 'white',
   },
+  nextButton: {
+    marginBottom: 30,
+    backgroundColor: 'white',
+  },
 });
 
-export default DestinationsScreen;
+export default DestinationSelectScreen;

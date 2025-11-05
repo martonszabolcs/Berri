@@ -83,6 +83,35 @@ export const saveOneDriveToken = createAsyncThunk(
   }
 );
 
+export const saveGoogleDriveToken = createAsyncThunk(
+  'settings/saveGoogleDriveToken',
+  async (tokens: { accessToken: string; refreshToken?: string }, { dispatch }) => {
+    try {
+      console.log('🚀 settingsSlice: saveGoogleDriveToken thunk started');
+      
+      // Update the tokens in the backend
+      const success = await updateCloudStorageTokens('googledrive', tokens);
+      
+      if (success) {
+        console.log('✅ settingsSlice: Google Drive tokens saved successfully');
+        
+        // Update the connection status
+        dispatch(updateConnectionStatus({ provider: 'googleDrive', connected: true }));
+        
+        // Refresh full connection status to sync with backend
+        await dispatch(refreshConnectionStatus());
+        
+        return tokens;
+      } else {
+        throw new Error('Failed to save Google Drive tokens');
+      }
+    } catch (error) {
+      console.error('❌ settingsSlice: saveGoogleDriveToken failed', error);
+      throw error;
+    }
+  }
+);
+
 export const refreshConnectionStatus = createAsyncThunk(
   'settings/refreshConnectionStatus',
   async (_, { dispatch }) => {
@@ -205,6 +234,20 @@ const settingsSlice = createSlice({
       .addCase(saveOneDriveToken.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.error.message || 'Failed to save OneDrive token';
+      })
+      
+      // Save Google Drive Token
+      .addCase(saveGoogleDriveToken.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(saveGoogleDriveToken.fulfilled, (state) => {
+        state.isLoading = false;
+        // Connection status is updated via the updateConnectionStatus dispatch
+      })
+      .addCase(saveGoogleDriveToken.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.error.message || 'Failed to save Google Drive token';
       })
       
       // Refresh Connection Status
