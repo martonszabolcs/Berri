@@ -174,7 +174,7 @@ class UserApiService {
         body.bundled = settings.bundled;
       }
       
-      if (settings.emails !== undefined) {
+      if (settings.emails !== undefined && settings.destination?.toLowerCase() === 'email') {
         body.emails = settings.emails;
       }
 

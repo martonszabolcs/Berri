@@ -89,7 +89,6 @@ const DestinationScreen = () => {
       console.error('❌ Error saving destination settings:', error);
     }
   };
-
   const getFruitName = (type: string) => {
     switch (type) {
       case '1':
