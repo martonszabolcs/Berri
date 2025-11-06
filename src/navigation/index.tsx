@@ -2,16 +2,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Image,
-  Linking,
-} from 'react-native';
-import { useAppDispatch } from '../store/hooks';
-import { logoutUser } from '../store/appSlice';
+import { CustomDrawerContent, HistoryTabBarIcon, NewScanTabBarIcon, DestinationsTabBarIcon } from '../components';
 
 // Import screens
 import CameraScreen from '../screens/CameraScreen';
@@ -53,7 +44,7 @@ type RootStackParamList = {
   };
   NewScanStack: undefined;
   DestinationsStack: undefined;
-  DestinationsScreen: undefined;
+  Destinations: undefined;
   DestinationScreen: { destinationId: string };
   DestinationSelectScreen: { savedFilePath: string };
   ChangeDestinationScreen: { destinationId: string };
@@ -73,107 +64,6 @@ const Drawer = createDrawerNavigator();
 const hideHeader = {
   headerShown: false,
   gestureEnabled: true,
-};
-
-// Custom Drawer Content
-const CustomDrawerContent = ({ navigation }: any) => {
-  const dispatch = useAppDispatch();
-  
-  const handleLogout = async () => {
-    try {
-      await dispatch(logoutUser());
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'LaunchScreen' }],
-      });
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  };
-
-  const openSocialLink = (url: string) => {
-    Linking.openURL(url);
-  };
-
-  return (
-    <View style={styles.drawerContainer}>
-      <View style={styles.drawerHeader}>
-        <TouchableOpacity
-          onPress={() =>
-            navigation.navigate('MainTabs', { screen: 'ProfileScreen' })
-          }
-          style={styles.profileSection}
-        >
-          <Image
-            source={require('../assets/logo.png')}
-            style={styles.profileImage}
-          />
-          <Text style={styles.emailText}>user@example.com</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.drawerContent}>
-        <TouchableOpacity
-          style={styles.drawerItem}
-          onPress={() =>
-            navigation.navigate('MainTabs', { screen: 'HowToScreen' })
-          }
-        >
-          <Image
-            source={require('../assets/how_to.png')}
-            style={styles.drawerIcon}
-          />
-          <Text style={styles.drawerText}>How To</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.drawerItem}
-          onPress={() =>
-            navigation.navigate('MainTabs', { screen: 'SettingsStack' })
-          }
-        >
-          <Image
-            source={require('../assets/settings.png')}
-            style={styles.drawerIcon}
-          />
-          <Text style={styles.drawerText}>Settings</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.drawerFooter}>
-        <View style={styles.socialContainer}>
-          <TouchableOpacity
-            onPress={() => openSocialLink('https://facebook.com')}
-          >
-            <Image
-              source={require('../assets/FB.png')}
-              style={styles.socialIcon}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => openSocialLink('https://instagram.com')}
-          >
-            <Image
-              source={require('../assets/instagram.png')}
-              style={styles.socialIcon}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => openSocialLink('https://youtube.com')}
-          >
-            <Image
-              source={require('../assets/YT.png')}
-              style={styles.socialIcon}
-            />
-          </TouchableOpacity>
-        </View>
-
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-          <Text style={styles.logoutText}>Logout</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
 };
 
 // New Scan Stack Navigator
@@ -199,7 +89,7 @@ const DestinationsStack = () => {
   return (
     <Stack.Navigator>
       <Stack.Screen
-        name="DestinationsScreen"
+        name="Destinations"
         component={DestinationsScreen}
         options={hideHeader}
       />
@@ -247,26 +137,22 @@ const MainTabs = () => {
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
-          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          backgroundColor: 'rgba(37, 37, 68, 1)',
           borderTopWidth: 0,
+          height: 70,
+          paddingTop: 10,
           zIndex: 1, // nagyon alacsony zIndex
           elevation: 1, // Android-on is alacsony
         },
-        tabBarActiveTintColor: '#fff',
-        tabBarInactiveTintColor: 'rgba(255, 255, 255, 0.5)',
+        tabBarActiveTintColor: 'rgba(255, 231, 255, 1)',
+        tabBarInactiveTintColor: 'rgba(255, 231, 255, 0.5)',
       }}
     >
       <Tab.Screen
         name="History"
         component={HistoryScreen}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              resizeMode="contain"
-              source={require('../assets/history.png')}
-              style={{ width: size, height: size, tintColor: color }}
-            />
-          ),
+          tabBarIcon: renderHistoryTabBarIcon,
         }}
       />
       <Tab.Screen
@@ -274,26 +160,14 @@ const MainTabs = () => {
         component={NewScanStack}
         options={{
           tabBarLabel: 'New Scan',
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              resizeMode="contain"
-              source={require('../assets/new_scan.png')}
-              style={{ width: size, height: size, tintColor: color }}
-            />
-          ),
+          tabBarIcon: renderNewScanTabBarIcon,
         }}
       />
       <Tab.Screen
-        name="DestinationsScreen"
+        name="Destinations"
         component={DestinationsStack}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Image
-              resizeMode="contain"
-              source={require('../assets/destinations.png')}
-              style={{ width: size, height: size, tintColor: color }}
-            />
-          ),
+          tabBarIcon: renderDestinationsTabBarIcon,
         }}
       />
       {/* Hidden tabs that show tab bar but are not visible in tab bar */}
@@ -322,11 +196,29 @@ const MainTabs = () => {
   );
 };
 
+// Custom Drawer Content Render Function
+const renderCustomDrawerContent = (props: any) => (
+  <CustomDrawerContent {...props} />
+);
+
+// TabBar Icon Render Functions
+const renderHistoryTabBarIcon = ({ color, size }: { color: string; size: number }) => (
+  <HistoryTabBarIcon color={color} size={size} />
+);
+
+const renderNewScanTabBarIcon = ({ color, size }: { color: string; size: number }) => (
+  <NewScanTabBarIcon color={color} size={size} />
+);
+
+const renderDestinationsTabBarIcon = ({ color, size }: { color: string; size: number }) => (
+  <DestinationsTabBarIcon color={color} size={size} />
+);
+
 // Main Drawer Navigator
 const DrawerNavigator = () => {
   return (
     <Drawer.Navigator
-      drawerContent={props => <CustomDrawerContent {...props} />}
+      drawerContent={renderCustomDrawerContent}
       screenOptions={{
         headerShown: false,
         drawerStyle: {
@@ -388,78 +280,5 @@ const Navigation = () => {
     </NavigationContainer>
   );
 };
-
-const styles = StyleSheet.create({
-  drawerContainer: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-  },
-  drawerHeader: {
-    paddingTop: 60,
-    paddingHorizontal: 20,
-    paddingBottom: 30,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  profileSection: {
-    alignItems: 'center',
-  },
-  profileImage: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    marginBottom: 15,
-  },
-  emailText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  drawerContent: {
-    flex: 1,
-    paddingTop: 30,
-  },
-  drawerItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-  },
-  drawerIcon: {
-    width: 24,
-    height: 24,
-    marginRight: 15,
-    tintColor: 'white',
-  },
-  drawerText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  drawerFooter: {
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-  },
-  socialContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginBottom: 30,
-  },
-  socialIcon: {
-    width: 32,
-    height: 32,
-  },
-  logoutButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  logoutText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-});
 
 export default Navigation;

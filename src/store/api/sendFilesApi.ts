@@ -88,6 +88,29 @@ class SendFilesApiService {
       return null;
     }
   }
+
+  // Upload file to OneDrive
+  async uploadToOneDrive(accessToken: string, fileName: string, filePath: string): Promise<any> {
+    try {
+      const fileData = await FileSystem.readFile(filePath, 'base64');
+      const fileBuffer = Buffer.from(fileData, 'base64');
+
+      const response = await axios({
+        method: 'PUT',
+        url: `https://graph.microsoft.com/v1.0/me/drive/root:/${fileName}:/content`,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/octet-stream',
+        },
+        data: fileBuffer
+      });
+
+      return response.data;
+    } catch (error: any) {
+      console.error('OneDrive upload error:', error.response?.data || error.message);
+      throw error;
+    }
+  }
   
   // Upload file and send to destination emails
   async uploadFileAndSendToRecipients(

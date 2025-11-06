@@ -4,30 +4,31 @@ import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import Text from './Text';
 
+interface FileInfo {
+  filename: string;
+  url: string;
+}
+
+interface HistoryEntry {
+  timestamp: number;
+  destination: number;
+  files: FileInfo[];
+}
+
 type RootStackParamList = {
   HistoryDetailScreen: { 
-    history: {
-      id: string;
-      name: string;
-      createdAt: string;
-      imageUri: string;
-    }
+    history: HistoryEntry
   };
 };
 
 type HistoryCardNavigationProp = StackNavigationProp<RootStackParamList>;
 
 interface HistoryCardProps {
-  history: {
-    id: string;
-    name: string;
-    createdAt: string;
-    imageUri: string;
-  };
+  history: HistoryEntry;
   isGridView?: boolean;
   isSelectionMode?: boolean;
   isSelected?: boolean;
-  onToggleSelection?: (id: string) => void;
+  onToggleSelection?: (id: string | number) => void;
 }
 
 const HistoryCard = ({ 
@@ -41,11 +42,15 @@ const HistoryCard = ({
 
   const handlePress = () => {
     if (isSelectionMode && onToggleSelection) {
-      onToggleSelection(history.id);
+      onToggleSelection(history.timestamp);
     } else {
       navigation.navigate('HistoryDetailScreen', { history });
     }
   };
+
+  // Create display values from timestamp and destination
+  const displayName = `${history.files[0]?.filename}`;
+  const displayDate = new Date(history.timestamp).toLocaleDateString();
 
   if (isGridView) {
     return (
@@ -53,8 +58,8 @@ const HistoryCard = ({
         {/* Image on top */}
         <View style={styles.gridImageContainer}>
           <Image 
-            source={{ uri: history.files[0]?.url }} 
-            style={styles.gridImage}
+            source={{ uri: `file://${history.files[0]?.url}` }} 
+            style={[styles.gridImage, isSelected ? { borderColor: '#3b82f6', borderWidth: 2 } : {}]}
             resizeMode="cover"
           />
           {/* Selection Circle for Grid View */}
@@ -74,8 +79,9 @@ const HistoryCard = ({
         
         {/* Text content below image */}
         <View style={styles.gridTextContainer}>
-          <Text style={styles.gridName}>{history.name}</Text>
-          <Text style={styles.gridCreatedAt}>{history.createdAt}</Text>
+          <Text style={styles.gridName}>{displayName}</Text>
+          <Text>{history.files.length} files</Text>
+          <Text style={styles.gridCreatedAt}>{displayDate}</Text>
         </View>
       </TouchableOpacity>
     );
@@ -85,7 +91,7 @@ const HistoryCard = ({
     <TouchableOpacity style={styles.container} onPress={handlePress}>
       <View style={styles.imageContainer}>
         <Image 
-          source={{ uri: history.imageUri }} 
+          source={{ uri: `file://${history.files[0]?.url}` }} 
           style={styles.image}
           resizeMode="cover"
         />
@@ -106,8 +112,9 @@ const HistoryCard = ({
       
       {/* Text content on the right */}
       <View style={styles.textContainer}>
-        <Text style={styles.name}>{history.name}</Text>
-        <Text style={styles.createdAt}>{history.createdAt}</Text>
+        <Text style={styles.name}>{displayName}</Text>
+        <Text>{history.files.length} files</Text>
+        <Text style={styles.createdAt}>{displayDate}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -151,9 +158,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   gridImage: {
-    width: 120, // Larger image for grid view
-    height: 160, // Maintain A4 aspect ratio
-    borderRadius: 4,
+    width: 120,
+    height: 160,
   },
   gridTextContainer: {
     alignItems: 'center',

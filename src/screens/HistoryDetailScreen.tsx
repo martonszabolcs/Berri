@@ -2,16 +2,22 @@ import React, { useState } from 'react';
 import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Alert } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, Text } from '../components';
+import { Layout, Text, DestinationIcon } from '../components';
+
+interface FileInfo {
+  filename: string;
+  url: string;
+}
+
+interface HistoryEntry {
+  timestamp: number;
+  destination: number;
+  files: FileInfo[];
+}
 
 type RootStackParamList = {
   HistoryDetailScreen: { 
-    history: {
-      id: string;
-      name: string;
-      createdAt: string;
-      imageUri: string;
-    }
+    history: HistoryEntry
   };
   HistoryScreen: undefined;
 };
@@ -24,31 +30,22 @@ const HistoryDetailScreen = () => {
   const route = useRoute<HistoryDetailScreenRouteProp>();
   const { history } = route.params;
   
-  // State for selected destinations (1-7)
-  const [selectedDestinations, setSelectedDestinations] = useState<number[]>([]);
+  // State for selected destinations (1-7) - initialize with the original destination
+  const [selectedDestinations, setSelectedDestinations] = useState<number[]>([history.destination]);
 
-  // Get destination image based on type
-  const getDestinationImage = (type: number) => {
-    switch (type) {
-      case 1: return require('../assets/dest_1.png');
-      case 2: return require('../assets/dest_2.png');
-      case 3: return require('../assets/dest_3.png');
-      case 4: return require('../assets/dest_4.png');
-      case 5: return require('../assets/dest_5.png');
-      case 6: return require('../assets/dest_6.png');
-      case 7: return require('../assets/dest_7.png');
-      default: return require('../assets/dest_1.png');
-    }
-  };
+  // Create display values from history data
+  const displayName = `Document ${history.destination}`;
+  const displayDate = new Date(history.timestamp).toLocaleDateString();
 
   const toggleDestination = (destinationId: number) => {
-    setSelectedDestinations(prev => {
-      if (prev.includes(destinationId)) {
-        return prev.filter(id => id !== destinationId);
-      } else {
-        return [...prev, destinationId];
-      }
-    });
+    // setSelectedDestinations(prev => {
+    //   if (prev.includes(destinationId)) {
+    //     return prev.filter(id => id !== destinationId);
+    //   } else {
+    //     return [...prev, destinationId];
+    //   }
+    // });
+    setSelectedDestinations([destinationId])
   };
 
   const handleDelete = () => {
@@ -103,21 +100,34 @@ const HistoryDetailScreen = () => {
   };
 
   return (
-    <Layout type="default" headerTitle={history.name} showBackButton={true}>
+    <Layout type="default" headerTitle={displayName} showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Title and Date */}
         <View style={styles.headerInfo}>
-          <Text style={styles.title}>{history.name}</Text>
-          <Text style={styles.createdAt}>{history.createdAt}</Text>
+          <Text style={styles.title}>{displayName}</Text>
+          <Text style={styles.createdAt}>{displayDate}</Text>
         </View>
 
-        {/* Large Image */}
-        <View style={styles.imageContainer}>
-          <Image 
-            source={{ uri: history.imageUri }} 
-            style={styles.image}
-            resizeMode="contain"
-          />
+        {/* Images - show all files */}
+        <View style={styles.imagesContainer}>
+          {history.files && history.files.length > 0 ? (
+            history.files.map((file, index) => (
+              <View key={index} style={styles.imageContainer}>
+                <Text style={styles.fileName}>{file.filename}</Text>
+                <Image 
+                  source={{ uri: `file://${file.url}` }} 
+                  style={styles.image}
+                  resizeMode="contain"
+                />
+              </View>
+            ))
+          ) : (
+            <View style={styles.imageContainer}>
+              <View style={[styles.image, styles.noImageContainer]}>
+                <Text style={styles.noImageText}>No images available</Text>
+              </View>
+            </View>
+          )}
         </View>
 
         {/* Bottom Action Bar */}
@@ -135,18 +145,11 @@ const HistoryDetailScreen = () => {
             {[1, 2, 3, 4, 5, 6, 7].map((destinationId) => (
               <TouchableOpacity
                 key={destinationId}
-                style={[
-                  styles.destinationButton,
-                  selectedDestinations.includes(destinationId) && styles.destinationButtonActive
-                ]}
                 onPress={() => toggleDestination(destinationId)}
               >
-                <Image 
-                  source={getDestinationImage(destinationId)} 
-                  style={[
-                    styles.destinationIcon,
-                    selectedDestinations.includes(destinationId) && styles.destinationIconActive
-                  ]}
+                <DestinationIcon 
+                  type={destinationId as 1 | 2 | 3 | 4 | 5 | 6 | 7} 
+                  variant={selectedDestinations.includes(destinationId) ? "history-active" : "history"}
                 />
               </TouchableOpacity>
             ))}
@@ -182,14 +185,32 @@ const styles = StyleSheet.create({
     fontSize: 14,
     opacity: 0.7,
   },
-  imageContainer: {
+  imagesContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  imageContainer: {
+    marginBottom: 20,
+  },
+  fileName: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    paddingHorizontal: 4,
   },
   image: {
     width: '100%',
     height: 400,
     borderRadius: 8,
+  },
+  noImageContainer: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  noImageText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 16,
   },
   actionBar: {
     flexDirection: 'row',
@@ -213,22 +234,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 8,
-  },
-  destinationButton: {
-    padding: 6,
-    borderRadius: 6,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  destinationButtonActive: {
-    backgroundColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  destinationIcon: {
-    width: 28,
-    height: 28,
-    tintColor: 'rgba(255, 255, 255, 0.6)',
-  },
-  destinationIconActive: {
-    tintColor: 'white',
   },
   resendButton: {
     padding: 8,

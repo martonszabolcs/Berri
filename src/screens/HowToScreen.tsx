@@ -66,7 +66,6 @@ const styles = StyleSheet.create({
   },
   content: {
     paddingTop: 20,
-    paddingBottom: 100, // Extra space for tab bar
   },
 });
 

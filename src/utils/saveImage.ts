@@ -101,6 +101,36 @@ export const saveBase64ToStorage = async (
 };
 
 /**
+ * Processes template variables in a filename template
+ * @param template - Template string with variables like {Year}, {Month}, etc.
+ * @returns string - Processed template with variables replaced
+ */
+export const processFileNameTemplate = (template: string): string => {
+  const now = new Date();
+  
+  // Get current date/time values
+  const year = now.getFullYear().toString();
+  const month = (now.getMonth() + 1).toString().padStart(2, '0'); // 01-12
+  const day = now.getDate().toString().padStart(2, '0'); // 01-31
+  const hours = now.getHours().toString().padStart(2, '0');
+  const minutes = now.getMinutes().toString().padStart(2, '0');
+  const seconds = now.getSeconds().toString().padStart(2, '0');
+  const time = `${hours}${minutes}${seconds}`; // HHMMSS format
+  
+  // Replace template variables
+  let processedTemplate = template
+    .replace(/{Year}/g, year)
+    .replace(/{Month}/g, month)
+    .replace(/{Day}/g, day)
+    .replace(/{Time}/g, time)
+    .replace(/{BI}/g, 'BI')
+    .replace(/{Berri}/g, 'Berri')
+    .replace(/{Page}/g, '001'); // Default page number, could be dynamic later
+  
+  return processedTemplate;
+};
+
+/**
  * Generates a unique filename with timestamp
  * @param baseName - Base name for the file (without extension)
  * @param extension - File extension (e.g., 'jpg', 'pdf')
@@ -117,12 +147,20 @@ export const generateUniqueFileName = (baseName: string, extension: string): str
  * @param imageBase64 - Base64 encoded scanned document
  * @returns Promise<string | null> - Returns the permanent file path on success, null on failure
  */
-export const saveScannedDocument = async (imageBase64: string): Promise<string | null> => {
+export const saveScannedDocument = async (imageBase64: string, settings: any): Promise<string | null> => {
   try {
-    // Generate unique filename for scanned document
-    const fileName = generateUniqueFileName('BERRI_Scanned_Document', 'jpg');
+    const fileNameTemplate = settings.fileNaming || 'BERRI_Scanned_Document';
     
-    console.log('📄 Saving scanned document with filename:', fileName);
+    // Process template variables to get the final filename base
+    const processedTemplate = processFileNameTemplate(fileNameTemplate);
+    
+    // Add unique timestamp to ensure uniqueness
+    const timestamp = Date.now();
+    const fileName = `${processedTemplate}_${timestamp}.jpg`;
+    
+    console.log('📄 Original template:', fileNameTemplate);
+    console.log('📄 Processed template:', processedTemplate);
+    console.log('📄 Final filename:', fileName);
     
     // Save to permanent storage
     const savedPath = await saveBase64ToStorage(imageBase64, fileName);

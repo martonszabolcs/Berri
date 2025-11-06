@@ -52,6 +52,8 @@ export const uploadToDrive = async (accessToken: string, fileUri: string) => {
   }
 };
 
+
+// TODO: ez már nincs használva:
 export const uploadToOneDrive = async (accessToken: string, fileUri: string) => {
   const fileName = fileUri.split('/').pop() || 'photo.jpg';
 

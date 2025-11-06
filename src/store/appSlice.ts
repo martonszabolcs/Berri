@@ -267,6 +267,9 @@ const appSlice = createSlice({
     setSettings: (state, action: PayloadAction<any>) => {
       state.settings = action.payload;
     },
+    setHistory: (state, action: PayloadAction<FileHistoryEntry[]>) => {
+      state.history = action.payload;
+    },
     clearDestinations: (state) => {
       state.destinations = [];
     },
@@ -381,6 +384,7 @@ export const {
   clearUser, 
   setDestinations,
   setSettings,
+  setHistory,
   clearDestinations,
   setError,
   clearError,

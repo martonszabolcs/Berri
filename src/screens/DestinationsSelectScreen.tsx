@@ -4,10 +4,9 @@ import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useRoute } from '@react-navigation/native';
 import { uploadAndSendFile } from '../store/uploadSlice';
-import { uploadToOneDrive } from '../utils/uploadFunctions';
 import { sendFilesApiService } from '../store/api/sendFilesApi';
-
-// TODO SCANNER - destination kiválasztás + elküldés
+import { setHistory } from '../store/appSlice';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 type RouteParams = {
   savedFilePath: string;
@@ -41,11 +40,40 @@ const DestinationSelectScreen = () => {
   }, [destinations, user.email]);
 
 
+  const saveFilesToAsyncstorage = async (data: { files: string[]; destination: number }) => {
+    try {
+      // read asyncstorage history
+      const history = await AsyncStorage.getItem('history');
+      const historyArray = history ? JSON.parse(history) : [];
+
+      // append new data
+      const newEntry = {
+        timestamp: Date.now(),
+        files: data.files.map((filePath) => ({
+          url: filePath.replace('file://', ''), // Remove file:// prefix for cross-platform compatibility
+          filename: filePath.split('/').pop() || 'unknown_file'
+        })),
+        destination: data.destination
+      };
+      historyArray.push(newEntry);
+
+      // save back to asyncstorage
+      await AsyncStorage.setItem('history', JSON.stringify(historyArray));
+      // reload new data to redux slice 
+      dispatch(setHistory(historyArray));
+      console.log('💾 Saving files to AsyncStorage:', data.files);
+    } catch (error) {
+      console.error('❌ Error saving files to AsyncStorage:', error);
+    }
+  };
+
   const sendFileToDestination = async () => {
     if (!selectedDestination) {
       console.warn('No destination selected');
       return;
     }
+
+    await saveFilesToAsyncstorage({files: [savedFilePath], destination: selectedDestination });
 
     console.log(`Sending file at ${savedFilePath} to destination type ${selectedDestination}`);
     
@@ -102,9 +130,15 @@ const DestinationSelectScreen = () => {
 
 
     } else if (selectedDest.destination === 'onedrive') {
-      console.log('📤 Sending to Onedrive... ');
+      console.log('📤 Sending to OneDrive...');
 
-      await uploadToOneDrive(settings.oneDriveAccessToken, savedFilePath);
+      try {
+        const fileName = `BERRI_Document_${Date.now()}.jpg`;
+        await sendFilesApiService.uploadToOneDrive(settings.oneDriveAccessToken, fileName, savedFilePath);
+        console.log('✅ File uploaded to OneDrive successfully');
+      } catch (error) {
+        console.error('❌ Error uploading to OneDrive:', error);
+      }
 
     } else if (selectedDest.destination === 'google drive') {
       console.log('📤 Sending to Google drive - not implemented yet');

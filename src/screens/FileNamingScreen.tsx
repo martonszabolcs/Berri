@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
 import { Layout, Button, Text } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { updateUserSettings } from '../store/api/userApiService';
@@ -22,13 +22,22 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
   { id: 'time', label: 'Time', value: '{Time}' },
 ];
 
+type TemplateItem = {
+  id: string;
+  type: 'button' | 'text';
+  content: string;
+  originalOption?: TemplateOption;
+};
+
 const FileNamingScreen = () => {
   const navigation = useNavigation();
   const settings = useAppSelector(state => state.app.settings);
   const dispatch = useAppDispatch();
+  const textInputRef = useRef<TextInput>(null);
   
-  const [selectedOptions, setSelectedOptions] = useState<TemplateOption[]>([]);
+  const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [availableOptions, setAvailableOptions] = useState<TemplateOption[]>(TEMPLATE_OPTIONS);
+  const [currentText, setCurrentText] = useState('');
 
   // Initialize with existing fileNaming template from user settings
   useEffect(() => {
@@ -36,56 +45,116 @@ const FileNamingScreen = () => {
     if (settings?.fileNaming) {
       console.log('🔧 Initializing FileNaming with existing template:', settings.fileNaming);
       
-      // Parse the existing template string to rebuild selected options
+      // Parse the existing template string to rebuild template items
       const templateString = settings.fileNaming;
       const templateParts = templateString.split('_');
       
-      const initialSelected: TemplateOption[] = [];
+      const initialItems: TemplateItem[] = [];
       const remainingOptions = [...TEMPLATE_OPTIONS];
       
-      templateParts.forEach((part: string) => {
+      templateParts.forEach((part: string, index: number) => {
         const matchingOption = TEMPLATE_OPTIONS.find(opt => opt.value === part);
         if (matchingOption) {
-          initialSelected.push(matchingOption);
-          const index = remainingOptions.findIndex(opt => opt.id === matchingOption.id);
-          if (index > -1) {
-            remainingOptions.splice(index, 1);
+          initialItems.push({
+            id: `${matchingOption.id}-${index}`,
+            type: 'button',
+            content: matchingOption.label,
+            originalOption: matchingOption
+          });
+          const optionIndex = remainingOptions.findIndex(opt => opt.id === matchingOption.id);
+          if (optionIndex > -1) {
+            remainingOptions.splice(optionIndex, 1);
           }
+        } else if (part.trim()) {
+          // This is custom text
+          initialItems.push({
+            id: `text-${index}`,
+            type: 'text',
+            content: part
+          });
         }
       });
       
-      setSelectedOptions(initialSelected);
+      setTemplateItems(initialItems);
       setAvailableOptions(remainingOptions);
     }
   }, [settings]);
 
   const handleOptionSelect = (option: TemplateOption) => {
-    // Add to selected options
-    setSelectedOptions(prev => [...prev, option]);
+    // Add current text if any
+    if (currentText.trim()) {
+      const newTextItem: TemplateItem = {
+        id: `text-${Date.now()}`,
+        type: 'text',
+        content: currentText.trim()
+      };
+      setTemplateItems(prev => [...prev, newTextItem]);
+      setCurrentText('');
+    }
+
+    // Add button option
+    const newButtonItem: TemplateItem = {
+      id: `${option.id}-${Date.now()}`,
+      type: 'button',
+      content: option.label,
+      originalOption: option
+    };
+    
+    setTemplateItems(prev => [...prev, newButtonItem]);
     
     // Remove from available options
     setAvailableOptions(prev => prev.filter(opt => opt.id !== option.id));
   };
 
-  const handleRemoveOption = (optionToRemove: TemplateOption) => {
-    // Remove from selected options
-    setSelectedOptions(prev => prev.filter(opt => opt.id !== optionToRemove.id));
+  const handleRemoveItem = (itemToRemove: TemplateItem) => {
+    // Remove from template items
+    setTemplateItems(prev => prev.filter(item => item.id !== itemToRemove.id));
     
-    // Add back to available options in original order
-    setAvailableOptions(prev => {
-      const newAvailable = [...prev, optionToRemove];
-      // Sort by original order
-      return newAvailable.sort((a, b) => {
-        const aIndex = TEMPLATE_OPTIONS.findIndex(opt => opt.id === a.id);
-        const bIndex = TEMPLATE_OPTIONS.findIndex(opt => opt.id === b.id);
-        return aIndex - bIndex;
+    // If it was a button, add back to available options
+    if (itemToRemove.type === 'button' && itemToRemove.originalOption) {
+      setAvailableOptions(prev => {
+        const newAvailable = [...prev, itemToRemove.originalOption!];
+        // Sort by original order
+        return newAvailable.sort((a, b) => {
+          const aIndex = TEMPLATE_OPTIONS.findIndex(opt => opt.id === a.id);
+          const bIndex = TEMPLATE_OPTIONS.findIndex(opt => opt.id === b.id);
+          return aIndex - bIndex;
+        });
       });
-    });
+    }
+  };
+
+  const handleTextSubmit = () => {
+    if (currentText.trim()) {
+      const newTextItem: TemplateItem = {
+        id: `text-${Date.now()}`,
+        type: 'text',
+        content: currentText.trim()
+      };
+      setTemplateItems(prev => [...prev, newTextItem]);
+      setCurrentText('');
+    }
   };
 
   const handleSave = async () => {
-    const templateString = selectedOptions.map(opt => opt.value).join('_');
-    const displayString = selectedOptions.map(opt => opt.label).join(' + ');
+    // Add current text if any before saving
+    let finalItems = [...templateItems];
+    if (currentText.trim()) {
+      finalItems.push({
+        id: `text-${Date.now()}`,
+        type: 'text',
+        content: currentText.trim()
+      });
+    }
+
+    const templateString = finalItems.map(item => {
+      if (item.type === 'button' && item.originalOption) {
+        return item.originalOption.value;
+      }
+      return item.content;
+    }).join('_');
+    
+    const displayString = finalItems.map(item => item.content).join(' + ');
     
     console.log('💾 Saving fileNaming template:', templateString);
     
@@ -137,21 +206,38 @@ const FileNamingScreen = () => {
 
           {/* Template Preview Box */}
           <View style={styles.templateBox}>
-            {selectedOptions.length === 0 ? (
-              <Text style={styles.placeholderText}>Tap options below to build your template</Text>
-            ) : (
-              <View style={styles.selectedOptionsContainer}>
-                {selectedOptions.map((option, index) => (
-                  <TouchableOpacity
-                    key={`${option.id}-${index}`}
-                    style={styles.selectedOption}
-                    onPress={() => handleRemoveOption(option)}
-                  >
-                    <Text style={styles.selectedOptionText}>{option.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            )}
+            <View style={styles.templateContent}>
+              {templateItems.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={[
+                    styles.templateItem,
+                    item.type === 'button' ? styles.buttonItem : styles.textItem
+                  ]}
+                  onPress={() => handleRemoveItem(item)}
+                >
+                  <Text style={[
+                    styles.templateItemText,
+                    item.type === 'button' ? styles.buttonItemText : styles.textItemText
+                  ]}>
+                    {item.content}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              
+              {/* Text Input */}
+              <TextInput
+                ref={textInputRef}
+                style={styles.textInput}
+                value={currentText}
+                onChangeText={setCurrentText}
+                onSubmitEditing={handleTextSubmit}
+                placeholder={templateItems.length === 0 ? "Tap options below or type here..." : ""}
+                placeholderTextColor="rgba(255, 255, 255, 0.5)"
+                multiline={false}
+                returnKeyType="done"
+              />
+            </View>
           </View>
 
           {/* Instruction Text */}
@@ -211,29 +297,50 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.2)',
   },
+  templateContent: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: 8,
+  },
+  templateItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginRight: 4,
+    marginBottom: 4,
+  },
+  buttonItem: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+  },
+  textItem: {
+    backgroundColor: 'rgba(100, 150, 255, 0.8)',
+  },
+  templateItemText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  buttonItemText: {
+    color: '#333',
+  },
+  textItemText: {
+    color: 'white',
+  },
+  textInput: {
+    flex: 1,
+    minWidth: 100,
+    color: 'white',
+    fontSize: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.3)',
+  },
   placeholderText: {
     color: 'rgba(255, 255, 255, 0.5)',
     fontSize: 14,
     fontStyle: 'italic',
     textAlign: 'center',
-  },
-  selectedOptionsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
-  },
-  selectedOption: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  selectedOptionText: {
-    color: '#333',
-    fontSize: 14,
-    fontWeight: '600',
   },
   instructionText: {
     color: 'rgba(255, 255, 255, 0.8)',

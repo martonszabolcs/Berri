@@ -38,7 +38,7 @@ const Header = ({
     <View style={styles.container}>
       {onMenuPress ? (
         <TouchableOpacity onPress={onMenuPress} style={styles.backButton}>
-          <Image source={require('../../assets/menu.png')} style={styles.menuIcon} />
+          <Image source={require('../../assets/menu.png')} style={styles.menuIcon} resizeMode="contain" />
         </TouchableOpacity>
       ) : showBackButton && (
         <TouchableOpacity onPress={handleBackPress} style={styles.backButton}>
@@ -75,7 +75,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 60,
+    paddingTop: 20,
     paddingBottom: 20,
     backgroundColor: '#252544',
   },
@@ -84,9 +84,10 @@ const styles = StyleSheet.create({
     marginRight: 20,
   },
   menuIcon: {
-    width: 24,
-    height: 24,
+    width: 30,
+    height: 14,
     tintColor: 'white',
+    marginTop: 'auto',
   },
   backIcon: {
     width: 24,

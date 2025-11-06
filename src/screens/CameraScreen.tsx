@@ -23,6 +23,7 @@ import { Dirs, FileSystem } from 'react-native-file-access';
 import { saveScannedDocument } from '../utils/saveImage';
 import { useNavigation } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
+import { useAppSelector } from '../store/hooks';
 
 // Navigation types
 type RootStackParamList = {
@@ -117,6 +118,7 @@ export default function App() {
   // Navigation
   const navigation = useNavigation<CameraScreenNavigationProp>();
 
+  const settings = useAppSelector(state => state.app.settings);
   const device = useCameraDevice('back');
   const camera = useRef<Camera>(null); // Camera ref for tap-to-focus
   const [results, setResults] = useState<DetectionResult[]>([]);
@@ -646,7 +648,7 @@ export default function App() {
       });
 
       // Save to permanent storage with unique filename
-      const savedPath = await saveScannedDocument(capturedImageUri);
+      const savedPath = await saveScannedDocument(capturedImageUri, settings);
       
       if (savedPath) {
         console.log('✅ Document saved permanently:', savedPath);

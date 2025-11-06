@@ -166,6 +166,7 @@ const styles = StyleSheet.create({
   },
   textText: {
     color: '#ff4444',
+    fontWeight: '400',
   },
   
   // States

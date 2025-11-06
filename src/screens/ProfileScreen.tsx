@@ -1,9 +1,11 @@
 import React from 'react';
-import { View, StyleSheet, ScrollView, Image, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView, Alert } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Layout, Header, Button, TextInput, Text } from '../components';
+import Svg, { Rect, LinearGradient, Stop, Defs } from 'react-native-svg';
+import { Layout, Header, Button, Text, AvatarIcon } from '../components';
+import { useAppSelector } from '../store/hooks';
 
 type ProfileStackParamList = {
   ProfileScreen: undefined;
@@ -15,6 +17,10 @@ type ProfileScreenNavigationProp = StackNavigationProp<ProfileStackParamList>;
 
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const user = useAppSelector((state) => state.app.user);
+  const userEmail = user?.email || '';
+  const userName = user?.name || '';
+  const userCreatedAt = user?.createdAt || '';
 
   const handleLogout = async () => {
     try {
@@ -51,7 +57,7 @@ const ProfileScreen = () => {
   };
 
   return (
-    <Layout type="default">
+    <Layout type="dark" >
       <Header 
         title="Profile" 
         showBackButton={true}
@@ -70,38 +76,98 @@ const ProfileScreen = () => {
         <View style={styles.content}>
           {/* Profile Image and Info */}
           <View style={styles.profileSection}>
-            <Image 
-              source={require('../assets/logo.png')} 
-              style={styles.profileImage}
+            <AvatarIcon 
+              character={userEmail.charAt(0)}
+              size={100}
             />
-            <Text style={styles.userName}>John Doe</Text>
-            <Text style={styles.joinedText}>Joined in March 2024</Text>
+            <Text style={styles.userName}>{userName}</Text>
+            <Text style={styles.joinedText}>Joined {userCreatedAt}</Text>
           </View>
 
           {/* User Details Boxes */}
           <View style={styles.detailsSection}>
             <View style={styles.detailBox}>
-              <Text style={styles.detailLabel}>Name</Text>
-              <TextInput
-                value="John Doe"
-                editable={false}
-              />
+              {/* Gradient Background */}
+              <Svg 
+                width="100%" 
+                height="100%" 
+                style={styles.svgBackground}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <Defs>
+                  <LinearGradient
+                    id="detailGradient"
+                    x1="0%"
+                    y1="0%"
+                    x2="0%"
+                    y2="100%"
+                  >
+                    <Stop offset="0%" stopColor="rgba(255, 255, 255, 1)" />
+                    <Stop offset="100%" stopColor="rgba(153, 153, 153, 1)" />
+                  </LinearGradient>
+                </Defs>
+                
+                <Rect
+                  x="0"
+                  y="0"
+                  width="100"
+                  height="100"
+                  fill="url(#detailGradient)"
+                />
+              </Svg>
+              
+              {/* Content */}
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Name</Text>
+                <Text style={styles.detailValue}>{userName}</Text>
+              </View>
             </View>
             
             <View style={styles.detailBox}>
-              <Text style={styles.detailLabel}>Email</Text>
-              <TextInput
-                value="user@example.com"
-                editable={false}
-              />
+              {/* Gradient Background */}
+              <Svg 
+                width="100%" 
+                height="100%" 
+                style={styles.svgBackground}
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+              >
+                <Defs>
+                  <LinearGradient
+                    id="detailGradient2"
+                    x1="0%"
+                    y1="0%"
+                    x2="0%"
+                    y2="100%"
+                  >
+                    <Stop offset="0%" stopColor="rgba(255, 255, 255, 1)" />
+                    <Stop offset="100%" stopColor="rgba(153, 153, 153, 1)" />
+                  </LinearGradient>
+                </Defs>
+                
+                <Rect
+                  x="0"
+                  y="0"
+                  width="100"
+                  height="100"
+                  fill="url(#detailGradient2)"
+                />
+              </Svg>
+              
+              {/* Content */}
+              <View style={styles.detailRow}>
+                <Text style={styles.detailLabel}>Email</Text>
+                <Text style={styles.detailValue}>{userEmail}</Text>
+              </View>
             </View>
           </View>
 
           {/* Action Buttons */}
           <View style={styles.actionsSection}>
             <Button
-              title="Reset Password"
-              variant="outline"
+              title="RESET PASSWORD"
+              variant="normal"
               size="medium"
               onPress={handleResetPassword}
               buttonStyle={styles.actionButton}
@@ -134,12 +200,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 40,
   },
-  profileImage: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    marginBottom: 20,
-  },
   userName: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -150,19 +210,56 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   detailsSection: {
-    gap: 20,
-    marginBottom: 40,
+    gap: 0,
+    marginBottom: 100,
   },
   detailBox: {
-    gap: 8,
+    position: 'relative',
+    overflow: 'hidden',
+    paddingVertical: 12,
+    minHeight: 70,
+    justifyContent: 'center',
+    width: '80%',
+    marginHorizontal: "auto",
+    flex: 1,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingHorizontal: 10,
+    zIndex: 10,
+    position: 'relative',
+    flex: 1,
+    width: '100%',
   },
   detailLabel: {
     fontSize: 16,
     fontWeight: '600',
+    color: 'white',
+    flex: 1,
+  },
+  detailValue: {
+    fontSize: 16,
+    fontWeight: '400',
+    color: 'white',
+    flex: 2,
+    textAlign: 'right',
+    flexShrink: 1,
+  },
+  svgBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 0,
+    opacity: 0.6,
   },
   actionsSection: {
-    gap: 20,
     alignItems: 'center',
+    width: '80%',
+    marginHorizontal: "auto",
   },
   actionButton: {
     width: '100%',

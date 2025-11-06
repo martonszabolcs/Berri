@@ -1,20 +1,23 @@
 import React from 'react';
-import { View, StyleSheet, Image, ScrollView, Linking } from 'react-native';
+import { View, StyleSheet, ScrollView, Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { Layout, MenuListItem, Text } from '../components';
+import { Layout, MenuListItem, Text, AvatarIcon } from '../components';
+import { useAppSelector } from '../store/hooks';
 
 type SettingsStackParamList = {
   SettingsScreen: undefined;
   FileNamingScreen: undefined;
   HowToScreen: undefined;
-  DestinationsScreen: undefined;
+  Destinations: undefined;
 };
 
 type SettingsScreenNavigationProp = StackNavigationProp<SettingsStackParamList>;
 
 const SettingsScreen = () => {
   const navigation = useNavigation<SettingsScreenNavigationProp>();
+  const user = useAppSelector((state) => state.app.user);
+  const userEmail = user?.email || '';
 
   const handleGetStarted = () => {
     navigation.navigate('HowToScreen');
@@ -41,7 +44,7 @@ const SettingsScreen = () => {
   };
 
   const handleDestinationSetup = () => {
-    navigation.navigate('DestinationsScreen');
+    navigation.navigate('Destinations');
   };
 
   return (
@@ -49,13 +52,13 @@ const SettingsScreen = () => {
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* User Info Section */}
         <View style={styles.userSection}>
-          <Image 
-            source={require('../assets/logo.png')} 
-            style={styles.userImage}
+          <AvatarIcon 
+            character={userEmail.charAt(0)}
+            size={100}
           />
           <View style={styles.userInfo}>
-            <Text style={styles.userLabel}>Email</Text>
-            <Text style={styles.userEmail}>user@example.com</Text>
+            <Text style={styles.userEmail}>{user.name}</Text>
+            <Text style={styles.userEmail}>{userEmail}</Text>
           </View>
         </View>
 
@@ -107,17 +110,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   userSection: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 20,
     gap: 12,
-  },
-  userImage: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
   },
   userInfo: {
     flex: 1,
@@ -130,9 +128,9 @@ const styles = StyleSheet.create({
   userEmail: {
     fontSize: 16,
     fontWeight: '600',
+    textAlign: 'center',
   },
   menuSection: {
-    paddingHorizontal: 20,
     paddingTop: 10,
   },
   header: {

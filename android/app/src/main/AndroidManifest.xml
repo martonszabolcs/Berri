@@ -28,7 +28,9 @@
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.DEFAULT" />
             <category android:name="android.intent.category.BROWSABLE" />
-            <data android:scheme="berri"/>
+            <data android:scheme="berri" android:host="onedrive-auth" />
+            <data android:scheme="berri" android:host="dropbox-auth" />
+            <data android:scheme="berri" />
         </intent-filter>
       </activity>
     </application>

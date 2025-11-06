@@ -1,11 +1,11 @@
 import React from 'react';
 import { ReactNode } from 'react';
-import { 
-  View, 
-  StyleSheet, 
-  ImageBackground, 
+import {
+  View,
+  StyleSheet,
+  ImageBackground,
   ViewStyle,
-  StatusBar
+  StatusBar,
 } from 'react-native';
 import BackgroundOverlay from './BackgroundOverlay';
 import Header from './Header';
@@ -27,9 +27,9 @@ interface LayoutProps {
   rightComponent?: ReactNode;
 }
 
-const Layout = ({ 
-  children, 
-  type = 'default', 
+const Layout = ({
+  children,
+  type = 'default',
   color = 'purple',
   style,
   headerTitle,
@@ -37,7 +37,7 @@ const Layout = ({
   showBackButton = true,
   onLogout,
   onMenuPress,
-  rightComponent
+  rightComponent,
 }: LayoutProps) => {
   // Determine which background image to use
   const getBackgroundImage = () => {
@@ -56,18 +56,18 @@ const Layout = ({
   console.debug('Color prop:', color);
 
   return (
-    <ImageBackground 
-      source={getBackgroundImage()} 
+    <ImageBackground
+      source={getBackgroundImage()}
       style={[styles.container, style]}
       resizeMode="cover"
     >
-      <StatusBar  barStyle={'dark-content'} />
+      <StatusBar backgroundColor={'#252544'} barStyle={'light-content'} />
       {isDarkType && <BackgroundOverlay />}
-      
+
       <View style={styles.content}>
         {headerTitle && (
-          <Header 
-            title={headerTitle} 
+          <Header
+            title={headerTitle}
             showBackButton={showBackButton}
             showLogout={showLogout}
             onLogout={onLogout}
@@ -76,9 +76,7 @@ const Layout = ({
             isDark={isDarkType}
           />
         )}
-        <View style={styles.childrenContainer}>
-          {children}
-        </View>
+        <View style={styles.childrenContainer}>{children}</View>
       </View>
     </ImageBackground>
   );
