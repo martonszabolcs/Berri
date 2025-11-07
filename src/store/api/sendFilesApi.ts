@@ -1,10 +1,10 @@
 import axios from 'axios';
-import { API_CONFIG, DROPBOX_CLIENT_ID, DROPBOX_CLIENT_SECRET } from '../../config';
+import { API_CONFIG, DROPBOX_CLIENT_ID, DROPBOX_CLIENT_SECRET, ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET } from '../../config';
 import { store } from '../index';
 import { FileSystem } from 'react-native-file-access';
 import { Buffer } from 'buffer';
 import { Alert } from 'react-native';
-import { saveDropboxToken } from '../settingsSlice';
+import { saveDropboxToken, saveOneDriveToken } from '../settingsSlice';
 import { refreshUser } from '../appSlice';
 
 // Helper service for file sending API calls
@@ -89,8 +89,49 @@ class SendFilesApiService {
     }
   }
 
+  // get new OneDrive access token with refresh token
+  async refreshOneDriveAccessToken(refreshToken: string): Promise<string | null> {
+    try {
+      const params = new URLSearchParams();
+    params.append('client_id', ONEDRIVE_CLIENT_ID);
+    params.append('scope', 'files.readwrite offline_access');
+    params.append('refresh_token', refreshToken);
+    params.append('grant_type', 'refresh_token');
+    // params.append('client_secret', ONEDRIVE_CLIENT_SECRET);
+
+       const response = await axios.post(
+      'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+      params.toString(),
+      {
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      }
+    );
+
+      
+      if (response.data && response.data.access_token) {
+        // Save new access token to settings using Redux
+        await store.dispatch(saveOneDriveToken({
+          accessToken: response.data.access_token,
+          refreshToken: response.data.refresh_token || refreshToken // Use new refresh token if provided, otherwise keep the old one
+        }));
+
+        await store.dispatch(refreshUser())
+        
+        console.log('✅ New OneDrive access token saved to settings');
+        return response.data.access_token;
+      } else {
+        console.error('❌ Invalid response while refreshing OneDrive access token:', response.data);
+        return null;
+      }
+    } catch (error) {
+      console.error('Response error:', error.response?.status, error.response?.data);
+      console.error('❌ Error refreshing OneDrive access token:', JSON.stringify(error));
+      return null;
+    }
+  }
+
   // Upload file to OneDrive
-  async uploadToOneDrive(accessToken: string, fileName: string, filePath: string): Promise<any> {
+  async uploadToOneDrive(accessToken: string, refreshToken: string, fileName: string, filePath: string): Promise<any> {
     try {
       const fileData = await FileSystem.readFile(filePath, 'base64');
       const fileBuffer = Buffer.from(fileData, 'base64');
@@ -108,6 +149,23 @@ class SendFilesApiService {
       return response.data;
     } catch (error: any) {
       console.error('OneDrive upload error:', error.response?.data || error.message);
+      if (error.response) {
+        if (error.response.status === 401 || error.response.data?.error?.code === "InvalidAuthenticationToken") {
+          console.log("ONEDRIVE EXPIRED!!!!!!")
+          try {
+            const token = await this.refreshOneDriveAccessToken(refreshToken);
+            if (token) {
+              return this.uploadToOneDrive(token, refreshToken, fileName, filePath); // Retry upload after refreshing token
+            } else {
+              console.error('❌ Failed to refresh OneDrive access token');
+              Alert.alert('Session Expired', 'Please log in to OneDrive again at the destination setting screen.');
+            }
+          } catch (refreshError) {
+            console.error('❌ Error refreshing OneDrive access token:', refreshError);
+            Alert.alert('Session Expired', 'Please log in to OneDrive again at the destination setting screen.');
+          }
+        }
+      }
       throw error;
     }
   }

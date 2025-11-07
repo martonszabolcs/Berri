@@ -46,7 +46,7 @@ export interface Destination {
   id: number;
   userId: number;
   type: 1 | 2 | 3 | 4 | 5 | 6 | 7;
-  fileType: 'odf' | 'jpg';
+  fileType: 'pdf' | 'jpg';
   bundled: boolean;
   destination: 'email' | 'onedrive' | 'dropbox' | 'google_drive';
   emails?: string;

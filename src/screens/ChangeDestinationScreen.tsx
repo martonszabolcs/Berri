@@ -458,13 +458,14 @@ const ChangeDestinationScreen = () => {
 
       console.log('📱 Opening OneDrive auth URL:', authUrl);
       const supported = await Linking.canOpenURL(authUrl);
+      console.log('📱 Opening OneDrive auth supported url:', supported);
 
-      if (supported) {
+      //if (supported) {
         await Linking.openURL(authUrl);
-      } else {
-        console.error('❌ Cannot open OneDrive auth URL');
-        Alert.alert('Error', 'Cannot open OneDrive authorization');
-      }
+      // } else {
+      //   console.error('❌ Cannot open OneDrive auth URL', supported);
+      //   Alert.alert('Error', 'Cannot open OneDrive authorization');
+      // }
     } catch (error) {
       console.error('❌ OneDrive auth error:', error);
       Alert.alert('Error', 'Failed to start OneDrive authorization');
@@ -489,13 +490,20 @@ const ChangeDestinationScreen = () => {
       GoogleSignin.configure({
         scopes: ['https://www.googleapis.com/auth/drive.file'],
         webClientId:
-          '571222670623-rdp5qs8o32pgfcv9oqce9i35pmcqk7lq.apps.googleusercontent.com',
+          '571222670623-j01rg9tpotcm9jc3acl9k7rkph41h1si.apps.googleusercontent.com',
+        offlineAccess: true, // kell, ha refresh tokent akarsz
+        forceCodeForRefreshToken: true, // szintén ajánlott
       });
-      const userInfo = await GoogleSignin.signIn();
-      const tokens = await GoogleSignin.getTokens();
-      console.log('userInfo', userInfo);
 
+      const userInfo = await GoogleSignin.signIn();
+      console.log('userInfo', userInfo);
+      const tokens = await GoogleSignin.getTokens();
       console.log('tokens', tokens);
+      // const userInfo = await GoogleSignin.signIn();
+      // const tokens = await GoogleSignin.getTokens();
+      // console.log('userInfo', userInfo);
+
+      // console.log('tokens', tokens);
 
       saveTokens(tokens.accessToken, tokens.refreshToken || '');
     }

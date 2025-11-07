@@ -134,7 +134,7 @@ const DestinationSelectScreen = () => {
 
       try {
         const fileName = `BERRI_Document_${Date.now()}.jpg`;
-        await sendFilesApiService.uploadToOneDrive(settings.oneDriveAccessToken, fileName, savedFilePath);
+        await sendFilesApiService.uploadToOneDrive(settings.oneDriveAccessToken, settings.oneDriveRefreshToken, fileName, savedFilePath);
         console.log('✅ File uploaded to OneDrive successfully');
       } catch (error) {
         console.error('❌ Error uploading to OneDrive:', error);
