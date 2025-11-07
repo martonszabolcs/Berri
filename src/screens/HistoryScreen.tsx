@@ -11,6 +11,7 @@ import {
   AppState,
   Alert,
   ActivityIndicator,
+  Share,
 } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { Layout, Text, HistoryCard } from '../components';
@@ -18,7 +19,9 @@ import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
 import sendFilesApiService from '../store/api/sendFilesApi';
 import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
-import { updateHistoryDestination } from '../utils/historyUtils';
+import { updateHistoryDestination, deleteMultipleHistoryEntries } from '../utils/historyUtils';
+import { setHistory } from '../store/appSlice';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const HistoryScreen = () => {
   const navigation = useNavigation();
@@ -90,6 +93,302 @@ const HistoryScreen = () => {
   const cancelSelection = () => {
     setIsSelectionMode(false);
     setSelectedCards([]);
+  };
+
+  const removeSelectedHistories = async () => {
+    const getAllHistories = selectedCards
+      .map((cardId: string) => {
+        const historyItem = history.find(
+          (item: any) => item.timestamp.toString() === cardId,
+        );
+        if (!historyItem) {
+          console.warn(`⚠️ History item not found for timestamp: ${cardId}`);
+          return null;
+        }
+        return historyItem;
+      })
+      .filter(Boolean);
+
+    if (getAllHistories.length === 0) {
+      Alert.alert('Error', 'No items selected for deletion');
+      return;
+    }
+
+    // Show confirmation dialog
+    Alert.alert(
+      'Delete Items',
+      `Are you sure you want to delete ${getAllHistories.length} item(s)? This will permanently remove the files from your device.`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log(`🗑️ Starting deletion of ${getAllHistories.length} items...`);
+              
+              // Use the utility function to delete multiple entries
+              const result = await deleteMultipleHistoryEntries(
+                getAllHistories,
+                history,
+                dispatch
+              );
+              
+              // Exit selection mode
+              setIsSelectionMode(false);
+              setSelectedCards([]);
+              
+              // Show success message
+              if (result.failureCount === 0) {
+                Alert.alert(
+                  'Success', 
+                  `Successfully deleted ${result.successCount} item(s).`
+                );
+              } else {
+                Alert.alert(
+                  'Partial Success', 
+                  `Deleted ${result.successCount} item(s). ${result.failureCount} item(s) failed to delete.`
+                );
+              }
+              
+            } catch (error) {
+              console.error('❌ Error during bulk deletion:', error);
+              Alert.alert('Error', 'Failed to delete some items. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };  
+  
+  const mergeSelectedHistories = async () => {
+    const getAllHistories = selectedCards
+      .map((cardId: string) => {
+        const historyItem = history.find(
+          (item: any) => item.timestamp.toString() === cardId,
+        );
+        if (!historyItem) {
+          console.warn(`⚠️ History item not found for timestamp: ${cardId}`);
+          return null;
+        }
+        return historyItem;
+      })
+      .filter(Boolean);
+
+    if (getAllHistories.length === 0) {
+      Alert.alert('Error', 'No items selected for merging');
+      return;
+    }
+
+    if (getAllHistories.length === 1) {
+      Alert.alert('Info', 'Please select 2 or more items to merge');
+      return;
+    }
+
+    try {
+      console.log(`🔗 Starting merge of ${getAllHistories.length} history items...`);
+
+      // Collect all files from selected histories
+      const allFiles: any[] = [];
+      getAllHistories.forEach((historyItem: any) => {
+        if (historyItem.files && historyItem.files.length > 0) {
+          allFiles.push(...historyItem.files);
+        }
+      });
+
+      console.log(`📁 Collected ${allFiles.length} files for merging`);
+
+      if (allFiles.length === 0) {
+        Alert.alert('Error', 'No files found to merge');
+        return;
+      }
+
+      // Create new merged history entry
+      const firstHistory = getAllHistories[0];
+      const mergedHistory = {
+        id: Date.now().toString(), // New unique ID
+        timestamp: Date.now(), // Current timestamp
+        destination: firstHistory.destination, // Use first item's destination
+        destinationId: firstHistory.destinationId, // Use first item's destination ID
+        files: allFiles, // All files from selected histories
+        // Keep other properties from first history if needed
+        fileName: `Merged_${allFiles.length}_files`, // New file name
+      };
+
+      console.log('🆕 Created merged history:', {
+        id: mergedHistory.id,
+        fileCount: allFiles.length,
+        destination: mergedHistory.destination,
+        timestamp: new Date(mergedHistory.timestamp).toISOString()
+      });
+
+      // Remove selected histories from current history array (but NOT from AsyncStorage)
+      const selectedTimestamps = getAllHistories.map(item => item.timestamp);
+      const updatedHistory = history.filter((item: any) => 
+        !selectedTimestamps.includes(item.timestamp)
+      );
+
+      // Add the new merged history
+      const finalHistory = [...updatedHistory, mergedHistory];
+
+      console.log(`📝 Updated history: removed ${selectedTimestamps.length} items, added 1 merged item`);
+
+      // Update Redux state
+      dispatch(setHistory(finalHistory));
+
+      // Update AsyncStorage with the new history
+      await AsyncStorage.setItem('history', JSON.stringify(finalHistory));
+
+      console.log('✅ Merge completed successfully');
+
+      // Exit selection mode
+      setIsSelectionMode(false);
+      setSelectedCards([]);
+
+      Alert.alert(
+        'Merge Complete', 
+        `Successfully merged ${getAllHistories.length} items into 1 history entry with ${allFiles.length} files.`
+      );
+
+    } catch (error) {
+      console.error('❌ Error during merge operation:', error);
+      Alert.alert('Error', 'Failed to merge items. Please try again.');
+    }
+  };
+
+  const deleteAllHistory = async () => {
+    try {
+      console.log(`🗑️ Starting deletion of all ${history.length} history items...`);
+      
+      if (history.length === 0) {
+        Alert.alert('Info', 'No history items to delete');
+        return;
+      }
+
+      // Use the existing utility function to delete all history entries
+      const result = await deleteMultipleHistoryEntries(
+        history, // Pass all history entries
+        history, // Current history array
+        dispatch // Redux dispatch
+      );
+
+      // Show success message
+      if (result.failureCount === 0) {
+        Alert.alert(
+          'Success', 
+          `Successfully deleted all ${result.successCount} history items and their files.`
+        );
+      } else {
+        Alert.alert(
+          'Partial Success', 
+          `Deleted ${result.successCount} history items successfully. ${result.failureCount} items failed to delete.`
+        );
+      }
+
+    } catch (error) {
+      console.error('❌ Critical error during delete all operation:', error);
+      Alert.alert('Error', 'Failed to delete all history items. Please try again.');
+    }
+  };
+
+  const shareSelectedHistories = async () => {
+    const getAllHistories = selectedCards
+      .map((cardId: string) => {
+        const historyItem = history.find(
+          (item: any) => item.timestamp.toString() === cardId,
+        );
+        if (!historyItem) {
+          console.warn(`⚠️ History item not found for timestamp: ${cardId}`);
+          return null;
+        }
+        return historyItem;
+      })
+      .filter(Boolean);
+
+    if (getAllHistories.length === 0) {
+      Alert.alert('Error', 'No items selected for sharing');
+      return;
+    }
+
+    try {
+      // Collect all files from selected histories
+      const allFiles: string[] = [];
+      let fileCount = 0;
+
+      getAllHistories.forEach((historyItem: any) => {
+        if (historyItem.files && historyItem.files.length > 0) {
+          historyItem.files.forEach((file: any) => {
+            const filePath = file.url.startsWith('file://') ? file.url : `file://${file.url}`;
+            allFiles.push(filePath);
+            fileCount++;
+          });
+        }
+      });
+
+      console.log(`📤 Sharing ${fileCount} files from ${getAllHistories.length} history entries...`);
+
+      if (allFiles.length === 0) {
+        Alert.alert('Error', 'No files found to share');
+        return;
+      }
+
+      // Share files (React Native Share only supports one URL at a time)
+      if (allFiles.length === 1) {
+        // Single file sharing
+        await Share.share({
+          url: allFiles[0],
+          message: `Sharing scanned BERRĪ document`,
+        });
+      } else {
+        // Multiple files - share them one by one or show selection
+        Alert.alert(
+          'Share Multiple Files',
+          `You have selected ${fileCount} files. How would you like to share them?`,
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+            {
+              text: 'Share First File',
+              onPress: async () => {
+                await Share.share({
+                  url: allFiles[0],
+                  message: `Sharing first of ${fileCount} scanned BERRĪ documents`,
+                });
+              },
+            },
+            {
+              text: 'Share All Individually',
+              onPress: async () => {
+                for (let i = 0; i < allFiles.length; i++) {
+                  await Share.share({
+                    url: allFiles[i],
+                    message: `Sharing scanned BERRĪ document (${i + 1}/${fileCount})`,
+                  });
+                  // Small delay between shares
+                  await new Promise<void>(resolve => setTimeout(resolve, 500));
+                }
+              },
+            },
+          ]
+        );
+        return; // Don't exit selection mode yet for multiple files
+      }
+
+      console.log('✅ Files shared successfully');
+
+      // Exit selection mode after sharing
+      setIsSelectionMode(false);
+      setSelectedCards([]);
+
+    } catch (error) {
+      console.error('❌ Error sharing files:', error);
+      Alert.alert('Error', 'Failed to share files. Please try again.');
+    }
   };
 
     // Resume bulk resend operation with fresh OAuth tokens
@@ -796,18 +1095,20 @@ const HistoryScreen = () => {
           {/* Selection Mode Bottom Bar */}
           {isSelectionMode && (
             <View style={styles.selectionBottomBar}>
-              <TouchableOpacity style={styles.bottomButton}>
+              <TouchableOpacity style={styles.bottomButton} onPress={() => removeSelectedHistories()}>
                 <Image
-                  source={require('../assets/delete.png')}
+                  source={require('../assets/trash.png')}
                   style={styles.bottomButtonIcon}
+                  resizeMode='contain'
                 />
                 <Text style={styles.bottomButtonText}>Delete</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.bottomButton}>
+              <TouchableOpacity style={styles.bottomButton} onPress={() => mergeSelectedHistories()}>
                 <Image
                   source={require('../assets/merge.png')}
                   style={styles.bottomButtonIcon}
+                  resizeMode='contain'
                 />
                 <Text style={styles.bottomButtonText}>Merge</Text>
               </TouchableOpacity>
@@ -816,14 +1117,16 @@ const HistoryScreen = () => {
                 <Image
                   source={require('../assets/resend.png')}
                   style={styles.bottomButtonIcon}
+                  resizeMode='contain'
                 />
                 <Text style={styles.bottomButtonText}>Resend</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.bottomButton}>
+              <TouchableOpacity style={styles.bottomButton} onPress={() => shareSelectedHistories()}>
                 <Image
                   source={require('../assets/share.png')}
                   style={styles.bottomButtonIcon}
+                  resizeMode='contain'
                 />
                 <Text style={styles.bottomButtonText}>Share</Text>
               </TouchableOpacity>
@@ -891,9 +1194,9 @@ const HistoryScreen = () => {
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.confirmationButton, styles.deleteButton]}
-                    onPress={() => {
-                      // TODO: Delete all logic
+                    onPress={async () => {
                       setShowDeleteConfirm(false);
+                      await deleteAllHistory();
                     }}
                   >
                     <Text style={styles.deleteButtonText}>Yes</Text>
