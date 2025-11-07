@@ -6,6 +6,7 @@ import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { uploadAndSendFile } from '../store/uploadSlice';
 import { sendFilesApiService } from '../store/api/sendFilesApi';
+import { deleteHistoryEntry, updateHistoryDestination } from '../utils/historyUtils';
 
 interface FileInfo {
   filename: string;
@@ -22,7 +23,7 @@ type RootStackParamList = {
   HistoryDetailScreen: { 
     history: HistoryEntry
   };
-  HistoryScreen: undefined;
+  History: undefined;
 };
 
 type HistoryDetailScreenRouteProp = RouteProp<RootStackParamList, 'HistoryDetailScreen'>;
@@ -38,6 +39,7 @@ const HistoryDetailScreen = () => {
   const destinations = useAppSelector((state) => state.app.destinations);
   const user = useAppSelector((state) => state.app.user);
   const settings = useAppSelector((state) => state.app.settings);
+  const currentHistory = useAppSelector((state) => state.app.history);
   
   // State for selected destinations (1-7) - initialize with the original destination
   const [selectedDestinations, setSelectedDestinations] = useState<number[]>([history.destination]);
@@ -45,7 +47,7 @@ const HistoryDetailScreen = () => {
   const displayName = `${history.files?.[0]?.filename}`;
   const displayDate = new Date(history.timestamp).toLocaleDateString();
 
-  const toggleDestination = (destinationId: number) => {
+  const toggleDestination = async (destinationId: number) => {
     // setSelectedDestinations(prev => {
     //   if (prev.includes(destinationId)) {
     //     return prev.filter(id => id !== destinationId);
@@ -53,7 +55,14 @@ const HistoryDetailScreen = () => {
     //     return [...prev, destinationId];
     //   }
     // });
-    setSelectedDestinations([destinationId])
+    setSelectedDestinations([destinationId]);
+    
+    // Update history entry's destination and save to AsyncStorage
+    try {
+      await updateHistoryDestination(history, destinationId, currentHistory, dispatch);
+    } catch (error) {
+      console.error('❌ Error updating history destination:', error);
+    }
   };
 
   const handleDelete = () => {
@@ -68,16 +77,21 @@ const HistoryDetailScreen = () => {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            // Here you would typically call your delete API
-            // delete from history and save new stuff to asyncstorage
-
-            navigation.goBack();
+          onPress: async () => {
+            try {
+              await deleteHistoryEntry(history, currentHistory, dispatch);
+              navigation.goBack();
+            } catch (error) {
+              console.error('❌ Error deleting history entry:', error);
+              Alert.alert('Error', 'Failed to delete scan. Please try again.');
+            }
           },
         },
       ]
     );
   };
+
+
 
   const handleResend = async () => {
     if (selectedDestinations.length === 0) {
@@ -104,7 +118,7 @@ const HistoryDetailScreen = () => {
               Alert.alert('Success', 'Scan has been resent successfully!', [
                 {
                   text: 'OK',
-                  onPress: () => navigation.navigate('History'),
+                  onPress: () => navigation.goBack(),
                 },
               ]);
             } catch (error) {
