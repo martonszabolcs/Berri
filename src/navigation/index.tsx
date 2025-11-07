@@ -13,6 +13,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import LoginScreen from '../screens/LoginScreen';
 import ForgottenScreen from '../screens/ForgottenScreen';
 import HistoryScreen from '../screens/HistoryScreen';
+import HistorySelectScreen from '../screens/HistorySelectScreen';
 import HistoryDetailScreen from '../screens/HistoryDetailScreen';
 import DestinationsScreen from '../screens/DestinationsScreen';
 import DestinationScreen from '../screens/DestinationScreen';
@@ -42,6 +43,7 @@ type RootStackParamList = {
       imageUri: string;
     }
   };
+  HistorySelectScreen: undefined;
   NewScanStack: undefined;
   DestinationsStack: undefined;
   Destinations: undefined;
@@ -141,8 +143,6 @@ const MainTabs = () => {
           borderTopWidth: 0,
           height: 70,
           paddingTop: 10,
-          zIndex: 1, // nagyon alacsony zIndex
-          elevation: 1, // Android-on is alacsony
         },
         tabBarActiveTintColor: 'rgba(255, 231, 255, 1)',
         tabBarInactiveTintColor: 'rgba(255, 231, 255, 0.5)',
@@ -274,6 +274,11 @@ const Navigation = () => {
         <Stack.Screen
           name="HistoryDetailScreen"
           component={HistoryDetailScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="HistorySelectScreen"
+          component={HistorySelectScreen}
           options={hideHeader}
         />
       </Stack.Navigator>

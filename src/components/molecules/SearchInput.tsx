@@ -1,31 +1,19 @@
 import React from 'react';
-import {
-  View,
-  StyleSheet,
-  TextInput,
-  Image,
-} from 'react-native';
+import { View, StyleSheet, TextInput, Image } from 'react-native';
 
 interface SearchInputProps {
   value: string;
   onChangeText: (text: string) => void;
   placeholder?: string;
-  isSelectionMode?: boolean;
 }
 
 const SearchInput: React.FC<SearchInputProps> = ({
   value,
   onChangeText,
   placeholder = 'Search',
-  isSelectionMode = false,
 }) => {
   return (
-    <View
-      style={[
-        styles.searchContainer,
-        isSelectionMode && styles.searchContainerWithSelection,
-      ]}
-    >
+    <View style={styles.searchContainer}>
       <View style={styles.searchInputContainer}>
         <Image
           source={require('../../assets/search.png')}
@@ -47,9 +35,6 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
-  },
-  searchContainerWithSelection: {
-    paddingTop: 120, // Make room for selection header
   },
   searchInputContainer: {
     flexDirection: 'row',
