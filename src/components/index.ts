@@ -17,6 +17,9 @@ export { CloudStorageConnector } from './atoms/CloudStorageConnector';
 
 // Molecules
 export { default as CustomDrawerContent } from './molecules/CustomDrawerContent';
+export { default as DeleteModal } from './molecules/DeleteModal';
+export { default as HistoryMoreFunctions } from './molecules/HistoryMoreFunctions';
+export { default as SearchInput } from './molecules/SearchInput';
 
 // Icons
 export * from './icons';

@@ -6,7 +6,6 @@ import {
   Image,
   Animated,
   ScrollView,
-  TextInput,
   Linking,
   AppState,
   Alert,
@@ -14,7 +13,7 @@ import {
   Share,
 } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
-import { Layout, Text, HistoryCard } from '../components';
+import { Layout, Text, HistoryCard, DeleteModal, HistoryMoreFunctions, SearchInput } from '../components';
 import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
 import sendFilesApiService from '../store/api/sendFilesApi';
@@ -882,7 +881,6 @@ const HistoryScreen = () => {
           <View style={styles.selectionHeader}>
             <TouchableOpacity
               onPress={cancelSelection}
-              style={styles.cancelButton}
             >
               <Text style={styles.cancelText}>Cancel</Text>
             </TouchableOpacity>
@@ -899,42 +897,27 @@ const HistoryScreen = () => {
         ) : null}
         <View style={styles.container}>
           {/* Search Input */}
-          <View
-            style={[
-              styles.searchContainer,
-              isSelectionMode && styles.searchContainerWithSelection,
-            ]}
-          >
-            <View style={styles.searchInputContainer}>
-              <Image
-                source={require('../assets/search.png')}
-                style={styles.searchIcon}
-              />
-              <TextInput
-                style={styles.searchInput}
-                placeholder="Search"
-                placeholderTextColor={'white'}
-                value={searchText}
-                onChangeText={text => {
-                  setSearchText(text);
-                  if (text !== '') {
-                    console.log('ITEM HISTORY FILTERED', history);
-                    setHistoryData(
-                      history.filter((item: any) =>
-                        item.files.find((file: any) =>
-                          file.filename
-                            .toLowerCase()
-                            .includes(searchText.toLowerCase()),
-                        ),
-                      ),
-                    );
-                  } else {
-                    setHistoryData(history);
-                  }
-                }}
-              />
-            </View>
-          </View>
+          <SearchInput
+            value={searchText}
+            onChangeText={text => {
+              setSearchText(text);
+              if (text !== '') {
+                console.log('ITEM HISTORY FILTERED', history);
+                setHistoryData(
+                  history.filter((item: any) =>
+                    item.files.find((file: any) =>
+                      file.filename
+                        .toLowerCase()
+                        .includes(searchText.toLowerCase()),
+                    ),
+                  ),
+                );
+              } else {
+                setHistoryData(history);
+              }
+            }}
+            isSelectionMode={isSelectionMode}
+          />
 
           {/* Custom Select and Reorder */}
           <View style={styles.selectAndReorderContainer}>
@@ -1134,77 +1117,29 @@ const HistoryScreen = () => {
           )}
 
           {/* Overlay Mode */}
-          {isOverlayMode && (
-            <View style={styles.overlayMode}>
-              <TouchableOpacity
-                style={styles.overlayBackground}
-                onPress={() => setIsOverlayMode(false)}
-              />
-              <View style={styles.overlayButtons}>
-                <TouchableOpacity
-                  style={styles.overlayButton}
-                  onPress={() => {
-                    setIsOverlayMode(false);
-                    setIsSelectionMode(true);
-                  }}
-                >
-                  <Image
-                    resizeMode="contain"
-                    source={require('../assets/select.png')}
-                    style={styles.overlayButtonIcon}
-                  />
-                  <Text style={styles.overlayButtonText}>Select</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.overlayButton}
-                  onPress={() => {
-                    setIsOverlayMode(false);
-                    setShowDeleteConfirm(true);
-                  }}
-                >
-                  <Image
-                    resizeMode="contain"
-                    source={require('../assets/trash.png')}
-                    style={styles.overlayButtonIcon}
-                  />
-                  <Text style={styles.overlayButtonText}>Delete All</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
+          <HistoryMoreFunctions
+            visible={isOverlayMode}
+            onClose={() => setIsOverlayMode(false)}
+            onSelectMode={() => {
+              setIsOverlayMode(false);
+              setIsSelectionMode(true);
+            }}
+            onDeleteAll={() => {
+              setIsOverlayMode(false);
+              setShowDeleteConfirm(true);
+            }}
+          />
 
           {/* Delete Confirmation */}
-          {showDeleteConfirm && (
-            <View style={styles.confirmationOverlay}>
-              <TouchableOpacity
-                style={styles.overlayBackground}
-                onPress={() => setShowDeleteConfirm(false)}
-              />
-              <View style={styles.confirmationDialog}>
-                <Text style={styles.confirmationText}>
-                  Are you sure you want to delete all history items?
-                </Text>
-                <View style={styles.confirmationButtons}>
-                  <TouchableOpacity
-                    style={[styles.confirmationButton, styles.cancelButton]}
-                    onPress={() => setShowDeleteConfirm(false)}
-                  >
-                    <Text style={styles.cancelButtonText}>No</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.confirmationButton, styles.deleteButton]}
-                    onPress={async () => {
-                      setShowDeleteConfirm(false);
-                      await deleteAllHistory();
-                    }}
-                  >
-                    <Text style={styles.deleteButtonText}>Yes</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-            </View>
-          )}
+          <DeleteModal
+            visible={showDeleteConfirm}
+            onCancel={() => setShowDeleteConfirm(false)}
+            onConfirm={async () => {
+              setShowDeleteConfirm(false);
+              await deleteAllHistory();
+            }}
+            message="Are you sure you want to delete all history items?"
+          />
         </View>
       </Layout>
     </View>
@@ -1229,41 +1164,11 @@ const styles = StyleSheet.create({
     height: 24,
     tintColor: 'white',
   },
-  searchContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 20,
-  },
   dropdownArrow: {
     marginLeft: 10,
     width: 12,
     height: 12,
     alignSelf: 'center',
-  },
-  searchContainerWithSelection: {
-    paddingTop: 120, // Make room for selection header
-  },
-  searchInputContainer: {
-    flexDirection: 'row',
-    marginTop: 10,
-    alignItems: 'center',
-    backgroundColor: '#252544D9', // 85% opacity
-    borderRadius: 15,
-    paddingHorizontal: 15,
-    paddingVertical: 4,
-    gap: 10,
-  },
-  searchIcon: {
-    width: 18,
-    height: 18,
-    tintColor: 'white',
-  },
-  searchInput: {
-    color: 'white',
-    fontSize: 16,
-    paddingVertical: 8,
-    paddingHorizontal: 0,
-    backgroundColor: 'transparent',
-    borderWidth: 0,
   },
   selectContainer: {
     paddingHorizontal: 20,
@@ -1363,104 +1268,8 @@ const styles = StyleSheet.create({
     color: 'rgba(255, 255, 255, 0.7)',
     fontSize: 16,
   },
-  // Overlay Mode Styles
-  overlayMode: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1000,
-  },
-  overlayBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(37, 37, 68, 0.86)',
-  },
-  overlayButtons: {
-    position: 'absolute',
-    backgroundColor: 'rgba(37, 37, 68, 1)',
-    paddingVertical: 30,
-    bottom: 0,
-    left: 0,
-    right: 0,
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  overlayButton: {
-    flexDirection: 'row',
-    gap: 5,
-    paddingHorizontal: 25,
-    borderRadius: 12,
-    alignItems: 'center',
-    minWidth: 120,
-  },
-  overlayButtonIcon: {
-    width: 24,
-    height: 24,
-    marginRight: 5,
-  },
-  overlayButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '400',
-  },
-  // Confirmation Dialog Styles
-  confirmationOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 1001,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  confirmationDialog: {
-    backgroundColor: '#252544',
-    margin: 40,
-    borderRadius: 15,
-    padding: 25,
-    borderWidth: 1,
-    borderColor: 'white',
-  },
-  confirmationText: {
-    fontSize: 16,
-    textAlign: 'center',
-    marginBottom: 25,
-    lineHeight: 22,
-  },
-  confirmationButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-  },
-  confirmationButton: {
-    paddingVertical: 12,
-    paddingHorizontal: 25,
-    borderRadius: 8,
-    minWidth: 80,
-  },
-  cancelButton: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-  },
-  deleteButton: {
-    backgroundColor: '#dc2626',
-  },
-  cancelButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  deleteButtonText: {
-    color: 'white',
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
+
+
   // Selection Mode Styles
   selectionHeader: {
     position: 'absolute',
