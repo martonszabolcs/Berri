@@ -1,12 +1,25 @@
-import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  View,
+  StyleSheet,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  Alert,
+  AppState,
+  Linking,
+} from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { uploadAndSendFile } from '../store/uploadSlice';
 import { sendFilesApiService } from '../store/api/sendFilesApi';
-import { deleteHistoryEntry, updateHistoryDestination } from '../utils/historyUtils';
+import {
+  deleteHistoryEntry,
+  updateHistoryDestination,
+} from '../utils/historyUtils';
+import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
 
 interface FileInfo {
   filename: string;
@@ -20,29 +33,32 @@ interface HistoryEntry {
 }
 
 type RootStackParamList = {
-  HistoryDetailScreen: { 
-    history: HistoryEntry
+  HistoryDetailScreen: {
+    history: HistoryEntry;
   };
   History: undefined;
 };
 
-type HistoryDetailScreenRouteProp = RouteProp<RootStackParamList, 'HistoryDetailScreen'>;
-type HistoryDetailScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+type HistoryDetailScreenRouteProp = RouteProp<
+  RootStackParamList,
+  'HistoryDetailScreen'
+>;
+type HistoryDetailScreenNavigationProp =
+  StackNavigationProp<RootStackParamList>;
 
 const HistoryDetailScreen = () => {
   const navigation = useNavigation<HistoryDetailScreenNavigationProp>();
   const route = useRoute<HistoryDetailScreenRouteProp>();
   const { history } = route.params;
   const dispatch = useAppDispatch();
-  
-  // Redux selectors
-  const destinations = useAppSelector((state) => state.app.destinations);
-  const user = useAppSelector((state) => state.app.user);
-  const settings = useAppSelector((state) => state.app.settings);
-  const currentHistory = useAppSelector((state) => state.app.history);
-  
-  // State for selected destinations (1-7) - initialize with the original destination
-  const [selectedDestinations, setSelectedDestinations] = useState<number[]>([history.destination]);
+  const destinations = useAppSelector(state => state.app.destinations);
+  const user = useAppSelector(state => state.app.user);
+  const settings = useAppSelector(state => state.app.settings);
+  const currentHistory = useAppSelector(state => state.app.history);
+
+  const [selectedDestinations, setSelectedDestinations] = useState<number[]>([
+    history.destination,
+  ]);
 
   const displayName = `${history.files?.[0]?.filename}`;
   const displayDate = new Date(history.timestamp).toLocaleDateString();
@@ -56,46 +72,47 @@ const HistoryDetailScreen = () => {
     //   }
     // });
     setSelectedDestinations([destinationId]);
-    
-    // Update history entry's destination and save to AsyncStorage
+
     try {
-      await updateHistoryDestination(history, destinationId, currentHistory, dispatch);
+      await updateHistoryDestination(
+        history,
+        destinationId,
+        currentHistory,
+        dispatch,
+      );
     } catch (error) {
       console.error('❌ Error updating history destination:', error);
     }
   };
 
   const handleDelete = () => {
-    Alert.alert(
-      'Delete Scan',
-      'Are you sure you want to delete this scan?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
+    Alert.alert('Delete Scan', 'Are you sure you want to delete this scan?', [
+      {
+        text: 'Cancel',
+        style: 'cancel',
+      },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteHistoryEntry(history, currentHistory, dispatch);
+            navigation.goBack();
+          } catch (error) {
+            console.error('❌ Error deleting history entry:', error);
+            Alert.alert('Error', 'Failed to delete scan. Please try again.');
+          }
         },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteHistoryEntry(history, currentHistory, dispatch);
-              navigation.goBack();
-            } catch (error) {
-              console.error('❌ Error deleting history entry:', error);
-              Alert.alert('Error', 'Failed to delete scan. Please try again.');
-            }
-          },
-        },
-      ]
-    );
+      },
+    ]);
   };
-
-
 
   const handleResend = async () => {
     if (selectedDestinations.length === 0) {
-      Alert.alert('No Destinations', 'Please select at least one destination to resend to.');
+      Alert.alert(
+        'No Destinations',
+        'Please select at least one destination to resend to.',
+      );
       return;
     }
 
@@ -112,9 +129,16 @@ const HistoryDetailScreen = () => {
           onPress: async () => {
             try {
               for (const destinationId of selectedDestinations) {
-                await sendFilesApiService.resendToDestination(destinationId, destinations, history, user, settings, dispatch);
+                await sendFilesApiService.resendToDestination(
+                  destinationId,
+                  destinations,
+                  history,
+                  user,
+                  settings,
+                  dispatch,
+                );
               }
-              
+
               Alert.alert('Success', 'Scan has been resent successfully!', [
                 {
                   text: 'OK',
@@ -127,9 +151,262 @@ const HistoryDetailScreen = () => {
             }
           },
         },
-      ]
+      ],
     );
   };
+
+  // handle deeplink if user has to log in again
+  // Dropbox OAuth configuration
+  const redirectUri = 'berri://dropbox-auth';
+  const clientId = 'stli417u8q7kp0a';
+
+  // OneDrive OAuth configuration
+  const oneDriveRedirectUri = 'berri://onedrive-auth';
+  const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+
+  const exchangeDropboxCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl = 'https://api.dropboxapi.com/oauth2/token';
+
+        // IMPORTANT: Use the EXACT same redirect_uri as in the authorization request
+        const exactRedirectUri = 'berri://dropbox-auth'; // Must match authorization request
+        
+        const body = new URLSearchParams({
+          code: authCode,
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          redirect_uri: exactRedirectUri, // Use exact match
+          code_verifier: verifier,
+        });
+
+        console.log('🔄 Token exchange request details:', {
+          authCode: authCode,
+          clientId: clientId,
+          redirectUri: exactRedirectUri,
+          codeVerifierLength: verifier.length,
+          codeVerifierPreview: verifier.substring(0, 15) + '...'
+        });
+
+        console.log('📤 Sending token exchange request to:', tokenUrl);
+        console.log('📤 Request body:', body.toString());
+        
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+        
+        console.log('📥 Token exchange response:', {
+          status: response.status,
+          ok: response.ok,
+          data: data
+        });
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveDropboxToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Create updated settings with new Dropbox tokens
+            const updatedSettings = {
+              ...settings,
+              dropboxAccessToken: tokens.accessToken,
+              dropboxRefreshToken: tokens.refreshToken
+            };
+
+            console.log('🔄 Using fresh Dropbox tokens for resend:', {
+              hasNewAccessToken: !!tokens.accessToken,
+              hasNewRefreshToken: !!tokens.refreshToken
+            });
+
+            try {
+              for (const destinationId of selectedDestinations) {
+                await sendFilesApiService.resendToDestination(
+                  destinationId,
+                  destinations,
+                  history,
+                  user,
+                  updatedSettings, // Use fresh tokens!
+                  dispatch,
+                );
+              }
+
+              Alert.alert('Success', 'Scan has been resent successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.goBack(),
+                },
+              ]);
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save Dropbox tokens:', error);
+          }
+        } else {
+          console.error('❌ Token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during token exchange:', error);
+      }
+    },
+    [clientId, redirectUri, dispatch, navigation],
+  );
+
+  const exchangeOneDriveCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl =
+          'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+
+        const body = new URLSearchParams({
+          code: authCode,
+          client_id: oneDriveClientId,
+          redirect_uri: oneDriveRedirectUri,
+          grant_type: 'authorization_code',
+          code_verifier: verifier,
+        });
+
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveOneDriveToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Create updated settings with new OneDrive tokens
+            const updatedSettings = {
+              ...settings,
+              oneDriveAccessToken: tokens.accessToken,
+              oneDriveRefreshToken: tokens.refreshToken
+            };
+
+            console.log('🔄 Using fresh OneDrive tokens for resend:', {
+              hasNewAccessToken: !!tokens.accessToken,
+              hasNewRefreshToken: !!tokens.refreshToken
+            });
+
+            // Based on screen:
+            try {
+              for (const destinationId of selectedDestinations) {
+                await sendFilesApiService.resendToDestination(
+                  destinationId,
+                  destinations,
+                  history,
+                  user,
+                  updatedSettings, // Use fresh tokens!
+                  dispatch,
+                );
+              }
+
+              Alert.alert('Success', 'Scan has been resent successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.goBack(),
+                },
+              ]);
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save OneDrive tokens:', error);
+          }
+        } else {
+          console.error('❌ OneDrive token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during OneDrive token exchange:', error);
+      }
+    },
+    [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation],
+  );
+
+  useEffect(() => {
+    const handleURL = (url: string) => {
+      if (url.includes('dropbox-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          console.log('🔑 Retrieved code verifier for Dropbox:', codeVerifierOutside);
+          console.log('🔑 Exchanging Dropbox auth code for token:', authCode);
+          exchangeDropboxCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange code for token.',
+          );
+        }
+      } else if (url.includes('onedrive-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeOneDriveCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange OneDrive code for token.',
+          );
+        }
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        setTimeout(() => {
+          Linking.getInitialURL().then(url => {
+            if (url) {
+              handleURL(url);
+            }
+          });
+        }, 100);
+      }
+    };
+
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        handleURL(url);
+      }
+    });
+
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
+      handleURL(url);
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      urlSubscription.remove();
+    };
+  }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
 
   return (
     <Layout type="default" headerTitle={'Detail'} showBackButton={true}>
@@ -145,8 +422,8 @@ const HistoryDetailScreen = () => {
           {history.files && history.files.length > 0 ? (
             history.files.map((file, index) => (
               <View key={index} style={styles.imageContainer}>
-                <Image 
-                  source={{ uri: `file://${file.url}` }} 
+                <Image
+                  source={{ uri: `file://${file.url}` }}
                   style={styles.image}
                   resizeMode="contain"
                 />
@@ -160,44 +437,46 @@ const HistoryDetailScreen = () => {
             </View>
           )}
         </View>
-
-       
       </ScrollView>
-       {/* Bottom Action Bar */}
-        <View style={styles.actionBar}>
-          {/* Delete Button */}
-          <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-            <Image 
-              source={require('../assets/trash.png')} 
-              style={styles.deleteIcon}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+      {/* Bottom Action Bar */}
+      <View style={styles.actionBar}>
+        {/* Delete Button */}
+        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+          <Image
+            source={require('../assets/trash.png')}
+            style={styles.deleteIcon}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
 
-          {/* Destination Icons */}
-          <View style={styles.destinationsContainer}>
-            {[1, 2, 3, 4, 5, 6, 7].map((destinationId) => (
-              <TouchableOpacity
-                key={destinationId}
-                onPress={() => toggleDestination(destinationId)}
-              >
-                <DestinationIcon 
-                  type={destinationId as 1 | 2 | 3 | 4 | 5 | 6 | 7} 
-                  variant={selectedDestinations.includes(destinationId) ? "history-active" : "history"}
-                />
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Resend Button */}
-          <TouchableOpacity style={styles.resendButton} onPress={handleResend}>
-            <Image 
-              source={require('../assets/resend.png')} 
-              style={styles.resendIcon}
-              resizeMode="contain"
-            />
-          </TouchableOpacity>
+        {/* Destination Icons */}
+        <View style={styles.destinationsContainer}>
+          {[1, 2, 3, 4, 5, 6, 7].map(destinationId => (
+            <TouchableOpacity
+              key={destinationId}
+              onPress={() => toggleDestination(destinationId)}
+            >
+              <DestinationIcon
+                type={destinationId as 1 | 2 | 3 | 4 | 5 | 6 | 7}
+                variant={
+                  selectedDestinations.includes(destinationId)
+                    ? 'history-active'
+                    : 'history'
+                }
+              />
+            </TouchableOpacity>
+          ))}
         </View>
+
+        {/* Resend Button */}
+        <TouchableOpacity style={styles.resendButton} onPress={handleResend}>
+          <Image
+            source={require('../assets/resend.png')}
+            style={styles.resendIcon}
+            resizeMode="contain"
+          />
+        </TouchableOpacity>
+      </View>
     </Layout>
   );
 };
@@ -265,7 +544,7 @@ const styles = StyleSheet.create({
     //flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
-    backgroundColor: "rgba(153, 153, 153, 1)",
+    backgroundColor: 'rgba(153, 153, 153, 1)',
     borderRadius: 99,
     paddingHorizontal: 5,
     paddingVertical: 5,

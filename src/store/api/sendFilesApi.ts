@@ -13,21 +13,40 @@ class SendFilesApiService {
   private codeVerifier: string | null = null;
   
   setCodeVerifier = (verifier: string | null) => {
+    console.log("SET CODE VERIFIER:", verifier);
     this.codeVerifier = verifier;
   };
 
   getCodeVerifier = (): string | null => {
+    console.log('🔍 Getting code verifier:', this.codeVerifier ? this.codeVerifier.substring(0, 10) + '...' : 'null');
     return this.codeVerifier;
+  };
+
+  // Clear code verifier after successful token exchange
+  clearCodeVerifier = () => {
+    console.log('🧹 Clearing code verifier after successful token exchange');
+    this.codeVerifier = null;
+  };
+
+  // Debug function to check current state
+  debugCodeVerifierState = () => {
+    console.log('🔍 DEBUG: Current codeVerifier state:', {
+      hasVerifier: !!this.codeVerifier,
+      verifierPreview: this.codeVerifier ? this.codeVerifier.substring(0, 15) + '...' : 'null',
+      verifierLength: this.codeVerifier?.length || 0
+    });
   };
   
   generateCodeVerifier = () => {
     // Generate a random string of 43-128 characters
+    // FIXED: Removed ~ and . characters to prevent URL encoding issues
     const chars =
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
+      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
     let result = '';
     for (let i = 0; i < 128; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
     }
+    console.log('🔑 Generated code verifier (safe chars only):', result.substring(0, 20) + '...');
     return result;
   };
   
@@ -82,7 +101,7 @@ class SendFilesApiService {
         console.log('📤 Resending to Dropbox...');
         
         try {
-          await sendFilesApiService.uploadToDropbox(
+          await this.uploadToDropbox(
             settings.dropboxAccessToken, 
             settings.dropboxRefreshToken, 
             fileName, 
@@ -98,7 +117,7 @@ class SendFilesApiService {
         console.log('📤 Resending to OneDrive...');
 
         try {
-          await sendFilesApiService.uploadToOneDrive(
+          await this.uploadToOneDrive(
             settings.oneDriveAccessToken, 
             settings.oneDriveRefreshToken, 
             fileName, 
@@ -122,24 +141,59 @@ class SendFilesApiService {
 
   // DROPBOX
   // CONNECT (NEEDS DEEPLINK HANDLING )
+    private isConnecting = false; // Prevent duplicate calls
+    
     async connectToDropbox() {
       try {
+        // Prevent duplicate OAuth calls
+        if (this.isConnecting) {
+          console.log('⚠️ OAuth already in progress, skipping duplicate call');
+          return;
+        }
+        
+        this.isConnecting = true;
+        
+        // Clear any previous code verifier to prevent conflicts
+        this.setCodeVerifier(null);
+        console.log('🧹 Cleared previous code verifier');
+        
         const verifier = this.generateCodeVerifier();
         const challenge = await this.generateCodeChallenge(verifier);
         const redirectUri = 'berri://dropbox-auth';
         const clientId = 'stli417u8q7kp0a';
+        
+        // Set the new verifier
         this.setCodeVerifier(verifier);
-  
+        console.log('🔑 New code verifier set:', verifier.substring(0, 10) + '...');
+        
+        // Debug OAuth configuration
+        console.log('🔧 OAuth Configuration:', {
+          clientId,
+          redirectUri,
+          codeVerifierLength: verifier.length,
+          challengeLength: challenge.length,
+          challengeMatchesVerifier: challenge === verifier
+        });
+        
+        // DON'T encode redirect_uri - use plain format for consistency
         const url = `https://www.dropbox.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&token_access_type=offline&code_challenge=${challenge}&code_challenge_method=plain`;
   
+        console.log('🌐 Opening Dropbox OAuth URL...');
+        console.log('🔗 Full OAuth URL:', url);
         const result = await Linking.openURL(url);
         console.log('🎯 Linking.openURL result:', result);
+        
+        // Reset the connecting flag after a delay
+        setTimeout(() => {
+          this.isConnecting = false;
+          console.log('✅ OAuth connection flag reset');
+        }, 5000);
+        
       } catch (error) {
         console.error('❌ Error connecting to Dropbox:', error);
+        this.isConnecting = false; // Reset flag on error
       }
-    };
-
-  // Upload file to Dropbox
+    };  // Upload file to Dropbox
   async uploadToDropbox(accessToken: string, refreshToken: string, fileName: string, filePath: string): Promise<any> {
     try {
       const fileData = await FileSystem.readFile(filePath, 'base64');
@@ -172,14 +226,14 @@ class SendFilesApiService {
               this.uploadToDropbox(token, refreshToken, fileName, filePath); // Retry upload after refreshing token
 
             } else {
-              this.connectToDropbox();
               console.error('❌ Failed to refresh Dropbox access token');
-              Alert.alert('Session Expired', 'Please log in to Dropbox again at the destination setting screen.');
+              this.debugCodeVerifierState();
+              await this.connectToDropbox();
             }
           } catch (refreshError) {
-            this.connectToDropbox();
             console.error('❌ Error refreshing Dropbox access token:', refreshError);
-            Alert.alert('Session Expired', 'Please log in to Dropbox again at the destination setting screen.');
+            this.debugCodeVerifierState();
+            await this.connectToDropbox();
           }
         }
       }
