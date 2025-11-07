@@ -281,42 +281,63 @@ class SendFilesApiService {
   // CONNECT (NEEDS DEEPLINK HANDLING )
     async connectToOneDrive() {
       try {
-        // PKCE parameters for OneDrive
-        const oneDriveCodeVerifier = this.generateCodeVerifier();
-        const oneDriveCodeChallenge = await this.generateCodeChallenge(
-          oneDriveCodeVerifier,
-        );
-  
-        // Store code verifier for later use
-        this.setCodeVerifier(oneDriveCodeVerifier);
-  
-        // OneDrive OAuth URL
-        const scope = 'files.readwrite offline_access';
-        const oneDriveRedirectUri = 'berri://onedrive-auth';
-        const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+        // Prevent duplicate OAuth calls (same as Dropbox)
+        if (this.isConnecting) {
+          console.log('⚠️ OneDrive OAuth already in progress, skipping duplicate call');
+          return;
+        }
         
+        this.isConnecting = true;
+        
+        // Clear any previous code verifier to prevent conflicts
+        this.setCodeVerifier(null);
+        console.log('🧹 Cleared previous OneDrive code verifier');
+        
+        // PKCE parameters for OneDrive
+        const verifier = this.generateCodeVerifier();
+        const challenge = await this.generateCodeChallenge(verifier);
+        const redirectUri = 'berri://onedrive-auth';
+        const clientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+        const scope = 'files.readwrite offline_access';
+  
+        // Set the new verifier
+        this.setCodeVerifier(verifier);
+        console.log('🔑 New OneDrive code verifier set:', verifier.substring(0, 10) + '...');
+        
+        // Debug OAuth configuration
+        console.log('🔧 OneDrive OAuth Configuration:', {
+          clientId,
+          redirectUri,
+          scope,
+          codeVerifierLength: verifier.length,
+          challengeLength: challenge.length,
+          challengeMatchesVerifier: challenge === verifier
+        });
+        
+        // DON'T encode redirect_uri - use plain format for consistency (same as Dropbox)
         const authUrl =
           `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?` +
-          `client_id=${oneDriveClientId}&` +
+          `client_id=${clientId}&` +
           `response_type=code&` +
-          `redirect_uri=${encodeURIComponent(oneDriveRedirectUri)}&` +
+          `redirect_uri=${redirectUri}&` +
           `scope=${encodeURIComponent(scope)}&` +
-          `code_challenge=${oneDriveCodeChallenge}&` +
+          `code_challenge=${challenge}&` +
           `code_challenge_method=plain`;
   
-        console.log('📱 Opening OneDrive auth URL:', authUrl);
-        const supported = await Linking.canOpenURL(authUrl);
-        console.log('📱 Opening OneDrive auth supported url:', supported);
-  
-        //if (supported) {
-          await Linking.openURL(authUrl);
-        // } else {
-        //   console.error('❌ Cannot open OneDrive auth URL', supported);
-        //   Alert.alert('Error', 'Cannot open OneDrive authorization');
-        // }
+        console.log('🌐 Opening OneDrive OAuth URL...');
+        console.log('🔗 Full OneDrive OAuth URL:', authUrl);
+        const result = await Linking.openURL(authUrl);
+        console.log('🎯 OneDrive Linking.openURL result:', result);
+        
+        // Reset the connecting flag after a delay
+        setTimeout(() => {
+          this.isConnecting = false;
+          console.log('✅ OneDrive OAuth connection flag reset');
+        }, 5000);
+        
       } catch (error) {
         console.error('❌ OneDrive auth error:', error);
-        Alert.alert('Error', 'Failed to start OneDrive authorization');
+        this.isConnecting = false; // Reset flag on error
       }
     };
 
@@ -349,11 +370,13 @@ class SendFilesApiService {
               return this.uploadToOneDrive(token, refreshToken, fileName, filePath); // Retry upload after refreshing token
             } else {
               console.error('❌ Failed to refresh OneDrive access token');
-              Alert.alert('Session Expired', 'Please log in to OneDrive again at the destination setting screen.');
+              this.debugCodeVerifierState();
+              await this.connectToOneDrive();
             }
           } catch (refreshError) {
             console.error('❌ Error refreshing OneDrive access token:', refreshError);
-            Alert.alert('Session Expired', 'Please log in to OneDrive again at the destination setting screen.');
+            this.debugCodeVerifierState();
+            await this.connectToOneDrive();
           }
         }
       }

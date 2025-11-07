@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   StyleSheet,
@@ -7,10 +7,18 @@ import {
   Animated,
   ScrollView,
   TextInput,
+  Linking,
+  AppState,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { Layout, Text, HistoryCard } from '../components';
 import { useSelector } from 'react-redux';
+import { useAppDispatch } from '../store/hooks';
+import sendFilesApiService from '../store/api/sendFilesApi';
+import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
+import { updateHistoryDestination } from '../utils/historyUtils';
 
 const HistoryScreen = () => {
   const navigation = useNavigation();
@@ -23,8 +31,13 @@ const HistoryScreen = () => {
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
+  const [isBulkResending, setIsBulkResending] = useState(false);
 
   const history = useSelector((state: any) => state.app.history);
+      const destinations = useSelector((state: any) => state.app.destinations);
+    const user = useSelector((state: any) => state.app.user);
+    const settings = useSelector((state: any) => state.app.settings);
+    const dispatch = useAppDispatch();
   const [historyData, setHistoryData] = useState(history);
 
   useEffect(() => {
@@ -71,12 +84,204 @@ const HistoryScreen = () => {
   };
 
   const selectAllCards = () => {
-    setSelectedCards(historyData.map((item: any) => item.timestamp));
+    setSelectedCards(historyData.map((item: any) => item.timestamp.toString()));
   };
 
   const cancelSelection = () => {
     setIsSelectionMode(false);
     setSelectedCards([]);
+  };
+
+    // Resume bulk resend operation with fresh OAuth tokens
+  const resumeBulkResendWithFreshTokens = useCallback(async (
+    service: 'dropbox' | 'onedrive',
+    freshSettings: any
+  ) => {
+    console.log(`🔄 Resuming bulk resend with fresh ${service} tokens...`);
+    
+    try {
+      // Get the current state of bulk operation
+      const currentHistories = selectedCards.map(cardId => 
+        history.find((item: any) => item.id === cardId)
+      ).filter(Boolean);
+
+      // Filter to only histories that need this specific service
+      const pendingHistories = currentHistories.filter(historyItem => {
+        const destination = destinations.find((d: any) => d.id === historyItem?.destinationId);
+        return destination?.service === service;
+      });
+
+      console.log(`📋 Resuming ${pendingHistories.length} pending ${service} operations...`);
+
+      // Process each pending history item SEQUENTIALLY
+      for (let i = 0; i < pendingHistories.length; i++) {
+        const historyItem = pendingHistories[i];
+        if (!historyItem) continue;
+
+        try {
+          console.log(`📤 [${i + 1}/${pendingHistories.length}] Resending ${historyItem.fileName} to ${service}...`);
+          
+          const destination = destinations.find((d: any) => d.id === historyItem.destinationId);
+          if (!destination) {
+            console.warn(`⚠️ Destination not found for history item ${historyItem.id}`);
+            continue;
+          }
+
+          // Wait for each upload to complete before moving to next
+          await sendFilesApiService.resendToDestination(
+            destination.id,
+            destinations,
+            historyItem,
+            user,
+            freshSettings,
+            dispatch
+          );
+
+          console.log(`✅ [${i + 1}/${pendingHistories.length}] Successfully resent ${historyItem.fileName}`);
+          
+          // Update history entry with fresh timestamp
+          await updateHistoryDestination(
+            historyItem,
+            destination.id,
+            history,
+            dispatch
+          );
+        } catch (error) {
+          console.error(`❌ [${i + 1}/${pendingHistories.length}] Error resending ${historyItem.fileName}:`, error);
+          // Continue with next item even if this one fails
+        }
+      }
+
+      console.log(`✅ Completed bulk resend resume for ${service}`);
+      
+      // Turn off loading state
+      setIsBulkResending(false);
+
+    } catch (error) {
+      console.error(`❌ Critical error during bulk resend resume for ${service}:`, error);
+      setIsBulkResending(false);
+    }
+  }, [selectedCards, history, destinations, user, dispatch, setIsBulkResending]);
+
+    const resendSelectedHistories = async () => {
+    console.log('� Starting bulk resend operation...');
+    
+    // Show loading state
+    setIsBulkResending(true);
+    
+    try {
+
+      console.log("history:", history);
+      console.log("selectedCards:", selectedCards);
+      // Convert selectedCards timestamps to actual history entries
+      const getAllHistories = selectedCards
+        .map((cardId: string) => {
+          const historyItem = history.find(
+            (item: any) => item.timestamp.toString() === cardId,
+          );
+          if (!historyItem) {
+            console.warn(`⚠️ History item not found for timestamp: ${cardId}`);
+            return null;
+          }
+          return historyItem;
+        })
+        .filter(Boolean);
+
+      if (getAllHistories.length === 0) {
+        console.warn('⚠️ No valid history items to resend');
+        setIsBulkResending(false);
+        Alert.alert('Error', 'No valid items selected for resend');
+        return;
+      }
+
+      console.log('📋 Filtered histories to resend:', getAllHistories.length);
+
+      // Group histories by destination for efficient processing
+      const destinationGroups: { [key: number]: any[] } = {};
+      getAllHistories.forEach((historyItem: any) => {
+        const destType = historyItem.destination;
+        if (!destinationGroups[destType]) {
+          destinationGroups[destType] = [];
+        }
+        destinationGroups[destType].push(historyItem);
+      });
+
+      console.log('📊 Destination groups:', Object.keys(destinationGroups).map(key => 
+        `Dest ${key}: ${destinationGroups[parseInt(key, 10)].length} items`
+      ));
+
+      let successCount = 0;
+      let failureCount = 0;
+
+      // Process each destination group SEQUENTIALLY
+      for (const [destType, histories] of Object.entries(destinationGroups)) {
+        console.log(`🎯 Processing destination ${destType} with ${histories.length} histories...`);
+        
+        // Get destination configuration
+        const destinationConfig = destinations.find((dest: any) => dest.type === parseInt(destType, 10));
+        const serviceType = destinationConfig?.destination || 'email';
+
+        // Process each history item SEQUENTIALLY within the group
+        for (let i = 0; i < histories.length; i++) {
+          const historyItem = histories[i];
+          
+          try {
+            console.log(`📤 [${i + 1}/${histories.length}] Processing ${historyItem.files[0]?.filename} to ${serviceType}...`);
+            
+            // Wait for each upload to complete before moving to next
+            await sendFilesApiService.resendToDestination(
+              parseInt(destType, 10),
+              destinations,
+              historyItem,
+              user,
+              settings,
+              dispatch
+            );
+
+            console.log(`✅ [${i + 1}/${histories.length}] Successfully resent ${historyItem.files[0]?.filename}`);
+            successCount++;
+            
+          } catch (error) {
+            console.error(`❌ [${i + 1}/${histories.length}] Error resending ${historyItem.files[0]?.filename}:`, error);
+            failureCount++;
+            
+            // Check if it's an OAuth error that requires re-authentication
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (errorMessage?.includes('refresh_token') || errorMessage?.includes('unauthorized') || errorMessage?.includes('token')) {
+              console.log(`🔐 OAuth error detected for ${serviceType}, stopping bulk operation...`);
+              setIsBulkResending(false);
+              
+              // Let the OAuth flow handle the re-authentication
+              // The resume will be called from the token exchange functions
+              return;
+            }
+            
+            // For other errors, continue with next item
+            continue;
+          }
+        }
+      }
+
+      // All done successfully
+      setIsBulkResending(false);
+      
+      Alert.alert(
+        'Bulk Resend Complete', 
+        `Successfully resent ${successCount} files.${failureCount > 0 ? ` ${failureCount} failed.` : ''}`,
+        [{
+          text: 'OK',
+          onPress: () => {
+            setIsSelectionMode(false);
+            setSelectedCards([]);
+          },
+        }]
+      );
+
+    } catch (error) {
+      console.error('❌ Critical error during bulk resend:', error);
+      setIsBulkResending(false);
+      Alert.alert('Error', 'Failed to complete bulk resend operation. Please try again.');
+    }
   };
 
   // Tab bar elrejtése/megjelenítése selection mode-ban
@@ -96,8 +301,267 @@ const HistoryScreen = () => {
   // custom stuff on top of tabbar
   // https://stackoverflow.com/questions/63108520/how-to-add-components-above-creatematerialtoptabnavigator
 
+
+  // handle deeplink if user has to log in again
+  // Dropbox OAuth configuration
+
+  const clientId = 'stli417u8q7kp0a';
+
+  // OneDrive OAuth configuration
+  const oneDriveRedirectUri = 'berri://onedrive-auth';
+  const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+
+  const exchangeDropboxCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl = 'https://api.dropboxapi.com/oauth2/token';
+
+        // IMPORTANT: Use the EXACT same redirect_uri as in the authorization request
+        const exactRedirectUri = 'berri://dropbox-auth'; // Must match authorization request
+        
+        const body = new URLSearchParams({
+          code: authCode,
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          redirect_uri: exactRedirectUri, // Use exact match
+          code_verifier: verifier,
+        });
+
+        console.log('🔄 Token exchange request details:', {
+          authCode: authCode,
+          clientId: clientId,
+          redirectUri: exactRedirectUri,
+          codeVerifierLength: verifier.length,
+          codeVerifierPreview: verifier.substring(0, 15) + '...'
+        });
+
+        console.log('📤 Sending token exchange request to:', tokenUrl);
+        console.log('📤 Request body:', body.toString());
+        
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+        
+        console.log('📥 Token exchange response:', {
+          status: response.status,
+          ok: response.ok,
+          data: data
+        });
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveDropboxToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Create updated settings with new Dropbox tokens
+            const updatedSettings = {
+              ...settings,
+              dropboxAccessToken: tokens.accessToken,
+              dropboxRefreshToken: tokens.refreshToken
+            };
+
+            console.log('🔄 Using fresh Dropbox tokens for resend:', {
+              hasNewAccessToken: !!tokens.accessToken,
+              hasNewRefreshToken: !!tokens.refreshToken
+            });
+
+            try {
+              // Continue sending files with fresh Dropbox tokens
+              console.log('🔄 Resuming bulk resend with fresh Dropbox tokens...');
+              await resumeBulkResendWithFreshTokens('dropbox', updatedSettings);
+              
+              Alert.alert('Success', 'Files have been resent successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Exit selection mode
+                    setIsSelectionMode(false);
+                    setSelectedCards([]);
+                  },
+                },
+              ]);
+            } catch (error) {
+              console.error('❌ Error resuming bulk resend:', error);
+              Alert.alert('Error', 'Failed to resume sending files. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save Dropbox tokens:', error);
+          }
+        } else {
+          console.error('❌ Token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during token exchange:', error);
+      }
+    },
+    [clientId, dispatch, resumeBulkResendWithFreshTokens, settings],
+  );
+
+  const exchangeOneDriveCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl =
+          'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+
+        const body = new URLSearchParams({
+          code: authCode,
+          client_id: oneDriveClientId,
+          redirect_uri: oneDriveRedirectUri,
+          grant_type: 'authorization_code',
+          code_verifier: verifier,
+        });
+
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveOneDriveToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Create updated settings with new OneDrive tokens
+            const updatedSettings = {
+              ...settings,
+              oneDriveAccessToken: tokens.accessToken,
+              oneDriveRefreshToken: tokens.refreshToken
+            };
+
+            console.log('🔄 Using fresh OneDrive tokens for resend:', {
+              hasNewAccessToken: !!tokens.accessToken,
+              hasNewRefreshToken: !!tokens.refreshToken
+            });
+
+            // Continue sending files with fresh OneDrive tokens
+            try {
+              console.log('🔄 Resuming bulk resend with fresh OneDrive tokens...');
+              await resumeBulkResendWithFreshTokens('onedrive', updatedSettings);
+              
+              Alert.alert('Success', 'Files have been resent successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Exit selection mode
+                    setIsSelectionMode(false);
+                    setSelectedCards([]);
+                  },
+                },
+              ]);
+            } catch (error) {
+              console.error('❌ Error resuming bulk resend:', error);
+              Alert.alert('Error', 'Failed to resume sending files. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save OneDrive tokens:', error);
+          }
+        } else {
+          console.error('❌ OneDrive token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during OneDrive token exchange:', error);
+      }
+    },
+    [oneDriveClientId, dispatch, resumeBulkResendWithFreshTokens, settings],
+  );
+
+  useEffect(() => {
+    const handleURL = (url: string) => {
+      if (url.includes('dropbox-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          console.log('🔑 Retrieved code verifier for Dropbox:', codeVerifierOutside);
+          console.log('🔑 Exchanging Dropbox auth code for token:', authCode);
+          exchangeDropboxCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange code for token.',
+          );
+        }
+      } else if (url.includes('onedrive-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeOneDriveCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange OneDrive code for token.',
+          );
+        }
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        setTimeout(() => {
+          Linking.getInitialURL().then(url => {
+            if (url) {
+              handleURL(url);
+            }
+          });
+        }, 100);
+      }
+    };
+
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        handleURL(url);
+      }
+    });
+
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
+      handleURL(url);
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      urlSubscription.remove();
+    };
+  }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
+
+
   return (
     <View style={styles.screenWrapper}>
+      {/* Loading Overlay for Bulk Resend */}
+      {isBulkResending && (
+        <View style={styles.loadingOverlay}>
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#fff" />
+            <Text style={styles.loadingText}>Sending files...</Text>
+            <Text style={styles.loadingSubtext}>Please wait while we process your files</Text>
+          </View>
+        </View>
+      )}
+      
       <Layout
         type="default"
         headerTitle="History"
@@ -181,12 +645,7 @@ const HistoryScreen = () => {
             >
               <Text style={styles.selectText}>{selectedSort}</Text>
               <Image
-                style={{
-                  marginLeft: 10,
-                  width: 12,
-                  height: 12,
-                  alignSelf: 'center',
-                }}
+                style={styles.dropdownArrow}
                 resizeMode="contain"
                 source={require('../assets/arrow-down.png')}
               />
@@ -292,7 +751,7 @@ const HistoryScreen = () => {
                             isGridView={isGridView}
                             isSelectionMode={isSelectionMode}
                             isSelected={selectedCards.includes(
-                              historyItem.timestamp,
+                              historyItem.timestamp.toString(),
                             )}
                             onToggleSelection={toggleCardSelection}
                           />
@@ -323,7 +782,7 @@ const HistoryScreen = () => {
                           isGridView={isGridView}
                           isSelectionMode={isSelectionMode}
                           isSelected={selectedCards.includes(
-                            historyItem.timestamp,
+                            historyItem.timestamp.toString(),
                           )}
                           onToggleSelection={toggleCardSelection}
                         />
@@ -353,7 +812,7 @@ const HistoryScreen = () => {
                 <Text style={styles.bottomButtonText}>Merge</Text>
               </TouchableOpacity>
 
-              <TouchableOpacity style={styles.bottomButton}>
+              <TouchableOpacity style={styles.bottomButton} onPress={() => resendSelectedHistories()}>
                 <Image
                   source={require('../assets/resend.png')}
                   style={styles.bottomButtonIcon}
@@ -470,6 +929,12 @@ const styles = StyleSheet.create({
   searchContainer: {
     paddingHorizontal: 20,
     paddingBottom: 20,
+  },
+  dropdownArrow: {
+    marginLeft: 10,
+    width: 12,
+    height: 12,
+    alignSelf: 'center',
   },
   searchContainerWithSelection: {
     paddingTop: 120, // Make room for selection header
@@ -755,6 +1220,37 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: '500',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10000,
+  },
+  loadingContainer: {
+    backgroundColor: 'rgba(37, 37, 68, 0.95)',
+    padding: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    minWidth: 200,
+  },
+  loadingText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '600',
+    marginTop: 15,
+    textAlign: 'center',
+  },
+  loadingSubtext: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
 
