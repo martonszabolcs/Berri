@@ -264,7 +264,6 @@ const HistoryScreen = () => {
               setShowDeleteConfirm(false);
               await deleteAllHistory();
             }}
-            message="Are you sure you want to delete all history items?"
           />
         </View>
       </Layout>

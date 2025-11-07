@@ -17,7 +17,6 @@ import {
   Layout,
   Text,
   HistoryCard,
-  DeleteModal,
   SearchInput,
   HistorySelectOverlay,
   HistorySelectAndReorder,
@@ -1116,16 +1115,6 @@ const HistorySelectScreen = () => {
               <Text style={styles.bottomButtonText}>Share</Text>
             </TouchableOpacity>
           </View>
-
-          <DeleteModal
-            visible={showDeleteConfirm}
-            onCancel={() => setShowDeleteConfirm(false)}
-            onConfirm={async () => {
-              setShowDeleteConfirm(false);
-              await deleteAllHistory();
-            }}
-            message="Are you sure you want to delete all history items?"
-          />
         </View>
       </Layout>
     </View>
