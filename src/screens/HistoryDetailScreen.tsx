@@ -132,7 +132,7 @@ const HistoryDetailScreen = () => {
   };
 
   return (
-    <Layout type="default" headerTitle={displayName} showBackButton={true}>
+    <Layout type="default" headerTitle={'Detail'} showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Title and Date */}
         <View style={styles.headerInfo}>
@@ -145,7 +145,6 @@ const HistoryDetailScreen = () => {
           {history.files && history.files.length > 0 ? (
             history.files.map((file, index) => (
               <View key={index} style={styles.imageContainer}>
-                <Text style={styles.fileName}>{file.filename}</Text>
                 <Image 
                   source={{ uri: `file://${file.url}` }} 
                   style={styles.image}
@@ -162,13 +161,16 @@ const HistoryDetailScreen = () => {
           )}
         </View>
 
-        {/* Bottom Action Bar */}
+       
+      </ScrollView>
+       {/* Bottom Action Bar */}
         <View style={styles.actionBar}>
           {/* Delete Button */}
           <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
             <Image 
               source={require('../assets/trash.png')} 
               style={styles.deleteIcon}
+              resizeMode="contain"
             />
           </TouchableOpacity>
 
@@ -192,10 +194,10 @@ const HistoryDetailScreen = () => {
             <Image 
               source={require('../assets/resend.png')} 
               style={styles.resendIcon}
+              resizeMode="contain"
             />
           </TouchableOpacity>
         </View>
-      </ScrollView>
     </Layout>
   );
 };
@@ -247,11 +249,10 @@ const styles = StyleSheet.create({
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.2)',
-    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 20,
+    backgroundColor: 'rgba(37, 37, 68, 1)',
+    gap: 5,
   },
   deleteButton: {
     padding: 8,
@@ -259,13 +260,17 @@ const styles = StyleSheet.create({
   deleteIcon: {
     width: 24,
     height: 24,
-    tintColor: '#FF4444',
   },
   destinationsContainer: {
-    flex: 1,
+    //flex: 1,
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 8,
+    backgroundColor: "rgba(153, 153, 153, 1)",
+    borderRadius: 99,
+    paddingHorizontal: 5,
+    paddingVertical: 5,
+    marginHorizontal: 'auto',
+    gap: 3,
   },
   resendButton: {
     padding: 8,
@@ -273,7 +278,6 @@ const styles = StyleSheet.create({
   resendIcon: {
     width: 24,
     height: 24,
-    tintColor: '#4CAF50',
   },
 });
 
