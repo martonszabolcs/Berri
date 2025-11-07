@@ -34,16 +34,6 @@ type RootStackParamList = {
   RegisterScreen: undefined;
   ForgottenScreen: undefined;
   MainTabs: undefined;
-  HistoryScreen: undefined;
-  HistoryDetailScreen: { 
-    history: {
-      id: string;
-      name: string;
-      createdAt: string;
-      imageUri: string;
-    }
-  };
-  HistorySelectScreen: undefined;
   NewScanStack: undefined;
   DestinationsStack: undefined;
   Destinations: undefined;
@@ -57,6 +47,19 @@ type RootStackParamList = {
   ResetPasswordScreen: undefined;
   SettingsStack: undefined;
   SettingsScreen: undefined;
+  HistorySelectScreen: undefined;
+  HistoryDetailScreen: { 
+    history: {
+      id: string;
+      name: string;
+      createdAt: string;
+      imageUri: string;
+    }
+  };
+};
+
+type HistoryStackParamList = {
+  HistoryScreen: undefined;
 };
 
 const Stack = createStackNavigator<RootStackParamList>();
@@ -71,7 +74,12 @@ const hideHeader = {
 // New Scan Stack Navigator
 const NewScanStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator 
+      screenOptions={{
+        headerShown: false,
+        presentation: 'card',
+        animationTypeForReplace: 'push',
+      }}>
       <Stack.Screen
         name="CameraScreen"
         component={CameraScreen}
@@ -89,7 +97,11 @@ const NewScanStack = () => {
 // Destinations Stack Navigator
 const DestinationsStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator 
+      screenOptions={{
+        headerShown: false,
+        presentation: 'card',
+      }}>
       <Stack.Screen
         name="Destinations"
         component={DestinationsScreen}
@@ -117,7 +129,11 @@ const DestinationsStack = () => {
 // Settings Stack Navigator
 const SettingsStack = () => {
   return (
-    <Stack.Navigator>
+    <Stack.Navigator 
+      screenOptions={{
+        headerShown: false,
+        presentation: 'card',
+      }}>
       <Stack.Screen
         name="SettingsScreen"
         component={SettingsScreen}
@@ -131,6 +147,24 @@ const SettingsStack = () => {
     </Stack.Navigator>
   );
 };
+
+// History stack (only contains the main HistoryScreen)
+const HistoryStack = () => {
+  const HistoryStackNavigator = createStackNavigator<HistoryStackParamList>();
+  return (
+    <HistoryStackNavigator.Navigator 
+      screenOptions={{
+        headerShown: false,
+        presentation: 'card',
+      }}>
+      <HistoryStackNavigator.Screen
+        name="HistoryScreen"
+        component={HistoryScreen}
+        options={hideHeader}
+      />
+    </HistoryStackNavigator.Navigator>
+  );
+}
 
 // Main Tab Navigator
 const MainTabs = () => {
@@ -150,7 +184,7 @@ const MainTabs = () => {
     >
       <Tab.Screen
         name="History"
-        component={HistoryScreen}
+        component={HistoryStack}
         options={{
           tabBarIcon: renderHistoryTabBarIcon,
         }}
@@ -235,7 +269,12 @@ const DrawerNavigator = () => {
 const Navigation = () => {
   return (
     <NavigationContainer>
-      <Stack.Navigator initialRouteName="LaunchScreen">
+      <Stack.Navigator 
+        initialRouteName="LaunchScreen" 
+        screenOptions={{
+          headerShown: false,
+          presentation: 'card',
+        }}>
         <Stack.Screen
           name="LaunchScreen"
           component={LaunchScreen}

@@ -44,7 +44,8 @@ const HistoryCard = ({
     if (isSelectionMode && onToggleSelection) {
       onToggleSelection(history.timestamp);
     } else {
-      navigation.navigate('HistoryDetailScreen', { history });
+      // Navigate via parent navigator to hide tab bar
+      navigation.getParent()?.navigate('HistoryDetailScreen', { history });
     }
   };
 

@@ -247,7 +247,7 @@ const HistoryScreen = () => {
             onClose={() => setIsOverlayMode(false)}
             onSelectMode={() => {
               setIsOverlayMode(false);
-              // Navigate to HistorySelectScreen via root navigator
+              // Navigate to HistorySelectScreen via root navigator (this will hide the tab bar)
               navigation.getParent()?.navigate('HistorySelectScreen');
             }}
             onDeleteAll={() => {
