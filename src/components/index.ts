@@ -20,6 +20,8 @@ export { default as CustomDrawerContent } from './molecules/CustomDrawerContent'
 export { default as DeleteModal } from './molecules/DeleteModal';
 export { default as HistoryMoreFunctions } from './molecules/HistoryMoreFunctions';
 export { default as SearchInput } from './molecules/SearchInput';
+export { default as HistorySelectOverlay } from './molecules/HistorySelectOverlay';
+export { default as HistorySelectAndReorder } from './molecules/HistorySelectAndReorder';
 
 // Icons
 export * from './icons';

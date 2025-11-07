@@ -13,7 +13,7 @@ import {
   Share,
 } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
-import { Layout, Text, HistoryCard, DeleteModal, HistoryMoreFunctions, SearchInput } from '../components';
+import { Layout, Text, HistoryCard, DeleteModal, HistoryMoreFunctions, SearchInput, HistorySelectOverlay, HistorySelectAndReorder } from '../components';
 import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
 import sendFilesApiService from '../store/api/sendFilesApi';
@@ -920,82 +920,24 @@ const HistoryScreen = () => {
           />
 
           {/* Custom Select and Reorder */}
-          <View style={styles.selectAndReorderContainer}>
-            <TouchableOpacity
-              style={styles.selectButton}
-              onPress={toggleSelect}
-            >
-              <Text style={styles.selectText}>{selectedSort}</Text>
-              <Image
-                style={styles.dropdownArrow}
-                resizeMode="contain"
-                source={require('../assets/arrow-down.png')}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.reorderButton}
-              onPress={() => setIsGridView(!isGridView)}
-            >
-              <Image
-                source={require('../assets/arrange.png')}
-                style={styles.reorderIcon}
-                resizeMode="contain"
-              />
-            </TouchableOpacity>
-          </View>
+          <HistorySelectAndReorder
+            selectedSort={selectedSort}
+            isGridView={isGridView}
+            onToggleSelect={toggleSelect}
+            onToggleGridView={() => setIsGridView(!isGridView)}
+          />
 
           {/* Content area that will be covered by overlay */}
           <View style={styles.contentWrapper}>
             {/* Select Overlay */}
-            {isSelectOpen && (
-              <TouchableOpacity
-                style={styles.overlay}
-                activeOpacity={1}
-                onPress={toggleSelect}
-              >
-                <Animated.View
-                  style={[
-                    styles.selectOptions,
-                    {
-                      opacity: selectAnimation,
-                      transform: [
-                        {
-                          translateY: selectAnimation.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [-10, 0],
-                          }),
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <Text style={styles.sortByLabel}>Sort by</Text>
-                  {sortOptions.map(option => (
-                    <TouchableOpacity
-                      key={option}
-                      style={styles.selectOption}
-                      onPress={() => selectOption(option)}
-                    >
-                      <Text
-                        style={[
-                          styles.optionText,
-                          selectedSort === option && styles.selectedOptionText,
-                        ]}
-                      >
-                        {option}
-                      </Text>
-                      {selectedSort === option && (
-                        <Image
-                          source={require('../assets/checkmark.png')}
-                          style={styles.checkmarkIcon}
-                        />
-                      )}
-                    </TouchableOpacity>
-                  ))}
-                </Animated.View>
-              </TouchableOpacity>
-            )}
+            <HistorySelectOverlay
+              visible={isSelectOpen}
+              selectedSort={selectedSort}
+              sortOptions={sortOptions}
+              selectAnimation={selectAnimation}
+              onClose={toggleSelect}
+              onSelectOption={selectOption}
+            />
 
             <View style={styles.content}>
               {historyData.length === 0 ? (
@@ -1164,88 +1106,18 @@ const styles = StyleSheet.create({
     height: 24,
     tintColor: 'white',
   },
-  dropdownArrow: {
-    marginLeft: 10,
-    width: 12,
-    height: 12,
-    alignSelf: 'center',
-  },
   selectContainer: {
     paddingHorizontal: 20,
     paddingBottom: 6, // Reduced padding
   },
-  selectAndReorderContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 6,
-  },
   selectButton: {
     paddingVertical: 8,
-    flex: 1,
-    flexDirection: 'row',
-  },
-  reorderButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-  },
-  reorderIcon: {
-    width: 20,
-    height: 14,
-    tintColor: 'white',
-  },
-  selectText: {
-    fontSize: 16,
   },
   contentWrapper: {
     flex: 1,
     position: 'relative',
   },
-  overlay: {
-    position: 'absolute',
-    top: 0, // Start from top of contentWrapper, not full screen
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(37, 37, 68, 0.86)',
-    zIndex: 1000,
-    paddingTop: 20, // Small margin from select
-    paddingHorizontal: 20,
-  },
-  selectOptions: {
-    //backgroundColor: '#252544',
-    // borderRadius: 15,
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    // borderWidth: 1,
-    // borderColor: 'white',
-    alignSelf: 'flex-start',
-  },
-  sortByLabel: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 10,
-    paddingHorizontal: 10,
-  },
-  selectOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-  },
-  optionText: {
-    fontSize: 16,
-  },
-  selectedOptionText: {
-    color: '#F3CCFBEB',
-  },
-  checkmarkIcon: {
-    width: 16,
-    height: 16,
-    tintColor: '#F3CCFBEB',
-  },
+
   content: {
     flex: 1,
   },
