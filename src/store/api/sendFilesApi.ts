@@ -6,6 +6,7 @@ import { Buffer } from 'buffer';
 import { Alert, Linking } from 'react-native';
 import { saveDropboxToken, saveOneDriveToken } from '../settingsSlice';
 import { refreshUser } from '../appSlice';
+import { uploadAndSendFile } from '../uploadSlice';
 
 // Helper service for file sending API calls
 class SendFilesApiService {
@@ -36,8 +37,90 @@ class SendFilesApiService {
     return verifier; // Using code_challenge_method=plain
   };
 
-  // DROPBOX
+    async resendToDestination(destinationId: number, destinations, history, user, settings, dispatch) {
+    console.log(`📤 Resending to destination ${destinationId}`);
+    
+    // Find the destination configuration
+    const destinationConfig = destinations.find((dest: any) => dest.type === destinationId);
+    const fallbackDestination = { type: destinationId, destination: "email", emails: user.email };
+    const selectedDest = destinationConfig || fallbackDestination;
 
+    // Loop through all files in history entry
+    for (const file of history.files) {
+      const filePath = file.url;
+      const fileName = file.filename;
+      
+      console.log(`📁 Resending file: ${fileName} to ${selectedDest.destination}`);
+
+      if (selectedDest.destination === 'email') {
+        console.log('📧 Resending via email to:', user.email);
+        
+        try {
+          const fileObject = {
+            uri: `file://${filePath}`,
+            name: fileName,
+            type: fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg',
+          };
+          
+          const result = await dispatch(uploadAndSendFile({
+            type: selectedDest.type,
+            file: fileObject
+          }));
+
+          if (uploadAndSendFile.fulfilled.match(result)) {
+            console.log('✅ File resent via email successfully:', result.payload);
+          } else {
+            console.error('❌ Failed to resend file via email:', result.error);
+            throw new Error('Email resend failed');
+          }
+        } catch (error) {
+          console.error('❌ Error resending file via email:', error);
+          throw error;
+        }
+
+      } else if (selectedDest.destination === 'dropbox') {
+        console.log('📤 Resending to Dropbox...');
+        
+        try {
+          await sendFilesApiService.uploadToDropbox(
+            settings.dropboxAccessToken, 
+            settings.dropboxRefreshToken, 
+            fileName, 
+            filePath
+          );
+          console.log('✅ File resent to Dropbox successfully');
+        } catch (error) {
+          console.error('❌ Error resending to Dropbox:', error);
+          throw error;
+        }
+
+      } else if (selectedDest.destination === 'onedrive') {
+        console.log('📤 Resending to OneDrive...');
+
+        try {
+          await sendFilesApiService.uploadToOneDrive(
+            settings.oneDriveAccessToken, 
+            settings.oneDriveRefreshToken, 
+            fileName, 
+            filePath
+          );
+          console.log('✅ File resent to OneDrive successfully');
+        } catch (error) {
+          console.error('❌ Error resending to OneDrive:', error);
+          throw error;
+        }
+
+      } else if (selectedDest.destination === 'google_drive') {
+        console.log('📤 Resending to Google Drive - not implemented yet');
+        throw new Error('Google Drive resend not implemented yet');
+      } else {
+        console.log(`📤 Resending to ${selectedDest.destination} - not implemented yet`);
+        throw new Error(`${selectedDest.destination} resend not implemented yet`);
+      }
+    }
+  };
+
+  // DROPBOX
   // CONNECT (NEEDS DEEPLINK HANDLING )
     async connectToDropbox() {
       try {

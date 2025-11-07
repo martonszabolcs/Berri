@@ -3,6 +3,9 @@ import { View, StyleSheet, ScrollView, Image, TouchableOpacity, Alert } from 're
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Text, DestinationIcon } from '../components';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { uploadAndSendFile } from '../store/uploadSlice';
+import { sendFilesApiService } from '../store/api/sendFilesApi';
 
 interface FileInfo {
   filename: string;
@@ -29,12 +32,17 @@ const HistoryDetailScreen = () => {
   const navigation = useNavigation<HistoryDetailScreenNavigationProp>();
   const route = useRoute<HistoryDetailScreenRouteProp>();
   const { history } = route.params;
+  const dispatch = useAppDispatch();
+  
+  // Redux selectors
+  const destinations = useAppSelector((state) => state.app.destinations);
+  const user = useAppSelector((state) => state.app.user);
+  const settings = useAppSelector((state) => state.app.settings);
   
   // State for selected destinations (1-7) - initialize with the original destination
   const [selectedDestinations, setSelectedDestinations] = useState<number[]>([history.destination]);
 
-  // Create display values from history data
-  const displayName = `Document ${history.destination}`;
+  const displayName = `${history.files?.[0]?.filename}`;
   const displayDate = new Date(history.timestamp).toLocaleDateString();
 
   const toggleDestination = (destinationId: number) => {
@@ -62,6 +70,8 @@ const HistoryDetailScreen = () => {
           style: 'destructive',
           onPress: () => {
             // Here you would typically call your delete API
+            // delete from history and save new stuff to asyncstorage
+
             navigation.goBack();
           },
         },
@@ -69,7 +79,7 @@ const HistoryDetailScreen = () => {
     );
   };
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (selectedDestinations.length === 0) {
       Alert.alert('No Destinations', 'Please select at least one destination to resend to.');
       return;
@@ -85,14 +95,22 @@ const HistoryDetailScreen = () => {
         },
         {
           text: 'Resend',
-          onPress: () => {
-            // Here you would typically call your resend API
-            Alert.alert('Success', 'Scan has been resent successfully!', [
-              {
-                text: 'OK',
-                onPress: () => navigation.navigate('HistoryScreen'),
-              },
-            ]);
+          onPress: async () => {
+            try {
+              for (const destinationId of selectedDestinations) {
+                await sendFilesApiService.resendToDestination(destinationId, destinations, history, user, settings, dispatch);
+              }
+              
+              Alert.alert('Success', 'Scan has been resent successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.navigate('History'),
+                },
+              ]);
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
           },
         },
       ]
