@@ -21,6 +21,8 @@ import {
 import { updateDestinationSettings } from '../store/api/userApiService';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { refreshUser } from '../store/appSlice';
+import sendFilesApiService from '../store/api/sendFilesApi';
+import { getDestinationName, destinations } from '../utils/helpers';
 
 type RootStackParamList = {
   ChangeDestinationScreen: {
@@ -46,34 +48,7 @@ const ChangeDestinationScreen = () => {
   const dispatch = useAppDispatch();
   const [selectedDestination, setSelectedDestination] =
     useState<DestinationType>('Email');
-  const [codeVerifier, setCodeVerifier] = useState<string | null>(null);
-
-  // Dropbox OAuth configuration
-  const redirectUri = 'berri://dropbox-auth';
-  const clientId = 'stli417u8q7kp0a';
-
-  // OneDrive OAuth configuration
-  const oneDriveRedirectUri = 'berri://onedrive-auth';
-  const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
-
-  // PKCE utility functions
-  const generateCodeVerifier = () => {
-    // Generate a random string of 43-128 characters
-    const chars =
-      'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';
-    let result = '';
-    for (let i = 0; i < 128; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
-
-  const generateCodeChallenge = async (verifier: string) => {
-    // For React Native, we'll use plain method for simplicity
-    // In production, you should use SHA256 hashing
-    return verifier; // Using code_challenge_method=plain
-  };
-
+  
   // Helper function to save destination settings
   const saveDestinationSettings = useCallback(async (dest: {
     type: string;
@@ -100,8 +75,17 @@ const ChangeDestinationScreen = () => {
     }
   }, [dispatch]);
 
-  // Exchange authorization code for access token
-  const exchangeCodeForToken = useCallback(
+
+  // 78 to 261 - dropbox and onedrive deeplink authentications
+  // Dropbox OAuth configuration
+  const redirectUri = 'berri://dropbox-auth';
+  const clientId = 'stli417u8q7kp0a';
+
+  // OneDrive OAuth configuration
+  const oneDriveRedirectUri = 'berri://onedrive-auth';
+  const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+
+  const exchangeDropboxCodeForToken = useCallback(
     async (authCode: string, verifier: string) => {
       try {
         const tokenUrl = 'https://api.dropboxapi.com/oauth2/token';
@@ -112,12 +96,6 @@ const ChangeDestinationScreen = () => {
           client_id: clientId,
           redirect_uri: redirectUri,
           code_verifier: verifier,
-        });
-
-        console.log('📤 Token exchange request:', {
-          url: tokenUrl,
-          code: authCode.substring(0, 20) + '...',
-          verifier: verifier.substring(0, 20) + '...',
         });
 
         const response = await fetch(tokenUrl, {
@@ -131,17 +109,6 @@ const ChangeDestinationScreen = () => {
         const data = await response.json();
 
         if (response.ok) {
-          console.log('DATA', data);
-          console.log(
-            '🎉 Access token received:',
-            data.access_token?.substring(0, 20) + '...',
-          );
-          console.log(
-            '🎉 Refresh token received:',
-            data.refresh_token?.substring(0, 20) + '...',
-          );
-
-          // Save the Dropbox tokens to backend via Redux
           try {
             const tokens = {
               accessToken: data.access_token,
@@ -149,20 +116,16 @@ const ChangeDestinationScreen = () => {
             };
 
             await dispatch(saveDropboxToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Based on screen: 
             await saveDestinationSettings({
               type: destinationId,
               destination: 'dropbox',
             });
-            console.log('✅ Dropbox tokens saved to backend successfully!');
-
-            // Clear the code verifier
-            setCodeVerifier(null);
-
-            // Navigate back with success
             navigation.goBack();
           } catch (error) {
             console.error('❌ Failed to save Dropbox tokens:', error);
-            // Handle error - maybe show a toast or alert
           }
         } else {
           console.error('❌ Token exchange failed:', data);
@@ -174,7 +137,6 @@ const ChangeDestinationScreen = () => {
     [clientId, redirectUri, dispatch, navigation, destinationId, saveDestinationSettings],
   );
 
-  // Exchange OneDrive authorization code for access token
   const exchangeOneDriveCodeForToken = useCallback(
     async (authCode: string, verifier: string) => {
       try {
@@ -189,12 +151,6 @@ const ChangeDestinationScreen = () => {
           code_verifier: verifier,
         });
 
-        console.log('📤 OneDrive token exchange request:', {
-          url: tokenUrl,
-          code: authCode.substring(0, 20) + '...',
-          verifier: verifier.substring(0, 20) + '...',
-        });
-
         const response = await fetch(tokenUrl, {
           method: 'POST',
           headers: {
@@ -206,17 +162,6 @@ const ChangeDestinationScreen = () => {
         const data = await response.json();
 
         if (response.ok) {
-          console.log('OneDrive DATA', data);
-          console.log(
-            '🎉 OneDrive access token received:',
-            data.access_token?.substring(0, 20) + '...',
-          );
-          console.log(
-            '🎉 OneDrive refresh token received:',
-            data.refresh_token?.substring(0, 20) + '...',
-          );
-
-          // Save the OneDrive tokens to backend via Redux
           try {
             const tokens = {
               accessToken: data.access_token,
@@ -224,20 +169,16 @@ const ChangeDestinationScreen = () => {
             };
 
             await dispatch(saveOneDriveToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Based on screen:
             await saveDestinationSettings({
               type: destinationId,
               destination: 'onedrive',
             });
-            console.log('✅ OneDrive tokens saved to backend successfully!');
-
-            // Clear the code verifier
-            setCodeVerifier(null);
-
-            // Navigate back with success
             navigation.goBack();
           } catch (error) {
             console.error('❌ Failed to save OneDrive tokens:', error);
-            // Handle error - maybe show a toast or alert
           }
         } else {
           console.error('❌ OneDrive token exchange failed:', data);
@@ -256,7 +197,71 @@ const ChangeDestinationScreen = () => {
     ],
   );
 
-  // Check deeplink
+  useEffect(() => {
+    const handleURL = (url: string) => {
+      if (url.includes('dropbox-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeDropboxCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange code for token.',
+          );
+        }
+      } else if (url.includes('onedrive-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeOneDriveCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange OneDrive code for token.',
+          );
+        }
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        setTimeout(() => {
+          Linking.getInitialURL().then(url => {
+            if (url) {
+              handleURL(url);
+            }
+          });
+        }, 100);
+      }
+    };
+
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        handleURL(url);
+      }
+    });
+
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
+      handleURL(url);
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      urlSubscription.remove();
+    };
+  }, [
+    dispatch,
+    exchangeDropboxCodeForToken,
+    exchangeOneDriveCodeForToken,
+  ]);
+
+
   useEffect(() => {
     console.log('🎯 Route params:', { destination, access_token, token_type });
 
@@ -274,37 +279,6 @@ const ChangeDestinationScreen = () => {
     }
   }, [access_token, token_type, destination]);
 
-  const getDestinationName = (dest: any) => {
-    if (dest?.destination && dest.destination !== 'email') {
-      return (
-        dest.destination.charAt(0).toUpperCase() + dest.destination.slice(1)
-      );
-    }
-    return getFruitName(dest?.type?.toString() || '1');
-  };
-
-  const getFruitName = (type: string) => {
-    switch (type) {
-      case '1':
-        return 'Cherry';
-      case '2':
-        return 'Ananas';
-      case '3':
-        return 'Apple';
-      case '4':
-        return 'Banana';
-      case '5':
-        return 'Orange';
-      case '6':
-        return 'Melone';
-      case '7':
-        return 'Grapes';
-      default:
-        return 'Unknown Fruit';
-    }
-  };
-
-  // Set initial selected destination based on current destination
   useEffect(() => {
     if (destination?.destination) {
       switch (destination.destination.toLowerCase()) {
@@ -324,7 +298,6 @@ const ChangeDestinationScreen = () => {
     }
   }, [destination?.destination]);
 
-  // Get destination image based on type
   const getDestinationImage = (type: string) => {
     switch (type) {
       case '1':
@@ -346,22 +319,12 @@ const ChangeDestinationScreen = () => {
     }
   };
 
-  const destinations: DestinationType[] = [
-    'Google Drive',
-    'Dropbox',
-    'OneDrive',
-    'Email',
-  ];
-
   const handleDestinationSelect = (destinationType: DestinationType) => {
     setSelectedDestination(destinationType);
   };
 
   const handleSave = async () => {
-    console.log('Saving destination:', selectedDestination);
-
     if (selectedDestination === 'Email') {
-      // Set destination to email
       const success = await saveDestinationSettings({
         type: destinationId,
         destination: 'email',
@@ -370,7 +333,6 @@ const ChangeDestinationScreen = () => {
         navigation.goBack();
       }
     } else if (selectedDestination === 'Google Drive') {
-      // Check if user already has Google Drive tokens
       if (user.googleDriveAccessToken) {
         console.log('✅ User already has Google Drive tokens, skipping OAuth');
         const success = await saveDestinationSettings({
@@ -385,9 +347,7 @@ const ChangeDestinationScreen = () => {
         connectToGoogleDrive();
       }
     } else if (selectedDestination === 'Dropbox') {
-      // Check if user already has Dropbox tokens
       if (user.dropboxAccessToken) {
-        console.log('✅ User already has Dropbox tokens, skipping OAuth');
         const success = await saveDestinationSettings({
           type: destinationId,
           destination: 'dropbox',
@@ -396,13 +356,10 @@ const ChangeDestinationScreen = () => {
           navigation.goBack();
         }
       } else {
-        console.log('❌ No Dropbox tokens found, starting OAuth flow');
-        connectToDropbox();
+        sendFilesApiService.connectToDropbox();
       }
     } else if (selectedDestination === 'OneDrive') {
-      // Check if user already has OneDrive tokens
       if (user.oneDriveAccessToken) {
-        console.log('✅ User already has OneDrive tokens, skipping OAuth');
         const success = await saveDestinationSettings({
           type: destinationId,
           destination: 'onedrive',
@@ -411,64 +368,8 @@ const ChangeDestinationScreen = () => {
           navigation.goBack();
         }
       } else {
-        console.log('❌ No OneDrive tokens found, starting OAuth flow');
-        connectToOneDrive();
+        sendFilesApiService.connectToOneDrive();
       }
-    }
-  };
-
-  const connectToDropbox = async () => {
-    try {
-      const verifier = generateCodeVerifier();
-      const challenge = await generateCodeChallenge(verifier);
-
-      setCodeVerifier(verifier);
-
-      const url = `https://www.dropbox.com/oauth2/authorize?client_id=${clientId}&response_type=code&redirect_uri=${redirectUri}&token_access_type=offline&code_challenge=${challenge}&code_challenge_method=plain`;
-
-      const result = await Linking.openURL(url);
-      console.log('🎯 Linking.openURL result:', result);
-    } catch (error) {
-      console.error('❌ Error connecting to Dropbox:', error);
-    }
-  };
-
-  const connectToOneDrive = async () => {
-    try {
-      // PKCE parameters for OneDrive
-      const oneDriveCodeVerifier = generateCodeVerifier();
-      const oneDriveCodeChallenge = await generateCodeChallenge(
-        oneDriveCodeVerifier,
-      );
-
-      // Store code verifier for later use
-      setCodeVerifier(oneDriveCodeVerifier);
-
-      // OneDrive OAuth URL
-      const scope = 'files.readwrite offline_access';
-
-      const authUrl =
-        `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?` +
-        `client_id=${oneDriveClientId}&` +
-        `response_type=code&` +
-        `redirect_uri=${encodeURIComponent(oneDriveRedirectUri)}&` +
-        `scope=${encodeURIComponent(scope)}&` +
-        `code_challenge=${oneDriveCodeChallenge}&` +
-        `code_challenge_method=plain`;
-
-      console.log('📱 Opening OneDrive auth URL:', authUrl);
-      const supported = await Linking.canOpenURL(authUrl);
-      console.log('📱 Opening OneDrive auth supported url:', supported);
-
-      //if (supported) {
-        await Linking.openURL(authUrl);
-      // } else {
-      //   console.error('❌ Cannot open OneDrive auth URL', supported);
-      //   Alert.alert('Error', 'Cannot open OneDrive authorization');
-      // }
-    } catch (error) {
-      console.error('❌ OneDrive auth error:', error);
-      Alert.alert('Error', 'Failed to start OneDrive authorization');
     }
   };
 
@@ -523,9 +424,6 @@ const ChangeDestinationScreen = () => {
       });
       console.log('✅ googledrive tokens saved to backend successfully!');
 
-      // Clear the code verifier
-      setCodeVerifier(null);
-
       // Navigate back with success
       navigation.goBack();
     } catch (error) {
@@ -533,88 +431,6 @@ const ChangeDestinationScreen = () => {
       // Handle error - maybe show a toast or alert
     }
   };
-
-  const handleCancel = () => {
-    navigation.goBack();
-  };
-
-  useEffect(() => {
-    console.log(
-      '🎯 ChangeDestinationScreen mounted - setting up AppState + URL listeners',
-    );
-
-    const handleURL = (url: string) => {
-      console.log('📱 URL received:', url);
-
-      if (url.includes('dropbox-auth')) {
-        console.log('🎉 Dropbox URL detected!', url);
-        const codeMatch = url.match(/code=([^&]+)/);
-        if (codeMatch && codeVerifier) {
-          const authCode = codeMatch[1];
-
-          exchangeCodeForToken(authCode, codeVerifier);
-        } else if (codeMatch && !codeVerifier) {
-          console.error(
-            '❌ Code verifier not found! Cannot exchange code for token.',
-          );
-        }
-      } else if (url.includes('onedrive-auth')) {
-        console.log('🎉 OneDrive URL detected!', url);
-        const codeMatch = url.match(/code=([^&]+)/);
-        if (codeMatch && codeVerifier) {
-          const authCode = codeMatch[1];
-
-          exchangeOneDriveCodeForToken(authCode, codeVerifier);
-        } else if (codeMatch && !codeVerifier) {
-          console.error(
-            '❌ Code verifier not found! Cannot exchange OneDrive code for token.',
-          );
-        }
-      }
-    };
-
-    const handleAppStateChange = (nextAppState: string) => {
-      if (nextAppState === 'active') {
-        setTimeout(() => {
-          Linking.getInitialURL().then(url => {
-            console.log('🔍 getInitialURL after app became active:', url);
-            if (url) {
-              handleURL(url);
-            }
-          });
-        }, 100);
-      }
-    };
-
-    Linking.getInitialURL().then(url => {
-      if (url) {
-        console.log('🔍 Initial URL on mount:', url);
-        handleURL(url);
-      }
-    });
-
-    const appStateSubscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange,
-    );
-
-    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
-      handleURL(url);
-    });
-
-    console.log('✅ All listeners set up successfully');
-
-    return () => {
-      console.log('🧹 Cleaning up AppState and URL listeners');
-      appStateSubscription.remove();
-      urlSubscription.remove();
-    };
-  }, [
-    codeVerifier,
-    dispatch,
-    exchangeCodeForToken,
-    exchangeOneDriveCodeForToken,
-  ]); // Added all dependencies
 
   return (
     <Layout
@@ -663,7 +479,7 @@ const ChangeDestinationScreen = () => {
             title="Cancel"
             variant="outline"
             size="large"
-            onPress={handleCancel}
+            onPress={() => navigation.goBack()}
           />
         </View>
       </ScrollView>

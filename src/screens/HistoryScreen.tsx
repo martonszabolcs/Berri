@@ -37,7 +37,7 @@ const HistoryScreen = () => {
         : true,
     );
     setHistoryData(filtered);
-  }, [history]);
+  }, [history, searchText]);
 
   const sortOptions = ['Newest scan', 'Oldest scan', 'Alphabetical order'];
 
@@ -62,10 +62,11 @@ const HistoryScreen = () => {
   };
 
   const toggleCardSelection = (cardId: string | number) => {
+    const cardIdStr = String(cardId);
     setSelectedCards(prev =>
-      prev.includes(cardId)
-        ? prev.filter(id => id !== cardId)
-        : [...prev, cardId],
+      prev.includes(cardIdStr)
+        ? prev.filter(id => id !== cardIdStr)
+        : [...prev, cardIdStr],
     );
   };
 
