@@ -270,7 +270,7 @@ const Navigation = () => {
   return (
     <NavigationContainer>
       <Stack.Navigator 
-        initialRouteName="LaunchScreen" 
+        initialRouteName="MainTabs" 
         screenOptions={{
           headerShown: false,
           presentation: 'card',
