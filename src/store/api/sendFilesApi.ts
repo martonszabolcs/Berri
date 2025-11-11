@@ -129,9 +129,21 @@ class SendFilesApiService {
           throw error;
         }
 
-      } else if (selectedDest.destination === 'google_drive') {
-        console.log('📤 Resending to Google Drive - not implemented yet');
-        throw new Error('Google Drive resend not implemented yet');
+      } else if (selectedDest.destination === 'googledrive') {
+        console.log('📤 Resending to Google Drive...');
+
+        try {
+          await this.uploadToGoogleDrive(
+            settings.googleDriveAccessToken, 
+            settings.googleDriveRefreshToken, 
+            fileName, 
+            filePath
+          );
+          console.log('✅ File resent to Google Drive successfully');
+        } catch (error) {
+          console.error('❌ Error resending to Google Drive:', error);
+          throw error;
+        }
       } else {
         console.log(`📤 Resending to ${selectedDest.destination} - not implemented yet`);
         throw new Error(`${selectedDest.destination} resend not implemented yet`);
@@ -425,6 +437,67 @@ class SendFilesApiService {
     }
   }
 
+  // GOOGLE DRIVE
+  async uploadToGoogleDrive(accessToken: string, refreshToken: string, fileName: string, filePath: string): Promise<any> {
+    try {
+      const fileData = await FileSystem.readFile(filePath, 'base64');
+      const fileBuffer = Buffer.from(fileData, 'base64');
+
+      // Determine MIME type based on file extension
+      const mimeType = fileName.toLowerCase().endsWith('.pdf') ? 'application/pdf' : 'image/jpeg';
+
+      // Create metadata for Google Drive
+      const metadata = {
+        name: fileName,
+      };
+
+      // Create proper multipart boundary
+      const boundary = `----formdata-berri-${Date.now()}`;
+      
+      // Build multipart body manually for proper Google Drive API format
+      let body = '';
+      
+      // Add metadata part
+      body += `--${boundary}\r\n`;
+      body += `Content-Type: application/json\r\n\r\n`;
+      body += `${JSON.stringify(metadata)}\r\n`;
+      
+      // Add file part
+      body += `--${boundary}\r\n`;
+      body += `Content-Type: ${mimeType}\r\n\r\n`;
+      
+      // Convert body parts to Buffer and combine
+      const bodyStart = Buffer.from(body, 'utf8');
+      const bodyEnd = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+      
+      // Combine all parts
+      const fullBody = Buffer.concat([bodyStart, fileBuffer, bodyEnd]);
+
+      const response = await fetch(
+        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': `multipart/related; boundary=${boundary}`,
+          },
+          body: fullBody,
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Google Drive API Error:', errorText);
+        throw new Error(`Google Drive upload failed: ${response.status} ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error: any) {
+      console.error('Google Drive upload error:', error.message);
+      // For now, just throw the error until refresh token method is implemented
+      throw error;
+    }
+  }
   
   // Upload file and send to destination emails
   async uploadFileAndSendToRecipients(

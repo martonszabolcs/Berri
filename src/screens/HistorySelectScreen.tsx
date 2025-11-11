@@ -20,6 +20,7 @@ import {
   SearchInput,
   HistorySelectOverlay,
   HistorySelectAndReorder,
+  Button,
 } from '../components';
 import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
@@ -931,18 +932,19 @@ const HistorySelectScreen = () => {
 
       <Layout>
         <View style={styles.selectionHeader}>
-          <TouchableOpacity onPress={cancelSelection}>
-            <Text style={styles.cancelText}>Cancel</Text>
-          </TouchableOpacity>
+          <Button onPress={cancelSelection} 
+          variant="text-white"
+          title="Cancel"
+          />
+           
           <Text style={styles.selectedCountText}>
             {selectedCards.length} selected
           </Text>
-          <TouchableOpacity
-            onPress={selectAllCards}
-            style={styles.selectButton}
-          >
-            <Text style={styles.selectAllText}>Select All</Text>
-          </TouchableOpacity>
+          <Button onPress={selectAllCards} 
+          variant="text-white"
+          title="Select All"
+          />
+         
         </View>
 
         <View style={styles.container}>
@@ -1186,19 +1188,9 @@ const styles = StyleSheet.create({
     paddingBottom: 10,
     backgroundColor: '#252544',
   },
-  cancelText: {
-    color: '#3b82f6',
-    fontSize: 16,
-    fontWeight: '600',
-  },
   selectedCountText: {
     fontSize: 18,
-    fontWeight: 'bold',
-  },
-  selectAllText: {
-    color: '#3b82f6',
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: 'normal',
   },
   // Selection Bottom Bar Styles
   selectionBottomBar: {

@@ -48,33 +48,32 @@ const ChangeDestinationScreen = () => {
   const dispatch = useAppDispatch();
   const [selectedDestination, setSelectedDestination] =
     useState<DestinationType>('Email');
-  
-  // Helper function to save destination settings
-  const saveDestinationSettings = useCallback(async (dest: {
-    type: string;
-    destination: string;
-  }) => {
-    try {
-      console.log('🚀 Saving destination settings:', dest);
-      const success = await updateDestinationSettings(dest.type, {
-        destination: dest.destination,
-      });
-      if (success) {
-        console.log('✅ Destination settings saved successfully');
-        
-        // Refresh user data to get updated destinations
-        await dispatch(refreshUser());
-        console.log('✅ User data refreshed after destination save');
-      } else {
-        console.error('❌ Failed to save destination settings');
-      }
-      return success;
-    } catch (error) {
-      console.error('❌ Error saving destination settings:', error);
-      return false;
-    }
-  }, [dispatch]);
 
+  // Helper function to save destination settings
+  const saveDestinationSettings = useCallback(
+    async (dest: { type: string; destination: string }) => {
+      try {
+        console.log('🚀 Saving destination settings:', dest);
+        const success = await updateDestinationSettings(dest.type, {
+          destination: dest.destination,
+        });
+        if (success) {
+          console.log('✅ Destination settings saved successfully');
+
+          // Refresh user data to get updated destinations
+          await dispatch(refreshUser());
+          console.log('✅ User data refreshed after destination save');
+        } else {
+          console.error('❌ Failed to save destination settings');
+        }
+        return success;
+      } catch (error) {
+        console.error('❌ Error saving destination settings:', error);
+        return false;
+      }
+    },
+    [dispatch],
+  );
 
   // 78 to 261 - dropbox and onedrive deeplink authentications
   // Dropbox OAuth configuration
@@ -118,7 +117,7 @@ const ChangeDestinationScreen = () => {
             await dispatch(saveDropboxToken(tokens)).unwrap();
             sendFilesApiService.setCodeVerifier(null);
 
-            // Based on screen: 
+            // Based on screen:
             await saveDestinationSettings({
               type: destinationId,
               destination: 'dropbox',
@@ -134,7 +133,14 @@ const ChangeDestinationScreen = () => {
         console.error('❌ Error during token exchange:', error);
       }
     },
-    [clientId, redirectUri, dispatch, navigation, destinationId, saveDestinationSettings],
+    [
+      clientId,
+      redirectUri,
+      dispatch,
+      navigation,
+      destinationId,
+      saveDestinationSettings,
+    ],
   );
 
   const exchangeOneDriveCodeForToken = useCallback(
@@ -255,12 +261,7 @@ const ChangeDestinationScreen = () => {
       appStateSubscription.remove();
       urlSubscription.remove();
     };
-  }, [
-    dispatch,
-    exchangeDropboxCodeForToken,
-    exchangeOneDriveCodeForToken,
-  ]);
-
+  }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
 
   useEffect(() => {
     console.log('🎯 Route params:', { destination, access_token, token_type });
@@ -388,25 +389,37 @@ const ChangeDestinationScreen = () => {
 
       saveTokens(tokens.accessToken, tokens.refreshToken || '');
     } else {
-      GoogleSignin.configure({
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
-        webClientId:
-          '571222670623-j01rg9tpotcm9jc3acl9k7rkph41h1si.apps.googleusercontent.com',
-        offlineAccess: true, // kell, ha refresh tokent akarsz
-        forceCodeForRefreshToken: true, // szintén ajánlott
-      });
+      // GoogleSignin.configure({
+      //     scopes: ['https://www.googleapis.com/auth/drive.file'],
+      //     webClientId:
+      //      '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
+      //     offlineAccess: true,
+      //     forceCodeForRefreshToken: true,
+      //   });
 
-      const userInfo = await GoogleSignin.signIn();
-      console.log('userInfo', userInfo);
-      const tokens = await GoogleSignin.getTokens();
-      console.log('tokens', tokens);
+      try {
+        await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+        const userInfo = await GoogleSignin.signIn();
+        console.log('userInfo', userInfo);
+
+        try {
+          const tokens = await GoogleSignin.getTokens();
+          console.log('tokens', tokens);
+          saveTokens(tokens.accessToken, tokens.refreshToken || '');
+
+        } catch (error) {
+          console.log('GOOOOOGLE error', error);
+        }
+      } catch (error) {
+        console.log('GOOOOOGLE error', JSON.stringify(error));
+      }
+
       // const userInfo = await GoogleSignin.signIn();
       // const tokens = await GoogleSignin.getTokens();
       // console.log('userInfo', userInfo);
 
       // console.log('tokens', tokens);
 
-      saveTokens(tokens.accessToken, tokens.refreshToken || '');
     }
   };
 
@@ -431,6 +444,27 @@ const ChangeDestinationScreen = () => {
       // Handle error - maybe show a toast or alert
     }
   };
+
+  useEffect(() => {
+    console.log('Selected destination changed:', selectedDestination);
+
+    try {
+      GoogleSignin.configure({
+        scopes: ['https://www.googleapis.com/auth/drive.file'],
+        webClientId:
+        //  '827173339361-bl3r96gj06s2kofp94fufmlc13vnhvuf.apps.googleusercontent.com',
+        '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
+        offlineAccess: true,
+        forceCodeForRefreshToken: true,
+        hostedDomain: '', // ne legyen kitöltve
+        loginHint: '', // ne legyen kitöltve
+      });
+
+      console.log('after configure');
+    } catch (error) {
+      console.error('GOOGLE SIGNIN CONFIGURE ERROR', error);
+    }
+  }, []);
 
   return (
     <Layout

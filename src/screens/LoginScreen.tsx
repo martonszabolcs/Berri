@@ -22,7 +22,7 @@ type LoginScreenNavigationProp = StackNavigationProp<
 
 const LoginScreen = () => {
   const [email, setEmail] = useState('weruss.kis@gmail.com');
-  const [password, setPassword] = useState('1234Aa!!!');
+  const [password, setPassword] = useState('1234Aa!!');
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<LoginScreenNavigationProp>();
   const dispatch = useAppDispatch();
@@ -50,11 +50,11 @@ const LoginScreen = () => {
         navigation.replace('MainTabs');
       } else {
         console.error('❌ LoginScreen: Login failed', result.error);
-        Alert.alert('Hiba', result.error.message || 'Bejelentkezési hiba');
+        Alert.alert('Error', result.error.message || 'Login error');
       }
     } catch (error: any) {
       console.error('❌ LoginScreen: Login exception', error);
-      Alert.alert('Hiba', 'Bejelentkezési hiba történt!');
+      Alert.alert('Error', 'Login error');
     } finally {
       setIsLoading(false);
     }
