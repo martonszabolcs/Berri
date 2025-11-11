@@ -50,22 +50,22 @@ const ResetPasswordScreen = () => {
     const codeString = code.join('');
     
     if (codeString.length !== 6) {
-      Alert.alert('Hiba', 'Kérlek add meg a 6 karakteres kódot!');
+      Alert.alert('Error', 'Please enter the 6-character code sent to your email!');
       return;
     }
 
     if (!newPassword || !confirmPassword) {
-      Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
+      Alert.alert('Error', 'Please fill in all fields!');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Hiba', 'A jelszavak nem egyeznek!');
+      Alert.alert('Error', 'Passwords do not match!');
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Hiba', 'A jelszónak legalább 6 karakter hosszúnak kell lennie!');
+      Alert.alert('Error', 'Password must be at least 6 characters long!');
       return;
     }
 
@@ -78,8 +78,9 @@ const ResetPasswordScreen = () => {
       if (resetPassword.fulfilled.match(result)) {
         console.log('✅ ResetPasswordScreen: Reset password successful');
         Alert.alert(
-          'Sikeres változtatás',
-          'A jelszavad sikeresen megváltozott!',
+                  'Success',
+                  'Your password has been updated successfully!',
+               
           [
             {
               text: 'OK',
@@ -89,26 +90,26 @@ const ResetPasswordScreen = () => {
         );
       } else {
         console.error('❌ ResetPasswordScreen: Reset password failed', result.error);
-        Alert.alert('Hiba', result.error.message || 'Hiba történt a jelszó megváltoztatása során!');
+        Alert.alert('Error', result.error.message || 'Something went wrong while resetting your password!');
       }
     } catch (error) {
       console.error('❌ ResetPasswordScreen: Reset password exception', error);
-      Alert.alert('Hiba', 'Hiba történt a jelszó megváltoztatása során!');
+      Alert.alert('Error', 'Something went wrong while resetting your password!');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    <Layout type="auth" headerTitle="Jelszó visszaállítása" showBackButton={true}>
+    <Layout type="auth" headerTitle="Reset password" showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         <View style={styles.content}>
           <Text style={styles.instructionText}>
-            Add meg a 6 karakteres kódot amit emailben küldtünk, és válassz új jelszót.
+            Give the 6-character code we sent to your email, and choose a new password.
           </Text>
 
           <View style={styles.formSection}>
-            <Text style={styles.sectionTitle}>Visszaállítási kód</Text>
+            <Text style={styles.sectionTitle}>Code</Text>
             <View style={styles.codeContainer}>
               {code.map((digit, index) => (
                 <RNTextInput
@@ -128,16 +129,16 @@ const ResetPasswordScreen = () => {
               ))}
             </View>
             
-            <Text style={styles.sectionTitle}>Új jelszó</Text>
+            <Text style={styles.sectionTitle}>New password</Text>
             <TextInput
-              placeholder="Új jelszó"
+              placeholder="Password"
               value={newPassword}
               onChangeText={setNewPassword}
               secureTextEntry
             />
             
             <TextInput
-              placeholder="Új jelszó megerősítése"
+              placeholder="Confirm new password"
               value={confirmPassword}
               onChangeText={setConfirmPassword}
               secureTextEntry
@@ -145,7 +146,7 @@ const ResetPasswordScreen = () => {
           </View>
 
           <Button
-            title={isLoading ? 'Mentés...' : 'Jelszó megváltoztatása'}
+            title={isLoading ? 'Loading...' : 'Save'}
             variant="normal"
             size="medium"
             onPress={handleResetPassword}

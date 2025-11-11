@@ -60,6 +60,7 @@ const Layout = ({
       source={getBackgroundImage()}
       style={[styles.container, style]}
       resizeMode="cover"
+      loadingIndicatorSource={getBackgroundImage()} // Gyorsabb betöltés
     >
       <StatusBar backgroundColor={'#252544'} barStyle={'light-content'} />
       {isDarkType && <BackgroundOverlay />}
@@ -85,6 +86,7 @@ const Layout = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: '#252544', // Alapértelmezett háttérszín a kép betöltése alatt
   },
   content: {
     flex: 1,

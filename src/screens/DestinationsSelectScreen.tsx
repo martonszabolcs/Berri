@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { uploadAndSendFile } from '../store/uploadSlice';
 import { sendFilesApiService } from '../store/api/sendFilesApi';
 import { setHistory } from '../store/appSlice';
@@ -15,6 +15,7 @@ type RouteParams = {
 
 const DestinationSelectScreen = () => {
   const route = useRoute();
+  const navigation = useNavigation();
   const dispatch = useAppDispatch();
   const { savedFilePath, destinationType = 1 } = route.params as RouteParams;
   
@@ -111,6 +112,7 @@ const DestinationSelectScreen = () => {
 
         if (uploadAndSendFile.fulfilled.match(result)) {
           console.log('✅ File sent successfully:', result.payload);
+          navigation.navigate('History');
         } else {
           console.error('❌ Failed to send file:', result.error);
         }
@@ -146,6 +148,8 @@ const DestinationSelectScreen = () => {
       // Handle other destination types (Google Drive, Dropbox, etc.)
       console.log(`📤 Sending to ${selectedDest.destination} - not implemented yet`);
     }
+
+    navigation.navigate('History');
   }; 
 
 

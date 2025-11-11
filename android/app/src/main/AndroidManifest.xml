@@ -31,6 +31,7 @@
             <data android:scheme="berri" android:host="onedrive-auth" />
             <data android:scheme="berri" android:host="dropbox-auth" />
             <data android:scheme="berri" />
+            <data android:scheme="https" />
         </intent-filter>
       </activity>
     </application>

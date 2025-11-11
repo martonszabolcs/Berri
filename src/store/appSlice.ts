@@ -152,6 +152,25 @@ export const resetPassword = createAsyncThunk(
   }
 );
 
+export const updatePassword = createAsyncThunk(
+  'app/updatePassword',
+  async ({ password }: { password: string }) => {
+    try {
+      console.log('🚀 appSlice: updatePassword thunk started');
+      const { updatePassword: updatePasswordApi } = await import('./api/userApiService');
+      const success = await updatePasswordApi(password);
+      if (!success) {
+        throw new Error('Failed to update password');
+      }
+      console.log('✅ appSlice: updatePassword successful');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ appSlice: updatePassword failed', error);
+      throw error;
+    }
+  }
+);
+
 export const forgotPassword = createAsyncThunk(
   'app/forgotPassword',
   async ({ email }: { email: string }) => {
@@ -309,6 +328,7 @@ const appSlice = createSlice({
             name: action.payload.user.name,
             email: action.payload.user.email,
             emailVerified: action.payload.user.emailVerified,
+            createdAt: action.payload.user.createdAt,
           };
           state.isAuthenticated = true;
         }

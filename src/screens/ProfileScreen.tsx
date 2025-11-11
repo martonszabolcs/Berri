@@ -6,10 +6,11 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Rect, LinearGradient, Stop, Defs } from 'react-native-svg';
 import { Layout, Header, Button, Text, AvatarIcon } from '../components';
 import { useAppSelector } from '../store/hooks';
+import {format} from 'date-fns';
 
 type ProfileStackParamList = {
   ProfileScreen: undefined;
-  ResetPasswordScreen: undefined;
+  UpdatePasswordScreen: undefined;
   AuthScreen: undefined;
 };
 
@@ -20,7 +21,7 @@ const ProfileScreen = () => {
   const user = useAppSelector((state) => state.app.user);
   const userEmail = user?.email || '';
   const userName = user?.name || '';
-  const userCreatedAt = user?.createdAt || '';
+  const userCreatedAt = user?.createdAt || new Date();
 
   const handleLogout = async () => {
     try {
@@ -35,7 +36,7 @@ const ProfileScreen = () => {
   };
 
   const handleResetPassword = () => {
-    navigation.navigate('ResetPasswordScreen');
+    navigation.navigate('UpdatePasswordScreen');
   };
 
   const handleDeleteAccount = () => {
@@ -64,7 +65,7 @@ const ProfileScreen = () => {
         rightComponent={
           <Button
             title="Log out"
-            variant="text"
+            variant="text-white"
             size="small"
             onPress={() => handleLogout()}
             textStyle={styles.logoutButtonText}
@@ -81,7 +82,7 @@ const ProfileScreen = () => {
               size={100}
             />
             <Text style={styles.userName}>{userName}</Text>
-            <Text style={styles.joinedText}>Joined {userCreatedAt}</Text>
+            <Text style={styles.joinedText}>Joined in {format(new Date(userCreatedAt), "LLLL yyyy")}</Text>
           </View>
 
           {/* User Details Boxes */}
