@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { View, StyleSheet, Alert, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { TextInput, Button, Layout, Text } from '../components';
+import { TextInput, Button, Layout, LiText } from '../components';
 import { useAppDispatch } from '../store/hooks';
 import { registerUser } from '../store/appSlice';
 import React from 'react';
@@ -18,19 +18,6 @@ type RegisterScreenNavigationProp = StackNavigationProp<
   RootStackParamList,
   'RegisterScreen'
 >;
-
-interface LiTextProps {
-  text: string;
-}
-
-const LiText = ({ text }: LiTextProps) => {
-  return (
-    <View style={styles.liContainer}>
-      <View style={styles.bullet} />
-      <Text>{text}</Text>
-    </View>
-  );
-};
 
 const RegisterScreen = () => {
   const [name, setName] = useState('');
@@ -76,11 +63,14 @@ const RegisterScreen = () => {
               text: 'OK',
               onPress: () => navigation.navigate('LoginScreen'),
             },
-          ]
+          ],
         );
       } else {
         console.error('❌ RegisterScreen: Registration failed', result.error);
-        Alert.alert('Hiba', result.error.message || 'Regisztrációs hiba történt!');
+        Alert.alert(
+          'Hiba',
+          result.error.message || 'Regisztrációs hiba történt!',
+        );
       }
     } catch (error: any) {
       console.error('❌ RegisterScreen: Registration exception', error);
@@ -172,18 +162,6 @@ const styles = StyleSheet.create({
   },
   input: {
     marginBottom: 24,
-  },
-  liContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  bullet: {
-    marginRight: 8,
-    width: 10,
-    height: 10,
-    borderRadius: 20,
-    backgroundColor: 'white',
   },
   loginButton: {
     marginTop: 16,

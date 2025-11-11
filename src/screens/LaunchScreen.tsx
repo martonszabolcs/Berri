@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { StyleSheet, Image } from 'react-native';
+import { StyleSheet, Image, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout } from '../components';
@@ -50,11 +50,13 @@ const LaunchScreen = () => {
 
   return (
     <Layout type="default">
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
       <Image
         resizeMode="contain"
         source={require('../assets/logo.png')}
         style={styles.logo}
       />
+      </View>
     </Layout>
   );
 };

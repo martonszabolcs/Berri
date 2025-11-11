@@ -1,8 +1,9 @@
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, DarkTheme } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { CustomDrawerContent, HistoryTabBarIcon, NewScanTabBarIcon, DestinationsTabBarIcon } from '../components';
+import { CardStyleInterpolators } from '@react-navigation/stack';
 
 // Import screens
 import CameraScreen from '../screens/CameraScreen';
@@ -20,6 +21,7 @@ import DestinationScreen from '../screens/DestinationScreen';
 import ChangeDestinationScreen from '../screens/ChangeDestinationScreen';
 import ChangeRecipientScreen from '../screens/ChangeRecipientScreen';
 import ProfileScreen from '../screens/ProfileScreen';
+import UpdatePasswordScreen from '../screens/UpdatePasswordScreen';
 import HowToScreen from '../screens/HowToScreen';
 import FileNamingScreen from '../screens/FileNamingScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
@@ -42,6 +44,7 @@ type RootStackParamList = {
   ChangeDestinationScreen: { destinationId: string };
   ChangeRecipientScreen: { destinationId: string };
   ProfileScreen: undefined;
+  UpdatePasswordScreen: undefined;
   HowToScreen: undefined;
   FileNamingScreen: undefined;
   ResetPasswordScreen: undefined;
@@ -71,15 +74,17 @@ const hideHeader = {
   gestureEnabled: true,
 };
 
+const screenOptions = {
+  headerShown: false,
+  presentation: 'transparentModal',
+  cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid, // Fade animáció a fehér sáv elkerülésére
+};
+
 // New Scan Stack Navigator
 const NewScanStack = () => {
   return (
     <Stack.Navigator 
-      screenOptions={{
-        headerShown: false,
-        presentation: 'card',
-        animationTypeForReplace: 'push',
-      }}>
+      screenOptions={screenOptions}>
       <Stack.Screen
         name="CameraScreen"
         component={CameraScreen}
@@ -98,10 +103,7 @@ const NewScanStack = () => {
 const DestinationsStack = () => {
   return (
     <Stack.Navigator 
-      screenOptions={{
-        headerShown: false,
-        presentation: 'card',
-      }}>
+      screenOptions={screenOptions}>
       <Stack.Screen
         name="Destinations"
         component={DestinationsScreen}
@@ -131,8 +133,26 @@ const SettingsStack = () => {
   return (
     <Stack.Navigator 
       screenOptions={{
-        headerShown: false,
-        presentation: 'card',
+        ...screenOptions,
+        cardStyleInterpolator: () => ({
+          cardStyle: {
+            opacity: 1, // Azonnali megjelenés animáció nélkül
+          },
+        }),
+        transitionSpec: {
+          open: {
+            animation: 'timing',
+            config: {
+              duration: 1, // Minimális animációs idő
+            },
+          },
+          close: {
+            animation: 'timing',
+            config: {
+              duration: 1,
+            },
+          },
+        },
       }}>
       <Stack.Screen
         name="SettingsScreen"
@@ -153,10 +173,7 @@ const HistoryStack = () => {
   const HistoryStackNavigator = createStackNavigator<HistoryStackParamList>();
   return (
     <HistoryStackNavigator.Navigator 
-      screenOptions={{
-        headerShown: false,
-        presentation: 'card',
-      }}>
+      screenOptions={screenOptions}>
       <HistoryStackNavigator.Screen
         name="HistoryScreen"
         component={HistoryScreen}
@@ -171,7 +188,7 @@ const MainTabs = () => {
   return (
     <Tab.Navigator
       screenOptions={{
-        headerShown: false,
+        ...screenOptions,
         tabBarStyle: {
           backgroundColor: 'rgba(37, 37, 68, 1)',
           borderTopWidth: 0,
@@ -254,7 +271,7 @@ const DrawerNavigator = () => {
     <Drawer.Navigator
       drawerContent={renderCustomDrawerContent}
       screenOptions={{
-        headerShown: false,
+        ...screenOptions,
         drawerStyle: {
           backgroundColor: 'transparent',
           width: 280,
@@ -268,13 +285,10 @@ const DrawerNavigator = () => {
 
 const Navigation = () => {
   return (
-    <NavigationContainer>
+    <NavigationContainer theme={DarkTheme}>
       <Stack.Navigator 
-        initialRouteName="MainTabs" 
-        screenOptions={{
-          headerShown: false,
-          presentation: 'card',
-        }}>
+        initialRouteName="LaunchScreen" 
+        screenOptions={screenOptions}>
         <Stack.Screen
           name="LaunchScreen"
           component={LaunchScreen}
@@ -318,6 +332,11 @@ const Navigation = () => {
         <Stack.Screen
           name="HistorySelectScreen"
           component={HistorySelectScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="UpdatePasswordScreen"
+          component={UpdatePasswordScreen}
           options={hideHeader}
         />
       </Stack.Navigator>

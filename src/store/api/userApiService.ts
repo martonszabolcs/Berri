@@ -138,6 +138,55 @@ class UserApiService {
     return this.updateCloudStorageTokens(storageType, { accessToken });
   }
 
+  // Update password for current user
+  async updatePassword(password: string): Promise<boolean> {
+    try {
+      const userId = await this.getCurrentUserId();
+      if (!userId) {
+        throw new Error('Could not get current user ID');
+      }
+
+      const state = store.getState();
+      const token = state.app.token;
+      if (!token) {
+        throw new Error('No auth token found in Redux store');
+      }
+
+      console.log('🚀 userApiService: Updating user password for user ID:', userId);
+      console.log('🔑 userApiService: Using token:', token.substring(0, 50) + '...');
+      console.log('🌐 userApiService: API URL:', `${API_CONFIG.BASE_URL}/users/password/${userId}`);
+
+      const response = await axios.put(
+        `${API_CONFIG.BASE_URL}/users/password/${userId}`,
+        { password },
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      console.log('✅ userApiService: Password updated successfully');
+      return response.status === 200;
+    } catch (error: any) {
+      console.error('❌ userApiService: Error updating password:', error);
+      
+      // Log detailed error information
+      if (error.response) {
+        console.error('❌ userApiService: Response status:', error.response.status);
+        console.error('❌ userApiService: Response data:', error.response.data);
+        console.error('❌ userApiService: Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('❌ userApiService: Request was made but no response received:', error.request);
+      } else {
+        console.error('❌ userApiService: Error setting up request:', error.message);
+      }
+      
+      return false;
+    }
+  }
+
   // Update destination settings for a specific destination type
   async updateDestinationSettings(
     destinationType: string, 
@@ -224,6 +273,7 @@ export const updateCloudStorageToken = (storageType: 'dropbox' | 'googledrive' |
   userApiService.updateCloudStorageToken(storageType, accessToken);
 export const updateCloudStorageTokens = (storageType: 'dropbox' | 'googledrive' | 'onedrive', tokens: { accessToken: string; refreshToken?: string }) =>
   userApiService.updateCloudStorageTokens(storageType, tokens);
+export const updatePassword = (password: string) => userApiService.updatePassword(password);
 export const updateDestinationSettings = (
   destinationType: string, 
   settings: { 

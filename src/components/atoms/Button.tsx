@@ -11,7 +11,7 @@ import {
 
 interface ButtonProps extends TouchableOpacityProps {
   title: string;
-  variant?: 'normal' | 'outline' | 'destructive' | 'text';
+  variant?: 'normal' | 'outline' | 'destructive' | 'text' | 'text-white';
   size?: 'small' | 'medium' | 'large';
   textStyle?: TextStyle;
   buttonStyle?: ViewStyle;
@@ -37,6 +37,8 @@ const Button = ({
     } else if (variant === 'destructive') {
       baseStyle.push(styles.destructiveButton);
     } else if (variant === 'text') {
+      baseStyle.push(styles.textButton);
+    } else if (variant === 'text-white') {
       baseStyle.push(styles.textButton);
     } else {
       baseStyle.push(styles.normalButton);
@@ -66,6 +68,8 @@ const Button = ({
       baseStyle.push(styles.destructiveText);
     } else if (variant === 'text') {
       baseStyle.push(styles.textText);
+    } else if (variant === 'text-white') {
+      baseStyle.push(styles.whiteTextText);
     } else {
       baseStyle.push(styles.normalText);
     }
@@ -166,6 +170,10 @@ const styles = StyleSheet.create({
   },
   textText: {
     color: '#ff4444',
+    fontWeight: '400',
+  },
+  whiteTextText: {
+    color: 'white',
     fontWeight: '400',
   },
   
