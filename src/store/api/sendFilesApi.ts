@@ -1,17 +1,14 @@
 import axios from 'axios';
 import {
   API_CONFIG,
-  DROPBOX_CLIENT_ID,
-  DROPBOX_CLIENT_SECRET,
-  ONEDRIVE_CLIENT_ID,
-  ONEDRIVE_CLIENT_SECRET,
-  GOOGLE_DRIVE_CLIENT_ID,
-  GOOGLE_DRIVE_CLIENT_SECRET,
+  DROPBOX_CLIENT,
+  DROPBOX_SECRET,
+  ONEDRIVE_CLIENT,
 } from '../../config';
 import { store } from '../index';
 import { FileSystem } from 'react-native-file-access';
 import { Buffer } from 'buffer';
-import { Alert, Linking, Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import {
   saveDropboxToken,
   saveOneDriveToken,
@@ -99,120 +96,136 @@ class SendFilesApiService {
     };
     const selectedDest = destinationConfig || fallbackDestination;
 
-    // Loop through all files in history entry
-    for (const file of history.files) {
-      const filePath = file.url;
-      const fileName = file.filename;
+    const newFileArray = history.files.map(file => ({
+      fileName: file.filename,
+      filePath: file.url,
+    }));
 
+    if (selectedDest.destination === 'email') {
+      console.log('📧 Resending via email to:', user.email);
+      // TODO EMAIL RESEND BUNDLE PDF !!!!!
+      try {
+        await this.uploadToEmail(newFileArray, destinationConfig);
+        console.log('✅ File resent via email successfully');
+      } catch (error) {
+        console.error('❌ Error resending via email:', error);
+        throw error;
+      }
+    } else if (selectedDest.destination === 'dropbox') {
+      console.log('📤 Resending to Dropbox...');
+
+      try {
+        await this.uploadToDropbox(
+          settings.dropboxAccessToken,
+          settings.dropboxRefreshToken,
+          newFileArray,
+          destinationConfig,
+        );
+        console.log('✅ File resent to Dropbox successfully');
+      } catch (error) {
+        console.error('❌ Error resending to Dropbox:', error);
+        throw error;
+      }
+    } else if (selectedDest.destination === 'onedrive') {
+      console.log('📤 Resending to OneDrive...');
+
+      try {
+        await this.uploadToOneDrive(
+          settings.oneDriveAccessToken,
+          settings.oneDriveRefreshToken,
+          newFileArray,
+          destinationConfig,
+        );
+        console.log('✅ File resent to OneDrive successfully');
+      } catch (error) {
+        console.error('❌ Error resending to OneDrive:', error);
+        throw error;
+      }
+    } else if (selectedDest.destination === 'googledrive') {
+      console.log('📤 Resending to Google Drive...');
+
+      try {
+        await this.uploadToGoogleDrive(
+          settings.googleDriveAccessToken,
+          settings.googleDriveRefreshToken,
+          newFileArray,
+          destinationConfig,
+        );
+        console.log('✅ File resent to Google Drive successfully');
+      } catch (error) {
+        console.error('❌ Error resending to Google Drive:', error);
+        throw error;
+      }
+    } else {
       console.log(
-        `📁 Resending file: ${fileName} to ${selectedDest.destination} with type ${selectedDest.fileType}`,
+        `📤 Resending to ${selectedDest.destination} - not implemented yet`,
+      );
+      throw new Error(`${selectedDest.destination} resend not implemented yet`);
+    }
+  }
+
+  // EMAIL
+  async uploadToEmail(
+    imagesProp: Array<{ fileName: string; filePath: string }>,
+    destinationConfig: any,
+  ) {
+    try {
+      console.log('📧 Uploading multiple files to email...');
+      
+      const state = store.getState();
+      const token = state.app.token;
+      if (!token) {
+        throw new Error('No auth token found in Redux store');
+      }
+
+      const images = await this.getSendFilesArray(imagesProp, destinationConfig);
+      console.log(`📎 Preparing to send ${images.length} files via email in one request`);
+
+      // Create FormData for multiple files
+      const formData = new FormData();
+
+      // Add all files to the FormData
+      for (const image of images) {
+        console.log(`� Adding ${image.fileName} to FormData...`);
+        
+        const fileObject = {
+          uri: `file://${image.filePath}`,
+          name: image.fileName,
+          type: image.fileName.toLowerCase().endsWith('.pdf')
+            ? 'application/pdf'
+            : 'image/jpeg',
+        };
+
+        // Add each file with 'files' as the field name (array)
+        formData.append('files', fileObject as any);
+      }
+
+      console.log(`📤 Making request to send ${images.length} files via email:`, `${API_CONFIG.BASE_URL}/destinations/send/${destinationConfig.type}`);
+
+      // Send all files in one request
+      const response = await axios.post(
+        `${API_CONFIG.BASE_URL}/destinations/send/${destinationConfig.type}`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+        },
       );
 
-      let filePathToSend = filePath;
-      let fileNameToSend = fileName;
-
-      console.log("filepathtosend", filePathToSend)
-
-      if (selectedDest.fileType === 'pdf') {
-        try {
-          const newFilePath = await this.convertImageToPdf([filePath]);
-          console.log("NEWPATH", newFilePath)
-          filePathToSend = newFilePath ?? filePath;
-          if (newFilePath) {
-            fileNameToSend = newFilePath.split('/').pop()?.split('.').slice(0, -1).join('.') + '.pdf' || fileName;
-          }
-        } catch (error) {
-          console.error('❌ Error converting image to PDF:', error);
-        }
+      console.log(`✅ All ${images.length} files sent via email successfully:`, response.data);
+      return response.data;
+    } catch (error: any) {
+      console.error('❌ Error sending multiple files via email:', error);
+      
+      // Log detailed error information
+      if (error.response) {
+        console.error('❌ Email API Response status:', error.response.status);
+        console.error('❌ Email API Response data:', error.response.data);
       }
-
-      console.log("filepathtosend", filePathToSend)
-
-      if (selectedDest.destination === 'email') {
-        console.log('📧 Resending via email to:', user.email);
-
-        try {
-          const fileObject = {
-            uri: `file://${filePathToSend}`,
-            name: fileNameToSend,
-            type: fileNameToSend.toLowerCase().endsWith('.pdf')
-              ? 'application/pdf'
-              : 'image/jpeg',
-          };
-
-          const result = await dispatch(
-            uploadAndSendFile({
-              type: selectedDest.type,
-              file: fileObject,
-            }),
-          );
-
-          if (uploadAndSendFile.fulfilled.match(result)) {
-            console.log(
-              '✅ File resent via email successfully:',
-              result.payload,
-            );
-          } else {
-            console.error('❌ Failed to resend file via email:', result.error);
-            throw new Error('Email resend failed');
-          }
-        } catch (error) {
-          console.error('❌ Error resending file via email:', error);
-          throw error;
-        }
-      } else if (selectedDest.destination === 'dropbox') {
-        console.log('📤 Resending to Dropbox...');
-
-        try {
-          await this.uploadToDropbox(
-            settings.dropboxAccessToken,
-            settings.dropboxRefreshToken,
-            fileNameToSend,
-            filePathToSend,
-          );
-          console.log('✅ File resent to Dropbox successfully');
-        } catch (error) {
-          console.error('❌ Error resending to Dropbox:', error);
-          throw error;
-        }
-      } else if (selectedDest.destination === 'onedrive') {
-        console.log('📤 Resending to OneDrive...');
-
-        try {
-          await this.uploadToOneDrive(
-            settings.oneDriveAccessToken,
-            settings.oneDriveRefreshToken,
-            fileNameToSend,
-            filePathToSend,
-          );
-          console.log('✅ File resent to OneDrive successfully');
-        } catch (error) {
-          console.error('❌ Error resending to OneDrive:', error);
-          throw error;
-        }
-      } else if (selectedDest.destination === 'googledrive') {
-        console.log('📤 Resending to Google Drive...');
-
-        try {
-          await this.uploadToGoogleDrive(
-            settings.googleDriveAccessToken,
-            settings.googleDriveRefreshToken,
-            fileNameToSend,
-            filePathToSend,
-          );
-          console.log('✅ File resent to Google Drive successfully');
-        } catch (error) {
-          console.error('❌ Error resending to Google Drive:', error);
-          throw error;
-        }
-      } else {
-        console.log(
-          `📤 Resending to ${selectedDest.destination} - not implemented yet`,
-        );
-        throw new Error(
-          `${selectedDest.destination} resend not implemented yet`,
-        );
-      }
+      
+      throw error;
     }
   }
 
@@ -237,7 +250,7 @@ class SendFilesApiService {
       const verifier = this.generateCodeVerifier();
       const challenge = await this.generateCodeChallenge(verifier);
       const redirectUri = 'berri://dropbox-auth';
-      const clientId = 'stli417u8q7kp0a';
+      const clientId = DROPBOX_CLIENT;
 
       // Set the new verifier
       this.setCodeVerifier(verifier);
@@ -272,33 +285,47 @@ class SendFilesApiService {
       console.error('❌ Error connecting to Dropbox:', error);
       this.isConnecting = false; // Reset flag on error
     }
-  } // Upload file to Dropbox
+  } // Upload files to Dropbox
   async uploadToDropbox(
     accessToken: string,
     refreshToken: string,
-    fileName: string,
-    filePath: string,
-  ): Promise<any> {
+    imagesProp: Array<{ fileName: string; filePath: string }>,
+    destinationConfig: any,
+  ): Promise<any[]> {
+    if (!accessToken) {
+      await this.connectToDropbox();
+    }
     try {
-      const fileData = await FileSystem.readFile(filePath, 'base64');
-      const fileBuffer = Buffer.from(fileData, 'base64');
+      const results = [];
 
-      const response = await axios({
-        method: 'POST',
-        url: 'https://content.dropboxapi.com/2/files/upload',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/octet-stream',
-          'Dropbox-API-Arg': JSON.stringify({
-            path: `/${fileName}`,
-            mode: 'add',
-            autorename: true,
-          }),
-        },
-        data: fileBuffer,
-      });
+      const images = await this.getSendFilesArray(imagesProp, destinationConfig);
 
-      return response.data;
+      for (const image of images) {
+        console.log(`📤 Uploading ${image.fileName} to Dropbox...`);
+
+        const fileData = await FileSystem.readFile(image.filePath, 'base64');
+        const fileBuffer = Buffer.from(fileData, 'base64');
+
+        const response = await axios({
+          method: 'POST',
+          url: 'https://content.dropboxapi.com/2/files/upload',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/octet-stream',
+            'Dropbox-API-Arg': JSON.stringify({
+              path: `/${image.fileName}`,
+              mode: 'add',
+              autorename: true,
+            }),
+          },
+          data: fileBuffer,
+        });
+
+        results.push(response.data);
+        console.log(`✅ Successfully uploaded ${image.fileName} to Dropbox`);
+      }
+
+      return results;
     } catch (error: any) {
       console.error(
         'Dropbox upload error:',
@@ -313,7 +340,7 @@ class SendFilesApiService {
           try {
             const token = await this.refreshDropboxAccessToken(refreshToken);
             if (token) {
-              this.uploadToDropbox(token, refreshToken, fileName, filePath); // Retry upload after refreshing token
+              return this.uploadToDropbox(token, refreshToken, imagesProp, destinationConfig); // Retry upload after refreshing token
             } else {
               console.error('❌ Failed to refresh Dropbox access token');
               this.debugCodeVerifierState();
@@ -345,8 +372,8 @@ class SendFilesApiService {
           params: {
             grant_type: 'refresh_token',
             refresh_token: refreshToken,
-            client_id: DROPBOX_CLIENT_ID,
-            client_secret: DROPBOX_CLIENT_SECRET,
+            client_id: DROPBOX_CLIENT,
+            client_secret: DROPBOX_SECRET,
           },
         },
       );
@@ -402,7 +429,7 @@ class SendFilesApiService {
       const verifier = this.generateCodeVerifier();
       const challenge = await this.generateCodeChallenge(verifier);
       const redirectUri = 'berri://onedrive-auth';
-      const clientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+      const clientId = ONEDRIVE_CLIENT;
       const scope = 'files.readwrite offline_access';
 
       // Set the new verifier
@@ -448,28 +475,38 @@ class SendFilesApiService {
     }
   }
 
-  // Upload file to OneDrive
+  // Upload files to OneDrive
   async uploadToOneDrive(
     accessToken: string,
     refreshToken: string,
-    fileName: string,
-    filePath: string,
-  ): Promise<any> {
+    imagesProp: Array<{ fileName: string; filePath: string }>,
+    destinationConfig: any,
+  ): Promise<any[]> {
     try {
-      const fileData = await FileSystem.readFile(filePath, 'base64');
-      const fileBuffer = Buffer.from(fileData, 'base64');
+      const results = [];
+      const images = await this.getSendFilesArray(imagesProp, destinationConfig);
 
-      const response = await axios({
-        method: 'PUT',
-        url: `https://graph.microsoft.com/v1.0/me/drive/root:/${fileName}:/content`,
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/octet-stream',
-        },
-        data: fileBuffer,
-      });
+      for (const image of images) {
+        console.log(`📤 Uploading ${image.fileName} to OneDrive...`);
 
-      return response.data;
+        const fileData = await FileSystem.readFile(image.filePath, 'base64');
+        const fileBuffer = Buffer.from(fileData, 'base64');
+
+        const response = await axios({
+          method: 'PUT',
+          url: `https://graph.microsoft.com/v1.0/me/drive/root:/${image.fileName}:/content`,
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/octet-stream',
+          },
+          data: fileBuffer,
+        });
+
+        results.push(response.data);
+        console.log(`✅ Successfully uploaded ${image.fileName} to OneDrive`);
+      }
+
+      return results;
     } catch (error: any) {
       console.error(
         'OneDrive upload error:',
@@ -484,12 +521,7 @@ class SendFilesApiService {
           try {
             const token = await this.refreshOneDriveAccessToken(refreshToken);
             if (token) {
-              return this.uploadToOneDrive(
-                token,
-                refreshToken,
-                fileName,
-                filePath,
-              ); // Retry upload after refreshing token
+              return this.uploadToOneDrive(token, refreshToken, imagesProp, destinationConfig); // Retry upload after refreshing token
             } else {
               console.error('❌ Failed to refresh OneDrive access token');
               this.debugCodeVerifierState();
@@ -515,7 +547,7 @@ class SendFilesApiService {
   ): Promise<string | null> {
     try {
       const params = new URLSearchParams();
-      params.append('client_id', ONEDRIVE_CLIENT_ID);
+      params.append('client_id', ONEDRIVE_CLIENT);
       params.append('scope', 'files.readwrite offline_access');
       params.append('refresh_token', refreshToken);
       params.append('grant_type', 'refresh_token');
@@ -637,66 +669,80 @@ class SendFilesApiService {
   async uploadToGoogleDrive(
     accessToken: string,
     refreshToken: string,
-    fileName: string,
-    filePath: string,
-  ): Promise<any> {
+    imagesProp: Array<{ fileName: string; filePath: string }>,
+    destinationConfig: any,
+  ): Promise<any[]> {
     try {
-      const fileData = await FileSystem.readFile(filePath, 'base64');
-      const fileBuffer = Buffer.from(fileData, 'base64');
+      const results = [];
 
-      // Determine MIME type based on file extension
-      const mimeType = fileName.toLowerCase().endsWith('.pdf')
-        ? 'application/pdf'
-        : 'image/jpeg';
+      const images = await this.getSendFilesArray(imagesProp, destinationConfig);
 
-      // Create metadata for Google Drive
-      const metadata = {
-        name: fileName,
-      };
+      for (const image of images) {
+        console.log(`📤 Uploading ${image.fileName} to Google Drive...`);
 
-      // Create proper multipart boundary
-      const boundary = `----formdata-berri-${Date.now()}`;
+        const fileData = await FileSystem.readFile(image.filePath, 'base64');
+        const fileBuffer = Buffer.from(fileData, 'base64');
 
-      // Build multipart body manually for proper Google Drive API format
-      let body = '';
+        // Determine MIME type based on file extension
+        const mimeType = image.fileName.toLowerCase().endsWith('.pdf')
+          ? 'application/pdf'
+          : 'image/jpeg';
 
-      // Add metadata part
-      body += `--${boundary}\r\n`;
-      body += `Content-Type: application/json\r\n\r\n`;
-      body += `${JSON.stringify(metadata)}\r\n`;
+        // Create metadata for Google Drive
+        const metadata = {
+          name: image.fileName,
+        };
 
-      // Add file part
-      body += `--${boundary}\r\n`;
-      body += `Content-Type: ${mimeType}\r\n\r\n`;
+        // Create proper multipart boundary
+        const boundary = `----formdata-berri-${Date.now()}`;
 
-      // Convert body parts to Buffer and combine
-      const bodyStart = Buffer.from(body, 'utf8');
-      const bodyEnd = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+        // Build multipart body manually for proper Google Drive API format
+        let body = '';
 
-      // Combine all parts
-      const fullBody = Buffer.concat([bodyStart, fileBuffer, bodyEnd]);
+        // Add metadata part
+        body += `--${boundary}\r\n`;
+        body += `Content-Type: application/json\r\n\r\n`;
+        body += `${JSON.stringify(metadata)}\r\n`;
 
-      const response = await fetch(
-        'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': `multipart/related; boundary=${boundary}`,
+        // Add file part
+        body += `--${boundary}\r\n`;
+        body += `Content-Type: ${mimeType}\r\n\r\n`;
+
+        // Convert body parts to Buffer and combine
+        const bodyStart = Buffer.from(body, 'utf8');
+        const bodyEnd = Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8');
+
+        // Combine all parts
+        const fullBody = Buffer.concat([bodyStart, fileBuffer, bodyEnd]);
+
+        const response = await fetch(
+          'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': `multipart/related; boundary=${boundary}`,
+            },
+            body: fullBody,
           },
-          body: fullBody,
-        },
-      );
+        );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Google Drive API Error:', errorText);
-        throw new Error(
-          `Google Drive upload failed: ${response.status} ${response.statusText}`,
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Google Drive API Error:', errorText);
+          throw new Error(
+            `Google Drive upload failed: ${response.status} ${response.statusText}`,
+          );
+        }
+
+        const result = await response.json();
+        results.push(result);
+        console.log(
+          `✅ Successfully uploaded ${image.fileName} to Google Drive`,
         );
       }
 
-      return await response.json();
+      return results;
     } catch (error: any) {
       console.error('Google Drive upload error:', error.message);
       if (
@@ -708,15 +754,18 @@ class SendFilesApiService {
           await this.connectToGoogleDrive();
 
           const settings = store.getState().app.settings;
-          console.log('🔄 Retrying Google Drive upload after reconnect', settings.googleDriveAccessToken);
+          console.log(
+            '🔄 Retrying Google Drive upload after reconnect',
+            settings.googleDriveAccessToken,
+          );
 
           const retryResult = await this.uploadToGoogleDrive(
             settings.googleDriveAccessToken,
             settings.googleDriveRefreshToken,
-            fileName,
-            filePath,
+            imagesProp,
+            destinationConfig,
           );
-          
+
           console.log('✅ Google Drive upload retry successful');
           return retryResult;
         } catch (refreshError) {
@@ -728,15 +777,18 @@ class SendFilesApiService {
             await this.connectToGoogleDrive();
             const settings = store.getState().app.settings;
 
-            console.log('🔄🔄🔄  Retrying Google Drive upload after reconnect', settings.googleDriveAccessToken);
+            console.log(
+              '🔄🔄🔄  Retrying Google Drive upload after reconnect',
+              settings.googleDriveAccessToken,
+            );
 
             const secondRetryResult = await this.uploadToGoogleDrive(
               settings.googleDriveAccessToken,
               settings.googleDriveRefreshToken,
-              fileName,
-              filePath,
+              imagesProp,
+              destinationConfig,
             );
-            
+
             console.log('✅ Google Drive upload second retry successful');
             return secondRetryResult;
           } catch (secondRetryError) {
@@ -841,200 +893,128 @@ class SendFilesApiService {
     }
   }
 
-  // jpg to pdf
-// async convertImageToPdf(imagePaths: string[]): Promise<string | null> {
-//   console.log("CONVERT TO PDF");
+  async convertImageToPdf(imagePaths: string[]): Promise<string | null> {
+    try {
+      console.log('CONVERT TO PDF');
 
-//   const objects: string[] = [];
-//   const pages: string[] = [];
+      // Create a new PDF document
+      const pdfDoc = await PDFDocument.create();
 
-//   // PDF header
-//   let pdf = "%PDF-1.3\n";
-//   let objCount = 2; // Start after the Catalog object
+      for (const imagePath of imagePaths) {
+        // Resize the image to reduce its dimensions and size
+        const resizedImage = await ImageResizer.createResizedImage(
+          imagePath, // Path to the image
+          600, // Target width
+          900, // Target height
+          'JPEG', // Format
+          70, // Quality (0-100)
+          0, // Rotation
+          RNFS.DocumentDirectoryPath, // Output directory
+        );
+        // Read the image file as a Uint8Array
+        const imageBytes = await RNFS.readFile(resizedImage.uri, 'base64');
+        console.log('IMAGE BYTES LENGTH', imageBytes.length);
+        const imageBuffer = Uint8Array.from(Buffer.from(imageBytes, 'base64'));
 
-//   for (const img of imagePaths) {
-//     const base64 = await RNFS.readFile(img, "base64");
-//     const imgObjId = objCount++;
-//     const pageObjId = objCount++;
+        console.log('IMAGE BUFFER LENGTH', imageBuffer.length);
+        // Embed the image in the PDF
+        const embeddedImage = await pdfDoc.embedJpg(imageBuffer);
 
-//     // Image object
-//     objects.push(
-//       `${imgObjId} 0 obj\n<< /Type /XObject /Subtype /Image /Width 595 /Height 842 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${Buffer.from(base64, "base64").length} >>\nstream\n${base64}\nendstream\nendobj`
-//     );
+        console.log('EMBEDDED IMAGE', embeddedImage);
+        // Get the dimensions of the image
+        const { width, height } = embeddedImage;
 
-//     // Page object
-//     objects.push(
-//       `${pageObjId} 0 obj\n<< /Type /Page /Parent 1 0 R /Resources << /XObject << /Im${imgObjId} ${imgObjId} 0 R >> >> /MediaBox [0 0 595 842] /Contents ${objCount} 0 R >>\nendobj`
-//     );
+        // Add a new page to the PDF with the same dimensions as the image
+        const page = pdfDoc.addPage([width, height]);
 
-//     // Page content (Draw Image)
-//     const contentObjId = objCount++;
-//     objects.push(
-//       `${contentObjId} 0 obj\n<< /Length 50 >>\nstream\nq 595 0 0 842 0 0 cm /Im${imgObjId} Do Q\nendstream\nendobj`
-//     );
+        // Draw the image onto the page
+        page.drawImage(embeddedImage, {
+          x: 0,
+          y: 0,
+          width,
+          height,
+        });
+      }
 
-//     pages.push(`${pageObjId} 0 R`);
-//   }
+      // Serialize the PDF to bytes
+      const pdfBytes = await pdfDoc.save();
 
-//   // Pages object
-//   objects.unshift(
-//     `1 0 obj\n<< /Type /Pages /Count ${pages.length} /Kids [${pages.join(" ")}] >>\nendobj`
-//   );
+      console.log('PDF BYTES LENGTH', pdfBytes.length);
 
-//   // Root object (Catalog)
-//   objects.unshift(
-//     `0 0 obj\n<< /Type /Catalog /Pages 1 0 R >>\nendobj`
-//   );
+      // Convert the PDF bytes to base64
+      const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
 
-//   pdf += objects.join("\n") + "\n";
-//   pdf += "xref\n0 " + objCount + "\n0000000000 65535 f \n";
-//   let offset = pdf.length;
-//   for (let i = 0; i < objCount; i++) {
-//     pdf += `${offset.toString().padStart(10, "0")} 00000 n \n`;
-//     offset += objects[i]?.length || 0;
-//   }
-//   pdf += `trailer\n<< /Size ${objCount} /Root 0 0 R >>\nstartxref\n${offset}\n%%EOF`;
+      console.log('PDF BASE64 LENGTH', pdfBase64.length);
 
-//   // Save the PDF
-//   const fileName =
-//     imagePaths[0].split("/").pop()?.split(".").slice(0, -1).join(".") || "output";
-//   const path = `${RNFS.DocumentDirectoryPath}/${fileName}.pdf`;
+      // Define the output path for the PDF
+      // const outputPath = `${RNFS.DocumentDirectoryPath}/output.pdf`;
+      const fileName =
+        imagePaths[0].split('/').pop()?.split('.').slice(0, -1).join('.') ||
+        'output';
+      const path = `${RNFS.DocumentDirectoryPath}/${fileName}.pdf`;
 
-//   try {
-//     await RNFS.writeFile(path, pdf, "utf8");
-//     console.log("✅ PDF created at:", path);
-//     return path;
-//   } catch (error) {
-//     console.error("❌ PDF WRITE ERROR:", error);
-//     return null;
-//   }
-// }
+      console.log('OUTPUT PATH', path);
+      // Write the PDF to the file system in base64 format
+      await RNFS.writeFile(path, pdfBase64, 'base64');
 
-// async convertImageToPdf(imagePaths: string[]): Promise<string | null> {
-//   try {
-//     console.log("CONVERT TO PDF");
+      console.log('✅ PDF created at:', path);
+      return path;
+    } catch (error) {
+      console.error('❌ Error creating PDF:', error);
+      return null;
+    }
+  }
 
-//     // Create a new PDF document
-//     const pdfDoc = await PDFDocument.create();
+  async getSendFilesArray(
+    images: Array<{ fileName: string; filePath: string }>, 
+    destination: any
+  ): Promise<Array<{ fileName: string; filePath: string }>> {
+    const filesArray: Array<{ fileName: string; filePath: string }> = [];
 
-//     for (const imagePath of imagePaths) {
-//       // Read the image file as a Uint8Array
-//       const imageBytes = await RNFS.readFile(imagePath, 'base64');
-//       const imageBuffer = Uint8Array.from(Buffer.from(imageBytes, 'base64'));
+    if (destination.bundled && destination.fileType === 'pdf') {
+      try {
+        const imagePaths = images.map(img => img.filePath);
+        const newFilePath = await this.convertImageToPdf(imagePaths);
+        if (newFilePath) {
+          const fileNameToSend =
+            newFilePath.split('/').pop()?.split('.').slice(0, -1).join('.') +
+              '.pdf' || 'bundled.pdf';
+          filesArray.push({ fileName: fileNameToSend, filePath: newFilePath });
+          return filesArray;
+        }
+      } catch (error) {
+        console.error('❌ Error converting bundled images to PDF:', error);
+      }
+    } else {
+      for (const image of images) {
+        let filePathToSend = image.filePath;
+        let fileNameToSend = image.fileName;
 
-//       // Embed the image in the PDF
-//       const embeddedImage = await pdfDoc.embedJpg(imageBuffer);
+        if (destination.fileType === 'pdf') {
+          try {
+            const newFilePath = await this.convertImageToPdf([image.filePath]);
+            if (newFilePath) {
+              filePathToSend = newFilePath;
+              fileNameToSend =
+                newFilePath
+                  .split('/')
+                  .pop()
+                  ?.split('.')
+                  .slice(0, -1)
+                  .join('.') + '.pdf' || fileNameToSend;
+            }
+          } catch (error) {
+            console.error('❌ Error converting image to PDF:', error);
+          }
+        }
 
-//       // Get the dimensions of the image
-//       const { width, height } = embeddedImage;
-
-//       // Add a new page to the PDF with the same dimensions as the image
-//       const page = pdfDoc.addPage([width, height]);
-
-//       // Draw the image onto the page
-//       page.drawImage(embeddedImage, {
-//         x: 0,
-//         y: 0,
-//         width,
-//         height,
-//       });
-//     }
-
-//     // Serialize the PDF to bytes
-//     const pdfBytes = await pdfDoc.save();
-
-//     // Define the output path for the PDF
-//     const fileName =
-//     imagePaths[0].split("/").pop()?.split(".").slice(0, -1).join(".") || "output";
-//   const outputPath = `${RNFS.DocumentDirectoryPath}/${fileName}.pdf`;
-
-
-//     // Write the PDF to the file system
-//     await RNFS.writeFile(outputPath, pdfBytes, 'base64');
-
-//     console.log("✅ PDF created at:", outputPath);
-//     return outputPath;
-//   } catch (error) {
-//     console.error("❌ Error creating PDF:", error);
-//     return null;
-//   }
-// }
-
-async convertImageToPdf(imagePaths: string[]): Promise<string | null> {
-  try {
-    console.log("CONVERT TO PDF");
-
-    // Create a new PDF document
-    const pdfDoc = await PDFDocument.create();
-
-    for (const imagePath of imagePaths) {
-
-      // Resize the image to reduce its dimensions and size
-      const resizedImage = await ImageResizer.createResizedImage(
-        imagePath, // Path to the image
-        600, // Target width
-        900, // Target height
-        'JPEG', // Format
-        70, // Quality (0-100)
-        0, // Rotation
-        RNFS.DocumentDirectoryPath // Output directory
-      );
-      // Read the image file as a Uint8Array
-      const imageBytes = await RNFS.readFile(resizedImage.uri, 'base64');
-      console.log("IMAGE BYTES LENGTH", imageBytes.length);
-      const imageBuffer = Uint8Array.from(Buffer.from(imageBytes, 'base64'));
-
-      console.log("IMAGE BUFFER LENGTH", imageBuffer.length);
-      // Embed the image in the PDF
-      const embeddedImage = await pdfDoc.embedJpg(imageBuffer);
-
-      console.log("EMBEDDED IMAGE", embeddedImage);
-      // Get the dimensions of the image
-      const { width, height } = embeddedImage;
-
-      // Add a new page to the PDF with the same dimensions as the image
-      const page = pdfDoc.addPage([width, height]);
-
-      // Draw the image onto the page
-      page.drawImage(embeddedImage, {
-        x: 0,
-        y: 0,
-        width,
-        height,
-      });
+        filesArray.push({ fileName: fileNameToSend, filePath: filePathToSend });
+      }
     }
 
-    // Serialize the PDF to bytes
-    const pdfBytes = await pdfDoc.save();
-
-    console.log("PDF BYTES LENGTH", pdfBytes.length);
-
-    // Convert the PDF bytes to base64
-    const pdfBase64 = Buffer.from(pdfBytes).toString('base64');
-
-    console.log("PDF BASE64 LENGTH", pdfBase64.length);
-
-    // Define the output path for the PDF
-    // const outputPath = `${RNFS.DocumentDirectoryPath}/output.pdf`;
-  const fileName =
-    imagePaths[0].split("/").pop()?.split(".").slice(0, -1).join(".") || "output";
-  const path = `${RNFS.DocumentDirectoryPath}/${fileName}.pdf`;
-
-
-    console.log("OUTPUT PATH", path);
-    // Write the PDF to the file system in base64 format
-    await RNFS.writeFile(path, pdfBase64, 'base64');
-
-    console.log("✅ PDF created at:", path);
-    return path;
-  } catch (error) {
-    console.error("❌ Error creating PDF:", error);
-    return null;
+    return filesArray;
   }
 }
-}
-
-
 
 export const sendFilesApiService = new SendFilesApiService();
 

@@ -32,6 +32,7 @@ import {
 } from '../utils/historyUtils';
 import { setHistory } from '../store/appSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
 
 const HistorySelectScreen = () => {
   const navigation = useNavigation();
@@ -661,11 +662,11 @@ const HistorySelectScreen = () => {
   // handle deeplink if user has to log in again
   // Dropbox OAuth configuration
 
-  const clientId = 'stli417u8q7kp0a';
+  const clientId = DROPBOX_CLIENT;
 
   // OneDrive OAuth configuration
   const oneDriveRedirectUri = 'berri://onedrive-auth';
-  const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+  const oneDriveClientId = ONEDRIVE_CLIENT;
 
   const exchangeDropboxCodeForToken = useCallback(
     async (authCode: string, verifier: string) => {

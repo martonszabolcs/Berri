@@ -171,8 +171,7 @@ const FileNamingScreen = () => {
         
         Alert.alert(
           'Template Saved',
-          `Selected template: ${displayString}\n\nGenerated template string: ${templateString || '(empty)'}`,
-          [
+'',          [
             { 
               text: 'OK', 
               onPress: () => navigation.goBack() 

@@ -23,6 +23,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { refreshUser } from '../store/appSlice';
 import sendFilesApiService from '../store/api/sendFilesApi';
 import { getDestinationName, destinations } from '../utils/helpers';
+import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
 
 type RootStackParamList = {
   ChangeDestinationScreen: {
@@ -78,11 +79,11 @@ const ChangeDestinationScreen = () => {
   // 78 to 261 - dropbox and onedrive deeplink authentications
   // Dropbox OAuth configuration
   const redirectUri = 'berri://dropbox-auth';
-  const clientId = 'stli417u8q7kp0a';
+  const clientId = DROPBOX_CLIENT;
 
   // OneDrive OAuth configuration
   const oneDriveRedirectUri = 'berri://onedrive-auth';
-  const oneDriveClientId = '05a68d6c-e3f6-497b-9fd5-0e54cf3c3be9';
+  const oneDriveClientId = ONEDRIVE_CLIENT;
 
   const exchangeDropboxCodeForToken = useCallback(
     async (authCode: string, verifier: string) => {

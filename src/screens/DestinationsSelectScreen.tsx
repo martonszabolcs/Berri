@@ -151,8 +151,8 @@ const DestinationSelectScreen = () => {
         await sendFilesApiService.uploadToDropbox(
           settings.dropboxAccessToken,
           settings.dropboxRefreshToken,
-          fileName,
-          savedFilePath,
+          [{ fileName, filePath: savedFilePath }],
+          selectedDest,
         );
         console.log('✅ File uploaded to Dropbox successfully');
       } catch (error) {
@@ -166,8 +166,8 @@ const DestinationSelectScreen = () => {
         await sendFilesApiService.uploadToOneDrive(
           settings.oneDriveAccessToken,
           settings.oneDriveRefreshToken,
-          fileName,
-          savedFilePath,
+          [{ fileName, filePath: savedFilePath }],
+          selectedDest,
         );
         console.log('✅ File uploaded to OneDrive successfully');
       } catch (error) {
@@ -180,8 +180,8 @@ const DestinationSelectScreen = () => {
         await sendFilesApiService.uploadToGoogleDrive(
           settings.googleDriveAccessToken,
           settings.googleDriveRefreshToken,
-          fileName,
-          savedFilePath,
+          [{ fileName, filePath: savedFilePath }],
+          selectedDest,
         );
         console.log('✅ File uploaded to Google Drive successfully');
       } catch (error) {
