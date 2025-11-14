@@ -48,6 +48,7 @@ const CustomDrawerContent = ({ navigation }: CustomDrawerContentProps) => {
             character={userEmail.charAt(0)}
             size={70}
           />
+          <Text style={styles.emailText}>{user.name}</Text>
           <Text style={styles.emailText}>{userEmail}</Text>
         </TouchableOpacity>
 

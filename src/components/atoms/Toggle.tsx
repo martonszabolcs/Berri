@@ -130,6 +130,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginVertical: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
   label: {
     fontSize: 16,

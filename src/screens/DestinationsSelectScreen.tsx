@@ -173,17 +173,18 @@ const DestinationSelectScreen = () => {
       } catch (error) {
         console.error('❌ Error uploading to OneDrive:', error);
       }
-    } else if (selectedDest.destination === 'google drive') {
+    } else if (selectedDest.destination === 'googledrive') {
       console.log('📤 Sending to Google drive...');
- try {
-      const fileName = `BERRI_Document_${Date.now()}.jpg`;
-      await sendFilesApiService.uploadToGoogleDrive(
-        settings.googleAccessToken,
-        settings.googleRefreshToken,
-        fileName,
-        savedFilePath,
-      );
-    } catch (error) {
+      try {
+        const fileName = `BERRI_Document_${Date.now()}.jpg`;
+        await sendFilesApiService.uploadToGoogleDrive(
+          settings.googleDriveAccessToken,
+          settings.googleDriveRefreshToken,
+          fileName,
+          savedFilePath,
+        );
+        console.log('✅ File uploaded to Google Drive successfully');
+      } catch (error) {
         console.error('❌ Error uploading to Google Drive:', error);
       }
 

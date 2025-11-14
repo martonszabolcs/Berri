@@ -34,11 +34,15 @@ const RadioButton = ({ options, selectedValue, onValueChange, label }: RadioButt
 const styles = StyleSheet.create({
   container: {
     marginVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 20,
+    paddingVertical: 15,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 10,
   },
   optionsContainer: {
     flexDirection: 'row',
@@ -66,6 +70,7 @@ const styles = StyleSheet.create({
   },
   optionText: {
     fontSize: 16,
+    //textTransform: "uppercase"
   },
 });
 

@@ -105,7 +105,7 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
+    borderWidth: 2,
   },
   
   // Variants
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   
   // Text styles
   text: {
-    fontWeight: '600',
+    fontWeight: '400',
     textAlign: 'center',
   },
   smallText: {

@@ -15,7 +15,6 @@ export { default as DestinationIcon } from './atoms/DestinationIcon';
 export { default as AvatarIcon } from './atoms/AvatarIcon';
 export { TabBarIcon } from './atoms/TabBarIcon';
 export { HistoryTabBarIcon, NewScanTabBarIcon, DestinationsTabBarIcon } from './atoms/TabBarIconComponents';
-export { CloudStorageConnector } from './atoms/CloudStorageConnector';
 
 // Molecules
 export { default as CustomDrawerContent } from './molecules/CustomDrawerContent';

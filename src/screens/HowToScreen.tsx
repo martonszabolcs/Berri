@@ -1,6 +1,11 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Linking } from 'react-native';
 import { Layout, HowToMenuItem } from '../components';
+import ht1 from '../assets/HT1.png';
+import ht2 from '../assets/HT2.png';
+import ht3 from '../assets/HT3.png';
+import ht4 from '../assets/HT4.png';
+import ht5 from '../assets/HT5.png';
 
 interface HowToItem {
   title: string;
@@ -11,27 +16,27 @@ interface HowToItem {
 const HOW_TO_ITEMS: HowToItem[] = [
   {
     title: 'SET UP DESTINATIONS',
-    imageUrl: 'https://picsum.photos/100/100?random=1',
+    imageUrl: ht1,
     url: 'https://www.google.com',
   },
   {
     title: 'SCAN YOUR BERRĪBOOK',
-    imageUrl: 'https://picsum.photos/100/100?random=2',
+    imageUrl: ht2,
     url: 'https://www.google.com',
   },
   {
     title: 'ERASE YOUR BERRĪBOOK',
-    imageUrl: 'https://picsum.photos/100/100?random=3',
+    imageUrl: ht3,
     url: 'https://www.google.com',
   },
   {
     title: 'USE YOUR FRIXION PEN',
-    imageUrl: 'https://picsum.photos/100/100?random=4',
+    imageUrl: ht4,
     url: 'https://www.google.com',
   },
   {
     title: 'BERRĪNEWS',
-    imageUrl: 'https://picsum.photos/100/100?random=5',
+    imageUrl: ht5,
     url: 'https://www.google.com',
   },
 ];

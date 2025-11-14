@@ -159,17 +159,6 @@ const ChangeRecipientScreen = () => {
           </View>
         </View>
 
-        {/* Save Button */}
-        <View style={styles.saveButtonContainer}>
-          <Button
-            title="Save"
-            variant="normal"
-            size="medium"
-            buttonStyle={styles.saveButton}
-            onPress={handleSave}
-          />
-        </View>
-
         {/* Email Inputs */}
         <View style={styles.emailInputsContainer}>
           {emails.map((email, index) => (
@@ -181,6 +170,7 @@ const ChangeRecipientScreen = () => {
                   onChangeText={(value) => handleEmailChange(email.id, value)}
                   keyboardType="email-address"
                   autoCapitalize="none"
+                  withoutStyle
                 />
               </View>
               
@@ -197,6 +187,17 @@ const ChangeRecipientScreen = () => {
             </View>
           ))}
         </View>
+
+          {/* Save Button */}
+        <View style={styles.saveButtonContainer}>
+          <Button
+            title="Save"
+            variant="normal"
+            size="medium"
+            buttonStyle={styles.saveButton}
+            onPress={handleSave}
+          />
+        </View>
       </ScrollView>
     </Layout>
   );
@@ -205,13 +206,13 @@ const ChangeRecipientScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
   },
   destinationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 30,
     paddingVertical: 20,
+    marginHorizontal: 40,
   },
   destinationImage: {
     width: 60,
@@ -232,18 +233,21 @@ const styles = StyleSheet.create({
   },
   saveButtonContainer: {
     marginBottom: 30,
+    paddingHorizontal: 20,
   },
   saveButton: {
     width: '100%',
   },
   emailInputsContainer: {
     gap: 15,
-    paddingBottom: 100, // Extra space for tab bar
+    paddingBottom: 40,
   },
   emailInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 20,
   },
   textInputContainer: {
     flex: 1,

@@ -33,9 +33,15 @@ const DestinationScreen = () => {
       destinations.find(dest => dest.type.toString() === destinationId) ||
         destination,
     );
+    setFileType(
+      destination.fileType
+        ? destination.fileType
+        : 'pdf',
+    );
+    setBundleScans(destination.bundled || false);
   }, [destinations, destinationId, destination]);
 
-  const [fileType, setFileType] = useState('PDF');
+  const [fileType, setFileType] = useState('pdf');
   const [bundleScans, setBundleScans] = useState(false);
 
   // Get destination image based on type
@@ -151,7 +157,7 @@ const DestinationScreen = () => {
 
           <RadioButton
             label="File Type"
-            options={['PDF', 'JPEG']}
+            options={['pdf', 'jpg']}
             selectedValue={fileType}
             onValueChange={setFileType}
           />
@@ -178,13 +184,14 @@ const DestinationScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+    // paddingHorizontal: 20,
   },
   destinationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 30,
     paddingVertical: 20,
+    marginHorizontal: 40,
   },
   destinationImage: {
     width: 60,
@@ -206,21 +213,21 @@ const styles = StyleSheet.create({
   buttonsContainer: {
     gap: 15,
     marginBottom: 30,
+    marginHorizontal: 40,
   },
   actionButton: {
     width: '100%',
-  },
-  settingsContainer: {
-    // Removed paddingBottom since it's now in saveButtonContainer
   },
   settingsTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 20,
+    paddingHorizontal: 20,
   },
   saveButtonContainer: {
     marginTop: 30,
-    paddingBottom: 100, // Extra space for tab bar
+    paddingBottom: 100,
+    paddingHorizontal: 20,
   },
 });
 

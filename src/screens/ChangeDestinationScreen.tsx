@@ -508,11 +508,11 @@ const ChangeDestinationScreen = () => {
         </View>
 
         <View style={styles.buttonContainer}>
-          <Button title="Save" size="large" onPress={handleSave} />
+          <Button title="Save" size="medium" onPress={handleSave} />
           <Button
             title="Cancel"
             variant="outline"
-            size="large"
+            size="medium"
             onPress={() => navigation.goBack()}
           />
         </View>
@@ -524,13 +524,14 @@ const ChangeDestinationScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    paddingHorizontal: 20,
+    //paddingHorizontal: 20,
   },
   destinationInfo: {
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 40,
     paddingVertical: 20,
+    marginHorizontal: 40,
   },
   destinationImage: {
     width: 60,
@@ -554,15 +555,14 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   destinationOption: {
-    borderWidth: 1,
-    borderColor: 'white',
-    borderRadius: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingVertical: 16,
     paddingHorizontal: 20,
     alignItems: 'center',
+    marginBottom: 10,
   },
   destinationOptionActive: {
-    backgroundColor: 'white',
+    backgroundColor: 'rgba(255, 255, 255, 0.8)',
     borderColor: 'white',
   },
   destinationOptionText: {
@@ -573,7 +573,9 @@ const styles = StyleSheet.create({
     color: 'black',
   },
   buttonContainer: {
-    paddingBottom: 100, // Extra space for tab bar
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+    gap: 20,
   },
 });
 

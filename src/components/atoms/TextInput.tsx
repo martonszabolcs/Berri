@@ -11,6 +11,7 @@ const TextInput = ({
   value, 
   onChangeText,
   style,
+  withoutStyle,
   ...props 
 }: CustomTextInputProps) => {
   const [isFocused, setIsFocused] = useState(false);
@@ -27,7 +28,7 @@ const TextInput = ({
         onBlur={() => setIsFocused(false)}
         {...props}
       />
-      <View style={[styles.underline, isFocused && styles.underlineFocused]} />
+      {!withoutStyle && (<View style={[styles.underline, isFocused && styles.underlineFocused]} />)}
     </View>
   );
 };

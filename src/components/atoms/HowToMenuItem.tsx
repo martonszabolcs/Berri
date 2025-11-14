@@ -39,7 +39,7 @@ const HowToMenuItem = ({ title, imageUrl, onPress }: HowToMenuItemProps) => {
       </View>
       
       {/* Content */}
-      <Image source={{ uri: imageUrl }} style={styles.menuImage} />
+      <Image source={imageUrl} style={styles.menuImage} />
       <Text style={styles.menuTitle}>{title}</Text>
       <View style={styles.arrowContainer}>
         <Image 
