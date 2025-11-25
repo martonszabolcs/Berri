@@ -77,6 +77,23 @@ const FileNamingScreen = () => {
       
       setTemplateItems(initialItems);
       setAvailableOptions(remainingOptions);
+    } else {
+      const templateString = "{Berri}_{Year}_{Month}_{Day}";
+      const templateParts = templateString.split('_');
+      const initialItems: TemplateItem[] = [];
+      templateParts.forEach((part: string, index: number) => {
+        const matchingOption = TEMPLATE_OPTIONS.find(opt => opt.value === part);
+        if (matchingOption) {
+          initialItems.push({
+            id: `${matchingOption.id}-${index}`,
+            type: 'button',
+            content: matchingOption.label,
+            originalOption: matchingOption
+          });
+        }
+      });
+      setTemplateItems(initialItems);
+      setAvailableOptions(prev => prev.filter(opt => !initialItems.find(item => item.originalOption?.id === opt.id)));
     }
   }, [settings]);
 

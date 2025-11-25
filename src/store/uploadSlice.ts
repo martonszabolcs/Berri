@@ -30,7 +30,7 @@ const initialState: UploadState = {
 export const uploadAndSendFile = createAsyncThunk(
   'upload/uploadAndSendFile',
   async (
-    { type, file }: { type: number; file: File | any },
+    { type, file, user }: { type: number; file: File | any; user: any },
     { dispatch, rejectWithValue }
   ) => {
     try {
@@ -47,15 +47,46 @@ export const uploadAndSendFile = createAsyncThunk(
       }));
 
       // Simulate progress updates (in real implementation, this would come from axios progress)
-      const progressInterval = setInterval(() => {
-        dispatch(updateProgress(Math.min(90, Math.random() * 80 + 10)));
-      }, 200);
+      // const progressInterval = setInterval(() => {
+      //   dispatch(updateProgress(Math.min(90, Math.random() * 80 + 10)));
+      // }, 200);
+
+      //check if user has this type destination, if no create email with recipient user email
+      const userDestinations = user.destinations || [];
+      const hasTypeDestination = userDestinations.some(
+        (dest: any) => dest.type === type
+      );
+
+      console.log("Userdestinations", userDestinations);
+      console.log(`🔍 Checking for existing destination of type ${type}:`, hasTypeDestination);
+      
+      if (!hasTypeDestination) {
+        console.log(`📧 User has no destination of type ${type}, creating email destination with user email`);
+        const userEmail = state.app.user.email;
+        if (userEmail) {
+          // Use the same API as ChangeDestinationScreen
+          const { updateDestinationSettings } = await import('./api/userApiService');
+          const success = await updateDestinationSettings(type.toString(), {
+            destination: 'email',
+            emails: userEmail,
+          });
+          
+          if (success) {
+            console.log('✅ Email destination created successfully');
+            // Refresh user data to get updated destinations
+            const { refreshUser } = await import('./appSlice');
+            await dispatch(refreshUser());
+          } else {
+            console.error('❌ Failed to create email destination');
+          }
+        }
+      }
 
       // Upload the file
       const result = await uploadFileAndSendToRecipients(type, file);
 
       // Clear progress interval
-      clearInterval(progressInterval);
+      // clearInterval(progressInterval);
 
       if (result) {
         console.log('✅ uploadSlice: File uploaded successfully', result);
@@ -96,11 +127,11 @@ const uploadSlice = createSlice({
       state.uploadProgress = action.payload;
       state.error = null;
     },
-    updateProgress: (state, action: PayloadAction<number>) => {
-      if (state.uploadProgress) {
-        state.uploadProgress.progress = Math.min(100, action.payload);
-      }
-    },
+    // updateProgress: (state, action: PayloadAction<number>) => {
+    //   if (state.uploadProgress) {
+    //     state.uploadProgress.progress = Math.min(100, action.payload);
+    //   }
+    // },
     clearUploadProgress: (state) => {
       state.uploadProgress = null;
     },
@@ -142,7 +173,7 @@ const uploadSlice = createSlice({
 
 export const { 
   setUploadProgress,
-  updateProgress,
+  //updateProgress,
   clearUploadProgress,
   clearUploadResult,
   setError,

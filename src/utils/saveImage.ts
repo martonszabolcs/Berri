@@ -116,7 +116,7 @@ export const processFileNameTemplate = (template: string): string => {
   const minutes = now.getMinutes().toString().padStart(2, '0');
   const seconds = now.getSeconds().toString().padStart(2, '0');
   const time = `${hours}${minutes}${seconds}`; // HHMMSS format
-  
+
   // Replace template variables
   let processedTemplate = template
     .replace(/{Year}/g, year)
@@ -149,7 +149,7 @@ export const generateUniqueFileName = (baseName: string, extension: string): str
  */
 export const saveScannedDocument = async (imageBase64: string, settings: any): Promise<string | null> => {
   try {
-    const fileNameTemplate = settings.fileNaming || 'BERRI_Scanned_Document';
+    const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
     
     // Process template variables to get the final filename base
     const processedTemplate = processFileNameTemplate(fileNameTemplate);

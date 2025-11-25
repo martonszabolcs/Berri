@@ -9,28 +9,29 @@ import {
 import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useNavigation, useRoute } from '@react-navigation/native';
-import { uploadAndSendFile } from '../store/uploadSlice';
+
 import { sendFilesApiService } from '../store/api/sendFilesApi';
 import { setHistory } from '../store/appSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { processFileNameTemplate } from '../utils/saveImage';
 
 type RouteParams = {
   savedFilePath: string;
-  destinationType?: number;
+  destinationType?: number | number[];
 };
 
 const DestinationSelectScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
   const dispatch = useAppDispatch();
-  const { savedFilePath, destinationType = 1 } = route.params as RouteParams;
+  const { savedFilePath, destinationType = [1] } = route.params as RouteParams;
 
   const destinations = useAppSelector(state => state.app.destinations);
   const user = useAppSelector(state => state.app.user);
   const settings = useAppSelector(state => state.app.settings);
   const [allDestinations, setAllDestinations] = useState<any[]>([]);
-  const [selectedDestination, setSelectedDestination] = useState<number | null>(
-    destinationType,
+  const [selectedDestinations, setSelectedDestinations] = useState<number[]>(
+    Array.isArray(destinationType) ? destinationType : [destinationType],
   );
 
   // Log the received file path
@@ -39,7 +40,7 @@ const DestinationSelectScreen = () => {
       '📁 DestinationSelectScreen received file path:',
       savedFilePath,
     );
-    setSelectedDestination(destinationType);
+    setSelectedDestinations(Array.isArray(destinationType) ? destinationType : [destinationType]);
   }, [savedFilePath, destinationType]);
 
   useEffect(() => {
@@ -55,7 +56,7 @@ const DestinationSelectScreen = () => {
 
   const saveFilesToAsyncstorage = async (data: {
     files: string[];
-    destination: number;
+    destinations: number[];
   }) => {
     try {
       // read asyncstorage history
@@ -69,7 +70,7 @@ const DestinationSelectScreen = () => {
           url: filePath.replace('file://', ''), // Remove file:// prefix for cross-platform compatibility
           filename: filePath.split('/').pop() || 'unknown_file',
         })),
-        destination: data.destination,
+        destinations: data.destinations, // Now array of destinations
       };
       historyArray.push(newEntry);
 
@@ -77,126 +78,162 @@ const DestinationSelectScreen = () => {
       await AsyncStorage.setItem('history', JSON.stringify(historyArray));
       // reload new data to redux slice
       dispatch(setHistory(historyArray));
-      console.log('💾 Saving files to AsyncStorage:', data.files);
+      console.log('💾 Saving files to AsyncStorage:', data.files, 'to destinations:', data.destinations);
     } catch (error) {
       console.error('❌ Error saving files to AsyncStorage:', error);
     }
   };
 
   const sendFileToDestination = async () => {
-    if (!selectedDestination) {
-      console.warn('No destination selected');
+    if (!selectedDestinations || selectedDestinations.length === 0) {
+      console.warn('No destinations selected');
       return;
     }
 
     await saveFilesToAsyncstorage({
       files: [savedFilePath],
-      destination: selectedDestination,
+      destinations: selectedDestinations,
     });
 
     console.log(
-      `Sending file at ${savedFilePath} to destination type ${selectedDestination}`,
+      `Sending file at ${savedFilePath} to destination types ${selectedDestinations.join(', ')}`,
     );
 
-    // Find the selected destination
-    const selectedDest = allDestinations.find(
-      dest => dest.type === selectedDestination,
-    );
+    // Send to all selected destinations
+    for (const selectedDestinationType of selectedDestinations) {
+      console.log(`📤 Processing destination ${selectedDestinationType}...`);
+      
+      // Find the selected destination
+      // const selectedDest = allDestinations.find(
+      //   dest => dest.type === selectedDestinationType,
+      // );
 
-    if (!selectedDest) {
-      console.error('Selected destination not found');
-      return;
-    }
+      // if (!selectedDest) {
+      //   console.error(`Selected destination ${selectedDestinationType} not found`);
+      //   continue;
+      // }
 
-    // If destination is email, dispatch uploadAndSendFile
-    if (selectedDest.destination === 'email') {
-      console.log('📧 Sending via email to:', selectedDest.emails);
-
-      try {
-        // Create a file object from the saved file path
-        const fileName = `BERRI_Document_${Date.now()}.jpg`;
-        const fileObject = {
-          uri: `file://${savedFilePath}`,
-          name: fileName,
-          type: 'image/jpeg',
-        };
-
-        console.log('📁 File object created:', {
-          name: fileObject.name,
-          type: fileObject.type,
-          uri: fileObject.uri,
-        });
-
-        const result = await dispatch(
-          uploadAndSendFile({
-            type: selectedDest.type,
-            file: fileObject,
-          }),
-        );
-
-        if (uploadAndSendFile.fulfilled.match(result)) {
-          console.log('✅ File sent successfully:', result.payload);
-          navigation.navigate('History');
-        } else {
-          console.error('❌ Failed to send file:', result.error);
+      // Check if destination exists, create if needed
+      let destinationConfig = destinations.find(dest => dest.type === selectedDestinationType);
+      
+      if (!destinationConfig) {
+        console.log(`📧 User has no destination of type ${selectedDestinationType}, creating email destination with user email`);
+        
+        try {
+          // Use the same API as ChangeDestinationScreen
+          const { updateDestinationSettings } = await import('../store/api/userApiService');
+          
+          const success = await updateDestinationSettings(selectedDestinationType.toString(), {
+            destination: 'email',
+            emails: user.email,
+          });
+          
+          if (success) {
+            console.log('✅ Email destination created successfully');
+            // Refresh user data to get updated destinations
+            const { refreshUser } = await import('../store/appSlice');
+            await dispatch(refreshUser());
+          } else {
+            console.error('❌ Failed to create email destination');
+          }
+        } catch (error) {
+          console.error('❌ Error creating email destination:', error);
         }
-      } catch (error) {
-        console.error('❌ Error sending file:', error);
       }
-    } else if (selectedDest.destination === 'dropbox') {
-      console.log('📤 Sending to Dropbox...');
 
-      try {
-        const fileName = `BERRI_Document_${Date.now()}.jpg`;
-        await sendFilesApiService.uploadToDropbox(
-          settings.dropboxAccessToken,
-          settings.dropboxRefreshToken,
-          [{ fileName, filePath: savedFilePath }],
-          selectedDest,
+      const fallbackDestination = {
+        type: selectedDestinationType,
+        destination: 'email',
+        emails: user.email,
+      };
+      const finalDest = destinationConfig || fallbackDestination;
+
+      // If destination is email, dispatch uploadAndSendFile
+      if (finalDest.destination === 'email') {
+        console.log('📧 Sending via email to:', user.email);
+
+        try {
+          // Create file array in the format expected by uploadToEmail
+          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+          const processedTemplate = processFileNameTemplate(fileNameTemplate);
+          const timestamp = Date.now();
+          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          
+          const newFileArray = [{ fileName, filePath: savedFilePath }];
+
+          console.log('📧 Uploading via email using sendFilesApiService.uploadToEmail...');
+          await sendFilesApiService.uploadToEmail(newFileArray, finalDest);
+          console.log('✅ File sent via email successfully');
+        } catch (error) {
+          console.error('❌ Error sending via email:', error);
+        }
+      } else if (finalDest.destination === 'dropbox') {
+        console.log('📤 Sending to Dropbox...');
+
+        try {
+          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+          const processedTemplate = processFileNameTemplate(fileNameTemplate);
+          const timestamp = Date.now();
+          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          await sendFilesApiService.uploadToDropbox(
+            settings.dropboxAccessToken,
+            settings.dropboxRefreshToken,
+            [{ fileName, filePath: savedFilePath }],
+            finalDest,
+          );
+          console.log('✅ File uploaded to Dropbox successfully');
+        } catch (error) {
+          console.error('❌ Error uploading to Dropbox:', error);
+        }
+      } else if (finalDest.destination === 'onedrive') {
+        console.log('📤 Sending to OneDrive...');
+
+        try {
+          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+          const processedTemplate = processFileNameTemplate(fileNameTemplate);
+          const timestamp = Date.now();
+          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          await sendFilesApiService.uploadToOneDrive(
+            settings.oneDriveAccessToken,
+            settings.oneDriveRefreshToken,
+            [{ fileName, filePath: savedFilePath }],
+            finalDest,
+          );
+          console.log('✅ File uploaded to OneDrive successfully');
+        } catch (error) {
+          console.error('❌ Error uploading to OneDrive:', error);
+        }
+      } else if (finalDest.destination === 'googledrive') {
+        console.log('📤 Sending to Google drive...');
+        try {
+          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+          const processedTemplate = processFileNameTemplate(fileNameTemplate);
+          const timestamp = Date.now();
+          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          await sendFilesApiService.uploadToGoogleDrive(
+            settings.googleDriveAccessToken,
+            settings.googleDriveRefreshToken,
+            [{ fileName, filePath: savedFilePath }],
+            finalDest,
+          );
+          console.log('✅ File uploaded to Google Drive successfully');
+        } catch (error) {
+          console.error('❌ Error uploading to Google Drive:', error);
+        }
+      } else {
+        // Handle other destination types
+        console.log(
+          `📤 Sending to ${finalDest.destination} - not implemented yet`,
         );
-        console.log('✅ File uploaded to Dropbox successfully');
-      } catch (error) {
-        console.error('❌ Error uploading to Dropbox:', error);
       }
-    } else if (selectedDest.destination === 'onedrive') {
-      console.log('📤 Sending to OneDrive...');
-
-      try {
-        const fileName = `BERRI_Document_${Date.now()}.jpg`;
-        await sendFilesApiService.uploadToOneDrive(
-          settings.oneDriveAccessToken,
-          settings.oneDriveRefreshToken,
-          [{ fileName, filePath: savedFilePath }],
-          selectedDest,
-        );
-        console.log('✅ File uploaded to OneDrive successfully');
-      } catch (error) {
-        console.error('❌ Error uploading to OneDrive:', error);
-      }
-    } else if (selectedDest.destination === 'googledrive') {
-      console.log('📤 Sending to Google drive...');
-      try {
-        const fileName = `BERRI_Document_${Date.now()}.jpg`;
-        await sendFilesApiService.uploadToGoogleDrive(
-          settings.googleDriveAccessToken,
-          settings.googleDriveRefreshToken,
-          [{ fileName, filePath: savedFilePath }],
-          selectedDest,
-        );
-        console.log('✅ File uploaded to Google Drive successfully');
-      } catch (error) {
-        console.error('❌ Error uploading to Google Drive:', error);
-      }
-
-
-    } else {
-      // Handle other destination types (Google Drive, Dropbox, etc.)
-      console.log(
-        `📤 Sending to ${selectedDest.destination} - not implemented yet`,
-      );
     }
 
-    navigation.navigate('History');
+    console.log('✅ All destinations processed successfully');
+    // Navigate to History tab after successful send
+    const parentNavigation = navigation.getParent();
+    if (parentNavigation) {
+      parentNavigation.navigate('History');
+    }
   };
 
   return (
@@ -207,13 +244,19 @@ const DestinationSelectScreen = () => {
             <TouchableOpacity
               key={destination.type}
               style={[styles.destinationCard]}
-              onPress={() => setSelectedDestination(destination.type)}
+              onPress={() => {
+                setSelectedDestinations(prev => 
+                  prev.includes(destination.type)
+                    ? prev.filter(id => id !== destination.type)
+                    : [...prev, destination.type]
+                );
+              }}
             >
               <View style={styles.cardContent}>
                 <DestinationIcon
                   type={destination.type}
                   variant={
-                    selectedDestination === destination.type
+                    selectedDestinations.includes(destination.type)
                       ? 'screen-selected'
                       : 'screen'
                   }
@@ -226,7 +269,7 @@ const DestinationSelectScreen = () => {
                   </Text>
                   <Text style={styles.destinationText}>{user.email}</Text>
                 </View>
-                {selectedDestination === destination.type && (
+                {selectedDestinations.includes(destination.type) && (
                   <Image
                     resizeMode="contain"
                     source={require('../assets/select-destination.png')}
@@ -238,11 +281,12 @@ const DestinationSelectScreen = () => {
           ))}
         </View>
         <Button
-          title="Next"
+          title={`Send`}
           onPress={() => sendFileToDestination()}
           variant="normal"
           size="large"
-          style={{ margin: 20 }}
+          buttonStyle={styles.sendButton}
+          disabled={selectedDestinations.length === 0}
         />
       </ScrollView>
     </Layout>
@@ -277,6 +321,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '500',
     color: 'white',
+  },
+  sendButton: {
+    margin: 20,
   },
 });
 

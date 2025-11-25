@@ -12,7 +12,7 @@ import {
   ActivityIndicator,
   Share,
 } from 'react-native';
-import { useNavigation, DrawerActions } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import {
   Layout,
   Text,
@@ -27,7 +27,6 @@ import { useAppDispatch } from '../store/hooks';
 import sendFilesApiService from '../store/api/sendFilesApi';
 import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
 import {
-  updateHistoryDestination,
   deleteMultipleHistoryEntries,
 } from '../utils/historyUtils';
 import { setHistory } from '../store/appSlice';
@@ -41,7 +40,6 @@ const HistorySelectScreen = () => {
   const [isSelectOpen, setIsSelectOpen] = useState(false);
   const [selectAnimation] = useState(new Animated.Value(0));
   const [isGridView, setIsGridView] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [selectedCards, setSelectedCards] = useState<string[]>([]);
   const [isBulkResending, setIsBulkResending] = useState(false);
 
@@ -65,10 +63,6 @@ const HistorySelectScreen = () => {
   }, [history, searchText]);
 
   const sortOptions = ['Newest scan', 'Oldest scan', 'Alphabetical order'];
-
-  const openDrawer = () => {
-    navigation.dispatch(DrawerActions.openDrawer());
-  };
 
   const toggleSelect = () => {
     const toValue = isSelectOpen ? 0 : 1;
@@ -224,8 +218,7 @@ const HistorySelectScreen = () => {
       const mergedHistory = {
         id: Date.now().toString(), // New unique ID
         timestamp: Date.now(), // Current timestamp
-        destination: firstHistory.destination, // Use first item's destination
-        destinationId: firstHistory.destinationId, // Use first item's destination ID
+        destinations: firstHistory.destinations || [firstHistory.destination], // Use first item's destinations array
         files: allFiles, // All files from selected histories
         // Keep other properties from first history if needed
         fileName: `Merged_${allFiles.length}_files`, // New file name
@@ -234,7 +227,7 @@ const HistorySelectScreen = () => {
       console.log('🆕 Created merged history:', {
         id: mergedHistory.id,
         fileCount: allFiles.length,
-        destination: mergedHistory.destination,
+        destinations: mergedHistory.destinations,
         timestamp: new Date(mergedHistory.timestamp).toISOString(),
       });
 
@@ -268,45 +261,6 @@ const HistorySelectScreen = () => {
     } catch (error) {
       console.error('❌ Error during merge operation:', error);
       Alert.alert('Error', 'Failed to merge items. Please try again.');
-    }
-  };
-
-  const deleteAllHistory = async () => {
-    try {
-      console.log(
-        `🗑️ Starting deletion of all ${history.length} history items...`,
-      );
-
-      if (history.length === 0) {
-        Alert.alert('Info', 'No history items to delete');
-        return;
-      }
-
-      // Use the existing utility function to delete all history entries
-      const result = await deleteMultipleHistoryEntries(
-        history, // Pass all history entries
-        history, // Current history array
-        dispatch, // Redux dispatch
-      );
-
-      // Show success message
-      if (result.failureCount === 0) {
-        Alert.alert(
-          'Success',
-          `Successfully deleted all ${result.successCount} history items and their files.`,
-        );
-      } else {
-        Alert.alert(
-          'Partial Success',
-          `Deleted ${result.successCount} history items successfully. ${result.failureCount} items failed to delete.`,
-        );
-      }
-    } catch (error) {
-      console.error('❌ Critical error during delete all operation:', error);
-      Alert.alert(
-        'Error',
-        'Failed to delete all history items. Please try again.',
-      );
     }
   };
 
@@ -423,10 +377,12 @@ const HistorySelectScreen = () => {
 
         // Filter to only histories that need this specific service
         const pendingHistories = currentHistories.filter(historyItem => {
-          const destination = destinations.find(
-            (d: any) => d.id === historyItem?.destinationId,
-          );
-          return destination?.service === service;
+          // Check if any of the history's destinations match this service
+          const historyDestinations = historyItem?.destinations || [historyItem?.destination];
+          return historyDestinations.some((destId: number) => {
+            const destination = destinations.find((d: any) => d.type === destId);
+            return destination?.destination === service;
+          });
         });
 
         console.log(
@@ -445,19 +401,11 @@ const HistorySelectScreen = () => {
               } to ${service}...`,
             );
 
-            const destination = destinations.find(
-              (d: any) => d.id === historyItem.destinationId,
-            );
-            if (!destination) {
-              console.warn(
-                `⚠️ Destination not found for history item ${historyItem.id}`,
-              );
-              continue;
-            }
-
+            const historyDestinations = historyItem.destinations || [historyItem.destination];
+            
             // Wait for each upload to complete before moving to next
             await sendFilesApiService.resendToDestination(
-              destination.id,
+              historyDestinations,
               destinations,
               historyItem,
               user,
@@ -471,13 +419,14 @@ const HistorySelectScreen = () => {
               }`,
             );
 
-            // Update history entry with fresh timestamp
-            await updateHistoryDestination(
-              historyItem,
-              destination.id,
-              history,
-              dispatch,
+            // Update history entry with fresh timestamp (keeping existing destinations)
+            const updatedHistory = history.map((h: any) => 
+              h.timestamp === historyItem.timestamp 
+                ? { ...h, timestamp: Date.now() }
+                : h
             );
+            dispatch(setHistory(updatedHistory));
+            await AsyncStorage.setItem('history', JSON.stringify(updatedHistory));
           } catch (error) {
             console.error(
               `❌ [${i + 1}/${pendingHistories.length}] Error resending ${
@@ -536,96 +485,70 @@ const HistorySelectScreen = () => {
 
       console.log('📋 Filtered histories to resend:', getAllHistories.length);
 
-      // Group histories by destination for efficient processing
-      const destinationGroups: { [key: number]: any[] } = {};
-      getAllHistories.forEach((historyItem: any) => {
-        const destType = historyItem.destination;
-        if (!destinationGroups[destType]) {
-          destinationGroups[destType] = [];
-        }
-        destinationGroups[destType].push(historyItem);
-      });
-
-      console.log(
-        '📊 Destination groups:',
-        Object.keys(destinationGroups).map(
-          key =>
-            `Dest ${key}: ${destinationGroups[parseInt(key, 10)].length} items`,
-        ),
-      );
+      // Process histories - each history can go to multiple destinations now
+      console.log('📋 Processing histories for resend...');
 
       let successCount = 0;
       let failureCount = 0;
 
-      // Process each destination group SEQUENTIALLY
-      for (const [destType, histories] of Object.entries(destinationGroups)) {
-        console.log(
-          `🎯 Processing destination ${destType} with ${histories.length} histories...`,
-        );
+      // Process each history item SEQUENTIALLY
+      for (let i = 0; i < getAllHistories.length; i++) {
+        const historyItem = getAllHistories[i];
 
-        // Get destination configuration
-        const destinationConfig = destinations.find(
-          (dest: any) => dest.type === parseInt(destType, 10),
-        );
-        const serviceType = destinationConfig?.destination || 'email';
+        try {
+          console.log(
+            `📤 [${i + 1}/${getAllHistories.length}] Processing ${
+              historyItem.files[0]?.filename
+            }...`,
+          );
 
-        // Process each history item SEQUENTIALLY within the group
-        for (let i = 0; i < histories.length; i++) {
-          const historyItem = histories[i];
+          const historyDestinations = historyItem.destinations || [historyItem.destination];
 
-          try {
+          // Wait for each upload to complete before moving to next
+          await sendFilesApiService.resendToDestination(
+            historyDestinations,
+            destinations,
+            historyItem,
+            user,
+            settings,
+            dispatch,
+          );
+
+          console.log(
+            `✅ [${i + 1}/${getAllHistories.length}] Successfully resent ${
+              historyItem.files[0]?.filename
+            }`,
+          );
+          successCount++;
+        } catch (error) {
+          console.error(
+            `❌ [${i + 1}/${getAllHistories.length}] Error resending ${
+              historyItem.files[0]?.filename
+            }:`,
+            error,
+          );
+          failureCount++;
+
+          // Check if it's an OAuth error that requires re-authentication
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (
+            errorMessage?.includes('refresh_token') ||
+            errorMessage?.includes('unauthorized') ||
+            errorMessage?.includes('token')
+          ) {
             console.log(
-              `📤 [${i + 1}/${histories.length}] Processing ${
-                historyItem.files[0]?.filename
-              } to ${serviceType}...`,
+              `🔐 OAuth error detected, stopping bulk operation...`,
             );
+            setIsBulkResending(false);
 
-            // Wait for each upload to complete before moving to next
-            await sendFilesApiService.resendToDestination(
-              parseInt(destType, 10),
-              destinations,
-              historyItem,
-              user,
-              settings,
-              dispatch,
-            );
-
-            console.log(
-              `✅ [${i + 1}/${histories.length}] Successfully resent ${
-                historyItem.files[0]?.filename
-              }`,
-            );
-            successCount++;
-          } catch (error) {
-            console.error(
-              `❌ [${i + 1}/${histories.length}] Error resending ${
-                historyItem.files[0]?.filename
-              }:`,
-              error,
-            );
-            failureCount++;
-
-            // Check if it's an OAuth error that requires re-authentication
-            const errorMessage =
-              error instanceof Error ? error.message : String(error);
-            if (
-              errorMessage?.includes('refresh_token') ||
-              errorMessage?.includes('unauthorized') ||
-              errorMessage?.includes('token')
-            ) {
-              console.log(
-                `🔐 OAuth error detected for ${serviceType}, stopping bulk operation...`,
-              );
-              setIsBulkResending(false);
-
-              // Let the OAuth flow handle the re-authentication
-              // The resume will be called from the token exchange functions
-              return;
-            }
-
-            // For other errors, continue with next item
-            continue;
+            // Let the OAuth flow handle the re-authentication
+            // The resume will be called from the token exchange functions
+            return;
           }
+
+          // For other errors, continue with next item
+          continue;
         }
       }
 

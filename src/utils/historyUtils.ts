@@ -10,7 +10,8 @@ interface FileInfo {
 
 interface HistoryEntry {
   timestamp: number;
-  destination: number;
+  destination?: number; // Legacy support
+  destinations?: number[]; // New multi-destination support
   files: FileInfo[];
 }
 
@@ -144,15 +145,15 @@ export const deleteMultipleHistoryEntries = async (
  */
 export const updateHistoryDestination = async (
   historyEntry: HistoryEntry,
-  newDestinationId: number,
+  newDestinationIds: number[],
   currentHistory: HistoryEntry[],
   dispatch: AppDispatch
 ): Promise<void> => {
   try {
-    // Update the history entry's destination
+    // Update the history entry's destinations
     const updatedHistory = currentHistory.map((entry) => {
       if (entry.timestamp === historyEntry.timestamp) {
-        return { ...entry, destination: newDestinationId };
+        return { ...entry, destinations: newDestinationIds };
       }
       return entry;
     });
@@ -163,7 +164,7 @@ export const updateHistoryDestination = async (
     // Update Redux state
     dispatch(setHistory(updatedHistory));
     
-    console.log(`✅ History destination updated to ${newDestinationId}`);
+    console.log(`✅ History destinations updated to [${newDestinationIds.join(', ')}]`);
   } catch (error) {
     console.error('❌ Error updating history destination:', error);
     throw error;

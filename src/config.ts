@@ -1,4 +1,5 @@
 export const API_CONFIG = {
+  // BASE_URL: "https://app.berribook.com", 
   BASE_URL: __DEV__ ? 'http://localhost:3000' : 'https://api.yourdomain.com',
   TIMEOUT: 10000,
 };

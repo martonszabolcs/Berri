@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Svg, { Rect, LinearGradient, Stop, Defs } from 'react-native-svg';
 import { Layout, Header, Button, Text, AvatarIcon } from '../components';
 import { useAppSelector } from '../store/hooks';
+import { deleteUser } from '../store/api/userApiService';
 import {format} from 'date-fns';
 
 type ProfileStackParamList = {
@@ -48,9 +49,48 @@ const ProfileScreen = () => {
         { 
           text: 'Delete', 
           style: 'destructive',
-          onPress: () => {
-            // Here you would call your API to delete the account
-            Alert.alert('Account Deleted', 'Your account has been successfully deleted.');
+          onPress: async () => {
+            try {
+              console.log('🗑️ Starting account deletion...');
+              const success = await deleteUser();
+              
+              if (success) {
+                console.log('✅ Account deleted successfully');
+                
+                // Clear local storage and redirect to auth screen
+                await AsyncStorage.removeItem('authToken');
+                await AsyncStorage.removeItem('history');
+                await AsyncStorage.removeItem('settings');
+                
+                Alert.alert(
+                  'Account Deleted',
+                  'Your account has been successfully deleted.',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: () => {
+                        navigation.reset({
+                          index: 0,
+                          routes: [{ name: 'AuthScreen' }],
+                        });
+                      }
+                    }
+                  ]
+                );
+              } else {
+                console.error('❌ Failed to delete account');
+                Alert.alert(
+                  'Error', 
+                  'Failed to delete your account. Please try again or contact support.'
+                );
+              }
+            } catch (error) {
+              console.error('❌ Error during account deletion:', error);
+              Alert.alert(
+                'Error', 
+                'An unexpected error occurred while deleting your account. Please try again.'
+              );
+            }
           }
         }
       ]

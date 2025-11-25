@@ -11,7 +11,8 @@ interface FileInfo {
 
 interface HistoryEntry {
   timestamp: number;
-  destination: number;
+  destination?: number; // Legacy support
+  destinations?: number[]; // New multi-destination support
   files: FileInfo[];
 }
 

@@ -261,6 +261,53 @@ class UserApiService {
       return false;
     }
   }
+
+  // Delete current user account
+  async deleteUser(): Promise<boolean> {
+    try {
+      const userId = await this.getCurrentUserId();
+      if (!userId) {
+        throw new Error('Could not get current user ID');
+      }
+
+      const state = store.getState();
+      const token = state.app.token;
+      if (!token) {
+        throw new Error('No auth token found in Redux store');
+      }
+
+      console.log('🚀 userApi: Deleting user account', userId);
+      console.log('🔑 userApi: Using token:', token.substring(0, 50) + '...');
+      console.log('🌐 userApi: API URL:', `${API_CONFIG.BASE_URL}/users/${userId}`);
+
+      const response = await axios.delete(
+        `${API_CONFIG.BASE_URL}/users/${userId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        }
+      );
+
+      console.log('✅ userApi: User account deleted successfully', response.data);
+      return response.status === 200 || response.status === 204;
+    } catch (error: any) {
+      console.error('❌ userApi: Error deleting user account:', error);
+      
+      // Log detailed error information
+      if (error.response) {
+        console.error('❌ userApi: Response status:', error.response.status);
+        console.error('❌ userApi: Response data:', error.response.data);
+        console.error('❌ userApi: Response headers:', error.response.headers);
+      } else if (error.request) {
+        console.error('❌ userApi: Request was made but no response received:', error.request);
+      } else {
+        console.error('❌ userApi: Error setting up request:', error.message);
+      }
+      
+      return false;
+    }
+  }
 }
 
 export const userApiService = new UserApiService();
@@ -283,5 +330,6 @@ export const updateDestinationSettings = (
     emails?: string;
   }
 ) => userApiService.updateDestinationSettings(destinationType, settings);
+export const deleteUser = () => userApiService.deleteUser();
 
 export default userApiService;

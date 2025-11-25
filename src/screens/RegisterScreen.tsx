@@ -43,7 +43,7 @@ const RegisterScreen = () => {
     }
 
     if (!name || !email || !password) {
-      Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
+      Alert.alert('Error', 'Please fill in all fields');
       return;
     }
 
@@ -55,9 +55,10 @@ const RegisterScreen = () => {
 
       if (registerUser.fulfilled.match(result)) {
         console.log('✅ RegisterScreen: Registration successful');
+        
         Alert.alert(
-          'Sikeres regisztráció',
-          'Kérlek ellenőrizd az email-edet a verifikációért!',
+          'Success',
+          'Please check your email to verify your account.',
           [
             {
               text: 'OK',
@@ -69,12 +70,12 @@ const RegisterScreen = () => {
         console.error('❌ RegisterScreen: Registration failed', result.error);
         Alert.alert(
           'Hiba',
-          result.error.message || 'Regisztrációs hiba történt!',
+          result.error.message || 'Something went wrong during registration.',
         );
       }
     } catch (error: any) {
       console.error('❌ RegisterScreen: Registration exception', error);
-      Alert.alert('Hiba', 'Regisztrációs hiba történt!');
+      Alert.alert('Error', 'Something went wrong during registration.');
     } finally {
       setIsLoading(false);
     }

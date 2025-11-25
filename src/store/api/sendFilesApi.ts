@@ -76,92 +76,120 @@ class SendFilesApiService {
   }
 
   async resendToDestination(
-    destinationId: number,
-    destinations,
-    history,
-    user,
-    settings,
-    dispatch,
+    destinationIds: number[],
+    destinations: any,
+    history: any,
+    user: any,
+    settings: any,
+    dispatch: any,
   ) {
-    console.log(`📤 Resending to destination ${destinationId}`);
+    console.log(`📤 Resending to destinations ${destinationIds.join(', ')}`);
 
-    // Find the destination configuration
-    const destinationConfig = destinations.find(
-      (dest: any) => dest.type === destinationId,
-    );
-    const fallbackDestination = {
-      type: destinationId,
-      destination: 'email',
-      emails: user.email,
-    };
-    const selectedDest = destinationConfig || fallbackDestination;
-
-    const newFileArray = history.files.map(file => ({
+    const newFileArray = history.files.map((file: any) => ({
       fileName: file.filename,
       filePath: file.url,
     }));
 
-    if (selectedDest.destination === 'email') {
-      console.log('📧 Resending via email to:', user.email);
-      // TODO EMAIL RESEND BUNDLE PDF !!!!!
-      try {
-        await this.uploadToEmail(newFileArray, destinationConfig);
-        console.log('✅ File resent via email successfully');
-      } catch (error) {
-        console.error('❌ Error resending via email:', error);
-        throw error;
-      }
-    } else if (selectedDest.destination === 'dropbox') {
-      console.log('📤 Resending to Dropbox...');
-
-      try {
-        await this.uploadToDropbox(
-          settings.dropboxAccessToken,
-          settings.dropboxRefreshToken,
-          newFileArray,
-          destinationConfig,
-        );
-        console.log('✅ File resent to Dropbox successfully');
-      } catch (error) {
-        console.error('❌ Error resending to Dropbox:', error);
-        throw error;
-      }
-    } else if (selectedDest.destination === 'onedrive') {
-      console.log('📤 Resending to OneDrive...');
-
-      try {
-        await this.uploadToOneDrive(
-          settings.oneDriveAccessToken,
-          settings.oneDriveRefreshToken,
-          newFileArray,
-          destinationConfig,
-        );
-        console.log('✅ File resent to OneDrive successfully');
-      } catch (error) {
-        console.error('❌ Error resending to OneDrive:', error);
-        throw error;
-      }
-    } else if (selectedDest.destination === 'googledrive') {
-      console.log('📤 Resending to Google Drive...');
-
-      try {
-        await this.uploadToGoogleDrive(
-          settings.googleDriveAccessToken,
-          settings.googleDriveRefreshToken,
-          newFileArray,
-          destinationConfig,
-        );
-        console.log('✅ File resent to Google Drive successfully');
-      } catch (error) {
-        console.error('❌ Error resending to Google Drive:', error);
-        throw error;
-      }
-    } else {
-      console.log(
-        `📤 Resending to ${selectedDest.destination} - not implemented yet`,
+    // Send to all destinations from the history entry
+    for (const destinationId of destinationIds) {
+      console.log(`📤 Processing resend to destination ${destinationId}...`);
+      
+      // Find the destination configuration
+      const destinationConfig = destinations.find(
+        (dest: any) => dest.type === destinationId,
       );
-      throw new Error(`${selectedDest.destination} resend not implemented yet`);
+
+      if (!destinationConfig) {
+
+        console.log(`📧 User has no destination of type ${destinationId}, creating email destination with user email`);
+          // Use the same API as ChangeDestinationScreen
+          const { updateDestinationSettings } = await import('./userApiService');
+          
+          const success = await updateDestinationSettings(destinationId.toString(), {
+            destination: 'email',
+            emails: user.email,
+          });
+          
+          if (success) {
+            console.log('✅ Email destination created successfully');
+            // Refresh user data to get updated destinations
+          } else {
+            console.error('❌ Failed to create email destination');
+          }
+        
+      
+      }
+
+      const fallbackDestination = {
+        type: destinationId,
+        destination: 'email',
+        emails: user.email,
+      };
+      const selectedDest = destinationConfig || fallbackDestination;
+
+      if (selectedDest.destination === 'email') {
+        console.log('📧 Resending via email to:', user.email);
+        try {
+          await this.uploadToEmail(newFileArray, selectedDest);
+          console.log('✅ File resent via email successfully');
+        } catch (error) {
+          console.error('❌ Error resending via email:', error);
+          throw error;
+        }
+      } else if (selectedDest.destination === 'dropbox') {
+        console.log('📤 Resending to Dropbox...');
+
+        try {
+          await this.uploadToDropbox(
+            settings.dropboxAccessToken,
+            settings.dropboxRefreshToken,
+            newFileArray,
+            selectedDest,
+          );
+          console.log('✅ File resent to Dropbox successfully');
+        } catch (error) {
+          console.error('❌ Error resending to Dropbox:', error);
+          throw error;
+        }
+      } else if (selectedDest.destination === 'onedrive') {
+        console.log('📤 Resending to OneDrive...');
+
+        try {
+          await this.uploadToOneDrive(
+            settings.oneDriveAccessToken,
+            settings.oneDriveRefreshToken,
+            newFileArray,
+            selectedDest,
+          );
+          console.log('✅ File resent to OneDrive successfully');
+        } catch (error) {
+          console.error('❌ Error resending to OneDrive:', error);
+          throw error;
+        }
+      } else if (selectedDest.destination === 'googledrive') {
+        console.log('📤 Resending to Google Drive...');
+
+        try {
+          await this.uploadToGoogleDrive(
+            settings.googleDriveAccessToken,
+            settings.googleDriveRefreshToken,
+            newFileArray,
+            selectedDest,
+          );
+          console.log('✅ File resent to Google Drive successfully');
+        } catch (error) {
+          console.error('❌ Error resending to Google Drive:', error);
+          throw error;
+        }
+      } else {
+        console.log(
+          `📤 Resending to ${selectedDest.destination} - not implemented yet`,
+        );
+        throw new Error(`${selectedDest.destination} resend not implemented yet`);
+      }
     }
+
+    console.log('✅ All resend destinations processed successfully');
   }
 
   // EMAIL
@@ -581,7 +609,7 @@ class SendFilesApiService {
         );
         return null;
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(
         'Response error:',
         error.response?.status,

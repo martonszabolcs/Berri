@@ -98,10 +98,13 @@ const apiClient = axios.create({
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
   async (config) => {
-    const state = store.getState();
-    const token = state.app.token;
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
+    // Only add token from store if Authorization header is not already set
+    if (!config.headers.Authorization) {
+      const state = store.getState();
+      const token = state.app.token;
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
     }
     return config;
   },
@@ -241,6 +244,7 @@ export const authApi = {
       
       return user;
     } catch (error) {
+      console.error(JSON.stringify(error));
       console.error('❌ authApi: getMe error', error);
       throw error;
     }

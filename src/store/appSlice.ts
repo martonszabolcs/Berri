@@ -9,7 +9,8 @@ interface FileInfo {
 
 interface FileHistoryEntry {
   timestamp: number;
-  destination: number;
+  destination?: number; // Legacy support
+  destinations?: number[]; // New multi-destination support
   files: FileInfo[];
 }
 
@@ -110,6 +111,10 @@ export const loginUser = createAsyncThunk(
       await AsyncStorage.setItem('token', response.access_token);
       console.log('✅ appSlice: Token saved to AsyncStorage');
       
+      // Small delay to ensure server has processed the login completely
+      await new Promise<void>((resolve) => setTimeout(resolve, 500));
+      
+      console.log("TOKEN", response.access_token);
       const user = await authApi.getMe(response.access_token);
       console.log('✅ appSlice: authApi.getMe successful', user);
       

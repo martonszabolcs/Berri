@@ -13,7 +13,7 @@ import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { uploadAndSendFile } from '../store/uploadSlice';
+
 import { sendFilesApiService } from '../store/api/sendFilesApi';
 import {
   deleteHistoryEntry,
@@ -29,7 +29,8 @@ interface FileInfo {
 
 interface HistoryEntry {
   timestamp: number;
-  destination: number;
+  destination?: number; // Legacy support
+  destinations?: number[]; // New multi-destination support
   files: FileInfo[];
 }
 
@@ -57,27 +58,29 @@ const HistoryDetailScreen = () => {
   const settings = useAppSelector(state => state.app.settings);
   const currentHistory = useAppSelector(state => state.app.history);
 
-  const [selectedDestinations, setSelectedDestinations] = useState<number[]>([
-    history.destination,
-  ]);
+  const [selectedDestinations, setSelectedDestinations] = useState<number[]>(
+    history.destinations || (history.destination ? [history.destination] : []),
+  );
 
   const displayName = `${history.files?.[0]?.filename}`;
   const displayDate = new Date(history.timestamp).toLocaleDateString();
 
   const toggleDestination = async (destinationId: number) => {
-    // setSelectedDestinations(prev => {
-    //   if (prev.includes(destinationId)) {
-    //     return prev.filter(id => id !== destinationId);
-    //   } else {
-    //     return [...prev, destinationId];
-    //   }
-    // });
-    setSelectedDestinations([destinationId]);
+    let newSelectedDestinations: number[] = [];
+    
+    setSelectedDestinations(prev => {
+      if (prev.includes(destinationId)) {
+        newSelectedDestinations = prev.filter(id => id !== destinationId);
+      } else {
+        newSelectedDestinations = [...prev, destinationId];
+      }
+      return newSelectedDestinations;
+    });
 
     try {
       await updateHistoryDestination(
         history,
-        destinationId,
+        newSelectedDestinations,
         currentHistory,
         dispatch,
       );
@@ -129,16 +132,14 @@ const HistoryDetailScreen = () => {
           text: 'Resend',
           onPress: async () => {
             try {
-              for (const destinationId of selectedDestinations) {
-                await sendFilesApiService.resendToDestination(
-                  destinationId,
-                  destinations,
-                  history,
-                  user,
-                  settings,
-                  dispatch,
-                );
-              }
+              await sendFilesApiService.resendToDestination(
+                selectedDestinations,
+                destinations,
+                history,
+                user,
+                settings,
+                dispatch,
+              );
 
               Alert.alert('Success', 'Scan has been resent successfully!', [
                 {
@@ -158,7 +159,6 @@ const HistoryDetailScreen = () => {
 
   // handle deeplink if user has to log in again
   // Dropbox OAuth configuration
-  const redirectUri = 'berri://dropbox-auth';
   const clientId = DROPBOX_CLIENT;
 
   // OneDrive OAuth configuration
@@ -231,16 +231,14 @@ const HistoryDetailScreen = () => {
             });
 
             try {
-              for (const destinationId of selectedDestinations) {
-                await sendFilesApiService.resendToDestination(
-                  destinationId,
-                  destinations,
-                  history,
-                  user,
-                  updatedSettings, // Use fresh tokens!
-                  dispatch,
-                );
-              }
+              await sendFilesApiService.resendToDestination(
+                selectedDestinations,
+                destinations,
+                history,
+                user,
+                updatedSettings, // Use fresh tokens!
+                dispatch,
+              );
 
               Alert.alert('Success', 'Scan has been resent successfully!', [
                 {
@@ -262,7 +260,7 @@ const HistoryDetailScreen = () => {
         console.error('❌ Error during token exchange:', error);
       }
     },
-    [clientId, redirectUri, dispatch, navigation],
+    [clientId, dispatch, navigation, selectedDestinations, destinations, history, user, settings],
   );
 
   const exchangeOneDriveCodeForToken = useCallback(
@@ -313,16 +311,14 @@ const HistoryDetailScreen = () => {
 
             // Based on screen:
             try {
-              for (const destinationId of selectedDestinations) {
-                await sendFilesApiService.resendToDestination(
-                  destinationId,
-                  destinations,
-                  history,
-                  user,
-                  updatedSettings, // Use fresh tokens!
-                  dispatch,
-                );
-              }
+              await sendFilesApiService.resendToDestination(
+                selectedDestinations,
+                destinations,
+                history,
+                user,
+                updatedSettings, // Use fresh tokens!
+                dispatch,
+              );
 
               Alert.alert('Success', 'Scan has been resent successfully!', [
                 {
@@ -344,7 +340,7 @@ const HistoryDetailScreen = () => {
         console.error('❌ Error during OneDrive token exchange:', error);
       }
     },
-    [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation],
+    [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation, selectedDestinations, destinations, history, user, settings],
   );
 
   useEffect(() => {
