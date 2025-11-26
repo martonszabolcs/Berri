@@ -105,7 +105,8 @@ const ChangeRecipientScreen = () => {
       console.log('🚀 Saving emails:', emailString);
       
       const success = await updateDestinationSettings(destinationId, { 
-        emails: emailString 
+        emails: emailString,
+        destination: 'email'
       });
       
       if (success) {

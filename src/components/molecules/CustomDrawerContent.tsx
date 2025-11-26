@@ -119,7 +119,7 @@ const CustomDrawerContent = ({ navigation }: CustomDrawerContentProps) => {
 const styles = StyleSheet.create({
   drawerContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
+    backgroundColor: 'rgba(0, 0, 0, 1)',
   },
   drawerHeader: {
     paddingTop: 60,
