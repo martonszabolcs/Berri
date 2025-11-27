@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { StatusBar, useColorScheme } from 'react-native';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
 import { store } from './src/store';
 import Navigation from './src/navigation';
@@ -15,7 +15,7 @@ function App() {
   //     console.log('🚀 ========================================');
   //     console.log('🚀 BERRI APP: Generating test files on startup...');
   //     console.log('🚀 ========================================');
-      
+
   //     try {
   //       // Generate a simple test image
   //       console.log('1️⃣ Generating simple test image...');
@@ -24,7 +24,7 @@ function App() {
   //         console.log('✅ Simple test image generated:', testImage.name);
   //         console.log('📍 Location:', testImage.path);
   //       }
-        
+
   //       // Generate a colorful test image
   //       console.log('2️⃣ Generating colorful test image...');
   //       const colorfulImage = await generateColorfulTestImage('berri-test-colorful.jpg');
@@ -32,7 +32,7 @@ function App() {
   //         console.log('✅ Colorful test image generated:', colorfulImage.name);
   //         console.log('📍 Location:', colorfulImage.path);
   //       }
-        
+
   //       // Generate a test PDF
   //       console.log('3️⃣ Generating test PDF...');
   //       const testPdf = await generateTestPDF('berri-test-document.pdf');
@@ -40,11 +40,11 @@ function App() {
   //         console.log('✅ Test PDF generated:', testPdf.name);
   //         console.log('📍 Location:', testPdf.path);
   //       }
-        
+
   //       console.log('🎉 ========================================');
   //       console.log('🎉 ALL TEST FILES GENERATED SUCCESSFULLY!');
   //       console.log('🎉 ========================================');
-        
+
   //       // Display current history
   //       const history = await getGeneratedFileHistory();
   //       console.log('📋 Current AsyncStorage history:');
@@ -57,7 +57,7 @@ function App() {
   //           console.log(`       URL: ${file.url}`);
   //         });
   //       });
-        
+
   //     } catch (error) {
   //       console.error('❌ ========================================');
   //       console.error('❌ ERROR GENERATING TEST FILES:', error);
@@ -71,8 +71,12 @@ function App() {
   return (
     <Provider store={store}>
       <SafeAreaProvider>
-        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-        <Navigation />
+        <SafeAreaView
+          style={{ flex: 1, backgroundColor: isDarkMode ? '#000' : '#fff' }}
+        >
+          <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+          <Navigation />
+        </SafeAreaView>
       </SafeAreaProvider>
     </Provider>
   );

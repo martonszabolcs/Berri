@@ -21,18 +21,18 @@ import { useEffect } from 'react';
 // ============================================================================
 
 // === TELJESÍTMÉNY ÉS DEBUG ===
-const DEBUG_ON = true; // Debug képek generálása (false = jobb teljesítmény!)
+const DEBUG_ON = false; // Debug képek generálása (false = jobb teljesítmény!)
 const FRAME_SKIP_INTERVAL = 1; // Minden N. frame feldolgozása (1=minden, 2=minden második)
-const DEBUG_IMAGE_INTERVAL = 6; // Debug kép generálási gyakoriság (ha DEBUG_ON=true)
+const DEBUG_IMAGE_INTERVAL = 1; // Debug kép generálási gyakoriság (ha DEBUG_ON=true)
 
 // === KÉPFELDOLGOZÁS ===
-const MAX_PROCESS_DIMENSION = 1080; // Max feldolgozási felbontás (1080*2 = 2160px)
+const MAX_PROCESS_DIMENSION = 1080; // Max feldolgozási felbontás (visszaállítva 1080-ra)
 
 // === BLUR (HOMÁLYOSSÁG) DETEKTÁLÁS ===
-const BLUR_THRESHOLD = 20; // Laplacian variance küszöb (alacsonyabb = homályos)
+const BLUR_THRESHOLD = 2; // Laplacian variance küszöb (alacsonyabb = homályos) - 2 felett jónak számít (csökkentve gyengébb fényhez)
 
 // === DOKUMENTUM MÉRET KORLÁTOK ===
-const MIN_AREA_RATIO = 0.1; // Min dokumentum terület a kép %-ában (10%)
+const MIN_AREA_RATIO = 0.08; // Min dokumentum terület a kép %-ában (8% - csökkentve)
 const MAX_AREA_RATIO = 0.95; // Max dokumentum terület a kép %-ában (95%)
 const CROP_MARGIN_RATIO = 0.05; // Szélek margin aránya (5% - képszél elutasítás)
 
@@ -47,13 +47,14 @@ const MAX_HORIZONTAL_RATIO = 5.0; // Max felső/alsó oldal arány (perspektíva
 const MAX_VERTICAL_RATIO = 5.0; // Max bal/jobb oldal arány (perspektíva torzítás)
 
 // === STABILITÁS ÉS ANTI-VILLOGÁS ===
-const STABLE_DETECTION_THRESHOLD = 5; // Hány egymást követő frame kell a stabil detektáláshoz
-const STABLE_NO_DETECTION_THRESHOLD = 15; // Hány frame kell a "nincs dokumentum" státuszhoz
-const REACTIVATE_AFTER_FRAMES = 15; // Frozen state újraaktiválás N frame után
+const STABLE_DETECTION_THRESHOLD = 1; // Hány egymást követő frame kell a stabil detektáláshoz
+const STABLE_NO_DETECTION_THRESHOLD = 6; // Hány frame kell a "nincs dokumentum" státuszhoz
+const REACTIVATE_AFTER_FRAMES = 150; // Frozen state újraaktiválás N frame után
 
 // === BRIGHTNESS SEEKER (FÉNYERŐ KALIBRÁLÁS) ===
-const BRIGHTNESS_SEEKER_MAX_OFFSET = 100; // Max offset értéke (+-100)
-const BRIGHTNESS_SEEKER_STEP = 20; // Lépésköz (20 per lépés)
+const BRIGHTNESS_SEEKER_MAX_OFFSET = 250; // Max POZITÍV offset értéke (növelve 180-ról)
+const BRIGHTNESS_SEEKER_MIN_OFFSET = -250; // Max NEGATÍV offset értéke (növelve -200-ról)
+const BRIGHTNESS_SEEKER_STEP = 15; // Lépésköz (növelve 10-ről - gyorsabb pásztázás)
 const BRIGHTNESS_CHANGE_INTERVAL = 1; // Fényerő váltás gyakorisága (frame-ekben)
 
 // === OPENCV PARAMÉTEREK ===
@@ -97,9 +98,11 @@ export interface DetectionResult {
   brightness?: number;
   seekerInfo?: string;
   qrInfo?: string;
+  qrValue?: string | null; // QR kód tartalma (rawValue)
   qrPosition?: 'left' | 'right' | null; // QR kód pozíciója a dokumentumon (alul, bal vagy jobb oldal)
   qrBounds?: { left: number; top: number; width: number; height: number } | null; // QR kód pontos bounds (frame koordinátákban)
   blurInfo?: string; // Homályosság információ
+  perspectiveWarning?: string | null; // Figyelmeztetés ha túl ferde a szög
   frameWidth?: number; // Frame natív szélessége
   frameHeight?: number; // Frame natív magassága
   calibrationInfo?: {
@@ -212,6 +215,29 @@ const calculateDistance = (p1: DocumentCorner, p2: DocumentCorner): number => {
     dy = p1.y - p2.y;
   return Math.sqrt(dx * dx + dy * dy);
 };
+
+// Helper function to check if corners are stable (not jumping around)
+const areCornersStable = (
+  current: DocumentCorner[],
+  previous: DocumentCorner[] | null,
+  maxJumpDistance: number = 30, // Max pixel movement allowed between frames
+): boolean => {
+  'worklet';
+  if (!previous || previous.length !== 4 || current.length !== 4) {
+    return true; // First frame or invalid - accept as stable
+  }
+
+  // Check each corner pair - if any corner jumped more than threshold, it's unstable
+  for (let i = 0; i < 4; i++) {
+    const distance = calculateDistance(current[i], previous[i]);
+    if (distance > maxJumpDistance) {
+      return false; // Unstable - corner jumped too much!
+    }
+  }
+
+  return true; // All corners are stable
+};
+
 const orderCorners = (corners: DocumentCorner[]): DocumentCorner[] => {
   'worklet';
   if (corners.length !== 4) return corners;
@@ -248,11 +274,17 @@ const validateDocumentPerspective = (
 ): {
   isValid: boolean;
   correctedCorners?: DocumentCorner[];
+  qualityScore: number; // 0-100, magasabb = jobb minőség
+  isPoorQuality: boolean; // true ha rossz a minőség (fura szögek, stb)
+  perspectiveWarning: string | null; // Figyelmeztetés ha túl ferde a szög
 } => {
   'worklet';
   if (corners.length !== 4) {
     return {
       isValid: false,
+      qualityScore: 0,
+      isPoorQuality: true,
+      perspectiveWarning: null,
     };
   }
 
@@ -272,6 +304,9 @@ const validateDocumentPerspective = (
   if (width < 1 || height < 1) {
     return {
       isValid: false,
+      qualityScore: 0,
+      isPoorQuality: true,
+      perspectiveWarning: null,
     };
   }
 
@@ -281,17 +316,7 @@ const validateDocumentPerspective = (
   const targetAspectRatio = TARGET_ASPECT_RATIO;
   const aspectRatioDiff = Math.abs(currentAspectRatio - targetAspectRatio);
 
-  // SOKKAL ENGEDÉKENYEBB - perspective esetén a ratio nagyon eltérhet
-  if (aspectRatioDiff > MAX_ASPECT_RATIO_DIFF) {
-    // Növelve 0.4-ről 1.5-re - nagy perspektíva torzításhoz
-    const correctedCorners = correctToRectangle(ordered);
-    return {
-      isValid: true,
-      correctedCorners,
-    };
-  }
-
-  // ENGEDÉKENYEBB side ratio check perspektíva torzításokhoz
+  // Calculate side ratios
   const topSide = calculateDistance(ordered[0], ordered[1]);
   const bottomSide = calculateDistance(ordered[3], ordered[2]);
   const leftSide = calculateDistance(ordered[0], ordered[3]);
@@ -301,6 +326,52 @@ const validateDocumentPerspective = (
     Math.max(topSide, bottomSide) / Math.min(topSide, bottomSide);
   const verticalRatio =
     Math.max(leftSide, rightSide) / Math.min(leftSide, rightSide);
+
+  // MINŐSÉGI PONTSZÁM SZÁMÍTÁSA (0-100)
+  let qualityScore = 100;
+  
+  // Aspect ratio pontlevonás (max -40 pont)
+  const aspectPenalty = Math.min(aspectRatioDiff * 40, 40);
+  qualityScore -= aspectPenalty;
+  
+  // Oldalarány torzítás pontlevonás (max -30 pont mindkettő együtt)
+  const horizontalPenalty = Math.min((horizontalRatio - 1.0) * 15, 20);
+  const verticalPenalty = Math.min((verticalRatio - 1.0) * 15, 20);
+  qualityScore -= horizontalPenalty + verticalPenalty;
+  
+  // ROSSZ MINŐSÉG ha:
+  // - Aspect ratio NAGYON rossz (>1.2 eltérés - enyhítve 0.8-ról)
+  // - ÉS oldalarányok NAGYON torzultak (>3.5x - enyhítve 2.5-ről)
+  // Csak akkor legyen poor quality ha MINDKETTŐ rossz!
+  const isPoorQuality = aspectRatioDiff > 1.2 && (horizontalRatio > 3.5 || verticalRatio > 3.5);
+
+  // PERSPEKTÍVA FIGYELMEZTETÉS - ha túl ferde a szög
+  // Ha a felső él sokkal rövidebb mint az alsó (>1.4x arány), a kamera túl ferdén néz
+  // Ez azt jelenti, hogy a dokumentum teteje túl messze van és homályos lesz
+  let perspectiveWarning: string | null = null;
+  const topBottomRatio = bottomSide / topSide; // >1 = felső él rövidebb (ferde nézet)
+  const leftRightRatio = Math.max(leftSide, rightSide) / Math.min(leftSide, rightSide);
+  
+  if (topBottomRatio > 1.35) {
+    // Felső él >35%-kal rövidebb = túl ferde
+    perspectiveWarning = 'Vidd szembe a kamerát a lappal!';
+  } else if (leftRightRatio > 1.35) {
+    // Oldalak nagyon eltérőek = oldalról nézzük
+    perspectiveWarning = 'Vidd szembe a kamerát a lappal!';
+  }
+
+  // SOKKAL ENGEDÉKENYEBB - perspective esetén a ratio nagyon eltérhet
+  if (aspectRatioDiff > MAX_ASPECT_RATIO_DIFF) {
+    // Növelve 0.4-ről 1.5-re - nagy perspektíva torzításhoz
+    const correctedCorners = correctToRectangle(ordered);
+    return {
+      isValid: true,
+      correctedCorners,
+      qualityScore: Math.max(qualityScore, 0),
+      isPoorQuality,
+      perspectiveWarning,
+    };
+  }
 
   // SOKKAL ENGEDÉKENYEBB perspektíva torzítás - oldalirányú nézés esetén
   if (
@@ -312,11 +383,19 @@ const validateDocumentPerspective = (
     return {
       isValid: true,
       correctedCorners,
+      qualityScore: Math.max(qualityScore, 0),
+      isPoorQuality,
+      perspectiveWarning,
     };
   }
 
   // Minden esetben valid
-  return { isValid: true };
+  return { 
+    isValid: true,
+    qualityScore: Math.max(qualityScore, 0),
+    isPoorQuality,
+    perspectiveWarning,
+  };
 };
 
 // Helper function to correct corners to form a proper rectangle with 5:3 aspect ratio
@@ -374,7 +453,8 @@ export const useInferenceLogic = (
     isActive: true,
     direction: 'up' as 'up' | 'down',
     currentOffset: 0,
-    maxOffset: BRIGHTNESS_SEEKER_MAX_OFFSET,
+    maxOffsetPositive: BRIGHTNESS_SEEKER_MAX_OFFSET, // +300
+    maxOffsetNegative: Math.abs(BRIGHTNESS_SEEKER_MIN_OFFSET), // 200 (absolute value)
     step: BRIGHTNESS_SEEKER_STEP,
     isCompletelyDone: false,
     finalAlpha: 1.0,
@@ -386,6 +466,7 @@ export const useInferenceLogic = (
     consecutiveNoDetections: 0, // ANTI-VILLOGÁS: hány egymást követő frame-ben NEM láttuk
     isStableDetection: false, // ANTI-VILLOGÁS: stabil-e a detektálás
     frameSkipCounter: 0, // Frame skip számláló - csak minden 10. frame-et dolgozunk fel
+    previousCorners: null as DocumentCorner[] | null, // Előző frame sarkai - ugrálás detektáláshoz
   };
 
   // === DEBUG FLAG - PERFORMANCE OPTIMALIZÁLÁS ===
@@ -451,6 +532,7 @@ export const useInferenceLogic = (
         // QR KÓD DETEKTÁLÁS - csak info céllal, nem szól bele a detektálásba
         const qrCodes = scanBarcodes(frame);
         let qrDebugInfo = '';
+        let qrValue: string | null = null;
         let qrPosition: 'left' | 'right' | null = null;
         let qrBounds: { left: number; top: number; width: number; height: number } | null = null;
 
@@ -461,7 +543,9 @@ export const useInferenceLogic = (
           const centerX = qr.left + qr.width / 2;
           const centerY = qr.top + qr.height / 2;
           
-          // Mentjük a bounds-ot
+          // Mentjük a bounds-ot és a tartalmat
+          qrValue = qr.rawValue || null;
+          console.log('🔍 QR detected - rawValue:', qr.rawValue, 'saved qrValue:', qrValue);
           qrBounds = {
             left: qr.left,
             top: qr.top,
@@ -496,12 +580,12 @@ export const useInferenceLogic = (
 
             if (seekerState.currentOffset > 0) {
               const factor = seekerState.currentOffset / 100;
-              seekerState.finalAlpha = 1.0 + factor * 0.8;
-              seekerState.finalBeta = factor * 40;
+              seekerState.finalAlpha = 1.0 + factor * 1.2;
+              seekerState.finalBeta = factor * 60;
             } else if (seekerState.currentOffset < 0) {
               const factor = Math.abs(seekerState.currentOffset) / 100;
-              seekerState.finalAlpha = 1.0 - factor * 0.3;
-              seekerState.finalBeta = -(factor * 30);
+              seekerState.finalAlpha = 1.0 - factor * 0.4;
+              seekerState.finalBeta = -(factor * 40);
             } else {
               seekerState.finalAlpha = 1.0;
               seekerState.finalBeta = 0;
@@ -537,15 +621,15 @@ export const useInferenceLogic = (
 
             if (seekerState.direction === 'up') {
               seekerState.currentOffset += currentStep;
-              if (seekerState.currentOffset > seekerState.maxOffset) {
+              if (seekerState.currentOffset > seekerState.maxOffsetPositive) {
                 seekerState.direction = 'down';
-                seekerState.currentOffset = seekerState.maxOffset;
+                seekerState.currentOffset = seekerState.maxOffsetPositive;
               }
             } else {
               seekerState.currentOffset -= currentStep;
-              if (seekerState.currentOffset < -seekerState.maxOffset) {
+              if (seekerState.currentOffset < -seekerState.maxOffsetNegative) {
                 seekerState.direction = 'up';
-                seekerState.currentOffset = -seekerState.maxOffset;
+                seekerState.currentOffset = -seekerState.maxOffsetNegative;
               }
             }
             
@@ -555,12 +639,15 @@ export const useInferenceLogic = (
 
           // Számítsuk ki az új alpha/beta értéket
           if (seekerState.currentOffset > 0) {
-            const factor = seekerState.currentOffset / seekerState.maxOffset;
-            return { alpha: 1.0 + factor * 0.8, beta: factor * 40 };
+            // Pozitív offset: világosítás sötét képekhez
+            // Beta: 0 -> +250 (lineárisan) - AGRESSZÍVEBB!
+            const factor = seekerState.currentOffset / seekerState.maxOffsetPositive;
+            return { alpha: 1.0 + factor * 1.2, beta: seekerState.currentOffset * 1.5 };
           } else if (seekerState.currentOffset < 0) {
-            const factor =
-              Math.abs(seekerState.currentOffset) / seekerState.maxOffset;
-            return { alpha: 1.0 - factor * 0.3, beta: -(factor * 30) };
+            // Negatív offset: sötétítés világos képekhez
+            // Beta: 0 -> -250 (lineárisan)
+            const factor = Math.abs(seekerState.currentOffset) / seekerState.maxOffsetNegative;
+            return { alpha: 1.0 - factor * 0.4, beta: seekerState.currentOffset };
           }
 
           return { alpha: 1.0, beta: 0 };
@@ -573,12 +660,14 @@ export const useInferenceLogic = (
           'worklet';
           const offset = seekerState.currentOffset;
           if (offset > 0) {
-            const factor = offset / seekerState.maxOffset;
-            return { alpha: 1.0 + factor * 0.8, beta: factor * 40 };
+            // Pozitív offset: világosítás - AGRESSZÍVEBB!
+            const factor = offset / seekerState.maxOffsetPositive;
+            return { alpha: 1.0 + factor * 1.2, beta: offset * 1.5 };
           }
           if (offset < 0) {
-            const factor = Math.abs(offset) / seekerState.maxOffset;
-            return { alpha: 1.0 - factor * 0.3, beta: -(factor * 30) };
+            // Negatív offset: sötétítés
+            const factor = Math.abs(offset) / seekerState.maxOffsetNegative;
+            return { alpha: 1.0 - factor * 0.4, beta: offset };
           }
           return { alpha: 1.0, beta: 0 };
         };
@@ -675,11 +764,19 @@ export const useInferenceLogic = (
         );
         OpenCV.invoke('meanStdDev', laplacian, meanMat, stdDevMat);
 
-        // Konvertáljuk a stdDevMat-ot olvasható formára
-        const stdDevScalar = OpenCV.invoke('mean', stdDevMat);
-        const stdDevData = OpenCV.toJSValue(stdDevScalar);
-        const stdDev = stdDevData.a || 0; // Az első komponens
-        const variance = stdDev * stdDev; // variance = stdDev^2
+        // A helyes variance számítás: átváltjuk a Laplacian CV_64F-ből abszolút értékre
+        const absLaplacian = OpenCV.createObject(
+          ObjectType.Mat,
+          rotatedHeight,
+          rotatedWidth,
+          DataTypes.CV_64F,
+        );
+        OpenCV.invoke('convertScaleAbs', laplacian, absLaplacian, 1, 0);
+        
+        // Most számítsuk ki ennek a mean-jét, ami a valódi Laplacian variance
+        const varianceScalar = OpenCV.invoke('mean', absLaplacian);
+        const varianceData = OpenCV.toJSValue(varianceScalar);
+        const variance = varianceData.a || 0; // Ez a helyes Laplacian variance
 
         // Threshold: ha variance < BLUR_THRESHOLD, akkor homályos
         const isBlurry = variance < BLUR_THRESHOLD;
@@ -799,15 +896,18 @@ export const useInferenceLogic = (
           CANNY_THRESHOLD_HIGH,
         ); // Balanced - jó detektálás és sebesség
 
-        // OPTIMALIZÁLÁS: combined helyett újrahasználjuk edges-t!
-        OpenCV.invoke('bitwise_or', binary, edges, edges); // in-place! edges = binary OR edges
+        // SKIP combining binary and edges - use ONLY Canny edges for contour detection
+        // Reason: binary threshold causes morphology closing to merge document edges with background
+        // OpenCV.invoke('bitwise_or', binary, edges, edges);
+        
+        // Use edges (Canny only) for contour detection - same as detectDocumentCorners.ts
 
         // 7. Find contours
         const contours = OpenCV.createObject(ObjectType.MatVector);
 
         OpenCV.invoke(
           'findContours',
-          edges, // combined helyett edges (in-place optimalizálás!)
+          edges, // combined edges (binary + canny)
           contours,
           RetrievalModes.RETR_EXTERNAL,
           ContourApproximationModes.CHAIN_APPROX_SIMPLE,
@@ -944,6 +1044,14 @@ export const useInferenceLogic = (
                 finalProcessingCorners,
               );
 
+              // MINŐSÉG ELLENŐRZÉS - ha rossz minőség vagy homályos, NE fagyassza be a pásztázást!
+              // Enyhébb küszöb: qualityScore >= 40 (volt 60)
+              // BLUR CHECK: ha homályos (isBlurry), akkor ne fogadjuk el!
+              const isHighQuality = !validation.isPoorQuality && validation.qualityScore >= 40 && !isBlurry;
+              
+              console.log(`📊 Quality check: score=${validation.qualityScore.toFixed(0)}, poor=${validation.isPoorQuality}, blur=${isBlurry} (variance=${variance.toFixed(1)}) → ${isHighQuality ? '✅ ACCEPT' : '❌ REJECT'}`);
+
+              
               // Corners are in rotatedWidth x rotatedHeight coordinates (after 90° rotation)
               // Need to account for resizeMode="cover" crop
 
@@ -1097,33 +1205,51 @@ export const useInferenceLogic = (
               }
 
               seekerState.noDocumentCounter = 0;
-              documentFoundInThisFrame = true;
+              
+              // SAROK STABILITÁS ELLENŐRZÉS - ha ugrálnak a sarkok, NE fogadjuk el!
+              const cornersAreStable = areCornersStable(
+                orderedProcessingCorners,
+                seekerState.previousCorners,
+                30 // Max 30 pixel mozgás frame-enként
+              );
+              
+              // Ha a sarkok ugrálnak, folytassuk a pásztázást (instabil detektálás)
+              if (!cornersAreStable) {
+                seekerState.consecutiveDetections = 0;
+                seekerState.isStableDetection = false;
+                documentFoundInThisFrame = false; // Folytassuk a pásztázást!
+              }
+              
+              // Mentjük el a jelenlegi sarokpozíciókat a következő frame-hez
+              seekerState.previousCorners = orderedProcessingCorners.map(c => ({ x: c.x, y: c.y }));
+              
+              // FONTOS: Csak akkor jelezzük hogy találtunk dokumentumot, ha JÓ A MINŐSÉG ÉS STABIL
+              // Rossz minőség vagy ugrálás esetén folytassuk a pásztázást!
+              documentFoundInThisFrame = isHighQuality && cornersAreStable;
 
               // ANTI-VILLOGÁS: Számoljuk az egymást követő detektálásokat
               seekerState.consecutiveDetections++;
               seekerState.consecutiveNoDetections = 0;
 
               // Csak akkor fogadjuk el stabilan, ha legalább N egymást követő frame-ben látjuk
+              // ÉS jó minőségű a detektálás ÉS a sarkok stabilak
               if (
                 seekerState.consecutiveDetections >=
-                STABLE_DETECTION_THRESHOLD_RUNTIME
+                STABLE_DETECTION_THRESHOLD_RUNTIME &&
+                isHighQuality &&
+                cornersAreStable
               ) {
                 seekerState.isStableDetection = true;
               }
 
-              // DOKUMENTUM TALÁLVA ÉS STABIL - befagyasztjuk az aktuális értékeket
-              if (
-                seekerState.isStableDetection &&
-                !seekerState.isCompletelyDone
-              ) {
-                // Első alkalommal találtuk meg STABILAN - befagyasztjuk AZONNAL
-                const freezeResult = updateBrightnessSeeker(true);
-                alpha = freezeResult.alpha;
-                beta = freezeResult.beta;
-              } else if (seekerState.isCompletelyDone) {
-                // Már korábban befagyasztottuk - használjuk a tárolt értékeket
-                alpha = seekerState.finalAlpha;
-                beta = seekerState.finalBeta;
+              // DOKUMENTUM TALÁLVA ÉS STABIL ÉS JÓ MINŐSÉG
+              // NINCS BEFAGYASZTÁS - mindig aktív marad a detektálás!
+              // Ez lehetővé teszi hogy ha elfordítod a kamerát, azonnal reagáljon
+              
+              // Ha rossz a minőség, NE fogadjuk el stabilnak és folytassuk a pásztázást
+              if (!isHighQuality && seekerState.isStableDetection) {
+                seekerState.isStableDetection = false;
+                seekerState.consecutiveDetections = 0;
               }
 
               // Csak stabil detektálás esetén küldjük el az eredményt
@@ -1148,11 +1274,13 @@ export const useInferenceLogic = (
                     .toString()
                     .padStart(2)}/${REACTIVATE_AFTER_FRAMES} FROZEN:${
                     seekerState.isCompletelyDone ? 'Y' : 'N'
-                  }`,
+                  }\nQ:${validation.qualityScore.toFixed(0)} ${isHighQuality ? '✓' : '⚠️'}`,
                   qrInfo: qrDebugInfo,
+                  qrValue: qrValue, // QR kód tartalma
                   qrPosition: qrPosition, // QR kód pozíciója (left/right/null)
                   qrBounds: qrBounds, // QR kód pontos bounds (frame koordinátákban)
                   blurInfo: blurInfo,
+                  perspectiveWarning: validation.perspectiveWarning, // Perspektíva figyelmeztetés
                   calibrationInfo: adaptiveResult.calibrationInfo,
                 };
 
@@ -1160,6 +1288,9 @@ export const useInferenceLogic = (
               }
             } else {
               // Invalid perspective - debug kép csak ha DEBUG_ON
+              // Reset previous corners - rossz detektálás
+              seekerState.previousCorners = null;
+              
               let visualBase64 = { base64: '' };
 
               if (DEBUG_ON_RUNTIME) {
@@ -1200,6 +1331,7 @@ export const useInferenceLogic = (
                   seekerState.isCompletelyDone ? 'Y' : 'N'
                 }`,
                 qrInfo: qrDebugInfo,
+                qrValue: qrValue,
                 qrPosition: qrPosition,
                 qrBounds: qrBounds,
                 blurInfo: blurInfo,
@@ -1209,26 +1341,13 @@ export const useInferenceLogic = (
               onInferenceJS([result]);
             }
           } else {
-            // Not exactly 4 corners found - FREEZE brightness seeking
-            // Befagyasztjuk a seekert amikor nem 4 sarok van
-            seekerState.isActive = false;
-            seekerState.isCompletelyDone = true;
-
-            if (seekerState.currentOffset > 0) {
-              const factor = seekerState.currentOffset / 100;
-              seekerState.finalAlpha = 1.0 + factor * 0.8;
-              seekerState.finalBeta = factor * 40;
-            } else if (seekerState.currentOffset < 0) {
-              const factor = Math.abs(seekerState.currentOffset) / 100;
-              seekerState.finalAlpha = 1.0 - factor * 0.3;
-              seekerState.finalBeta = -(factor * 30);
-            } else {
-              seekerState.finalAlpha = 1.0;
-              seekerState.finalBeta = 0;
-            }
-
+            // Not exactly 4 corners found - NE fagyassza be!
+            // Csak jelezzük hogy nem találtunk megfelelő dokumentumot
             seekerState.noDocumentCounter = 0;
-            documentFoundInThisFrame = true; // Jelezzük hogy "találtunk valamit" hogy ne pásztázzon tovább
+            documentFoundInThisFrame = false; // NE álljon le a pásztázás!
+            
+            // Reset previous corners - rossz detektálás
+            seekerState.previousCorners = null;
 
             // Debug kép csak ha DEBUG_ON
             let visualBase64 = { base64: '' };
@@ -1270,6 +1389,7 @@ export const useInferenceLogic = (
                 seekerState.isCompletelyDone ? 'Y' : 'N'
               }`,
               qrInfo: qrDebugInfo,
+              qrValue: qrValue,
               qrPosition: qrPosition,
               qrBounds: qrBounds,
               blurInfo: blurInfo,
@@ -1281,6 +1401,9 @@ export const useInferenceLogic = (
           }
         } else {
           // No notebook found - debug kép csak ha DEBUG_ON
+          // Reset previous corners - nincs dokumentum
+          seekerState.previousCorners = null;
+          
           let visualBase64 = { base64: '' };
 
           if (DEBUG_ON_RUNTIME) {
@@ -1321,6 +1444,7 @@ export const useInferenceLogic = (
               seekerState.isCompletelyDone ? 'Y' : 'N'
             }`,
             qrInfo: qrDebugInfo,
+            qrValue: qrValue,
             qrPosition: qrPosition,
             qrBounds: qrBounds,
             blurInfo: blurInfo,
@@ -1350,28 +1474,12 @@ export const useInferenceLogic = (
           }
         }
 
-        // Frozen state timeout kezelés - ha nincs dokumentum 15 frame-ig
-        if (!documentFoundInThisFrame && seekerState.isCompletelyDone) {
-          seekerState.noDocumentCounter++;
-
-          if (
-            seekerState.noDocumentCounter >= REACTIVATE_AFTER_FRAMES_RUNTIME
-          ) {
-            seekerState.isActive = true;
-            seekerState.isCompletelyDone = false;
-
-            seekerState.direction = 'up';
-            seekerState.currentOffset = 0;
-            seekerState.noDocumentCounter = 0;
-            seekerState.step = BRIGHTNESS_SEEKER_STEP; // Alapértelmezett lépésméret visszaállítása
-          } else {
-          }
-        }
+        // NINCS FROZEN STATE - a detektálás mindig aktív marad!
+        // Így ha elfordítod a kamerát, azonnal reagál az új képre
 
         // Clean up matrices to prevent memory leaks
         OpenCV.clearBuffers();
       } catch (error) {
-        console.log('Inference error:', error);
         // Silent error handling for better performance
         const result: DetectionResult = {
           corners: [],

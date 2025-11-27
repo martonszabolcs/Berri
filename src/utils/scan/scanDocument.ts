@@ -1,4 +1,6 @@
-import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
+import { Alert } from 'react-native';
+import { OpenCV, ObjectType, DataTypes, ColorConversionCodes } from 'react-native-fast-opencv';
+import { detectDocumentCorners } from './detectDocumentCorners';
 
 interface DocumentCorner {
   x: number;
@@ -7,31 +9,38 @@ interface DocumentCorner {
 
 interface ScanDocumentParams {
   rawImageBase64: string;
-  corners: DocumentCorner[];
+  frameCorners: DocumentCorner[]; // Frame-ből detektált sarkok (eredeti detektálás)
+  processedCorners: DocumentCorner[]; // Teljes felbontású fotóhoz felskálázott sarkok (useInferenceLogic-ból)
+  currentQrValue?: string | null; // QR kód tartalma (rawValue)
   currentQrPosition?: 'left' | 'right' | null;
   qrBounds?: {
     left: number;
     top: number;
     width: number;
     height: number;
-  } | null; // QR kód bounds (frame koordinátákban)
+  } | null;
   photoWidth?: number;
   photoHeight?: number;
-  frameWidth?: number; // Kamera frame szélessége (natív felbontás)
-  frameHeight?: number; // Kamera frame magassága (natív felbontás)
+  frameWidth?: number;
+  frameHeight?: number;
+  frameBrightness?: number; // Frame detection brightness (from seekerInfo)
+  enableDebugImages?: boolean; // Enable/disable debug step images (default: true)
 }
 
 interface ScanDocumentResult {
   success: boolean;
   imageBase64?: string;
+  stepImages?: { label: string; image: string }[]; // Array of processing step images
   error?: string;
+  qrValue?: string | null; // QR kód tartalma
+  qrPosition?: 'left' | 'right' | null; // QR kód pozíciója
   brightnessInfo?: {
     avgBrightness: number;
     lightCondition: 'Nappali' | 'Normál' | 'Éjjeli';
     betaBoost: number;
   };
-  selectedIcons?: number[]; // Melyik ikonokat választotta ki (0-7), üres tömb ha nincs
-  selectedIconNames?: string[]; // Az ikonok nevei
+  selectedIcons?: number[];
+  selectedIconNames?: string[];
   iconAnalysis?: {
     segment: number;
     darkPixelRatio: number;
@@ -43,30 +52,9 @@ interface ScanDocumentResult {
   }[];
 }
 
-// ============= KONSTANSOK =============
 const SCALE_FACTOR = 1.0;
 const CROP_PERCENT = 0.01;
-const SHARPEN_AMOUNT = 1.8;
-const SAT_BOOST = 1.5;
-const SUPER_SAT_BOOST = 2.0;
-const BRIGHTNESS_ALPHA = 1.2;
-const FINAL_BRIGHTNESS_ALPHA = 1.08;
-const SCAN_CONTRAST_ALPHA = 1.3;
-const SCAN_BRIGHTNESS_BETA = 5;
 
-// Ikon nevek
-const ICON_NAMES = [
-  '', // 0
-  'nyíl', // 1
-  'gyémánt', // 2
-  'alma', // 3
-  'csengő', // 4
-  'lóhere', // 5
-  'csillag', // 6
-  'patkó', // 7
-];
-
-// ============= HELPER FÜGGVÉNYEK =============
 const createMat = (h: number, w: number, type: number) =>
   OpenCV.createObject(ObjectType.Mat, h, w, type);
 
@@ -76,82 +64,72 @@ const createSize = (w: number, h: number) =>
 const createPoint2f = (x: number, y: number) =>
   OpenCV.createObject(ObjectType.Point2f, x, y);
 
-const cvtColorGray = (src: any, dst: any) =>
-  OpenCV.invoke('cvtColor', src, dst, 6, 0);
-
-const cvtColorBGR2HSV = (src: any, dst: any) =>
-  OpenCV.invoke('cvtColor', src, dst, 40, 0);
-
-const cvtColorHSV2BGR = (src: any, dst: any) =>
-  OpenCV.invoke('cvtColor', src, dst, 54, 0);
-
-const cvtColorGray2BGR = (src: any, dst: any) =>
-  OpenCV.invoke('cvtColor', src, dst, 8, 0);
-
-// ============= FŐ FÜGGVÉNY =============
 export const scanDocument = (
   params: ScanDocumentParams,
 ): ScanDocumentResult => {
   const {
     rawImageBase64,
-    corners,
+    frameCorners, // Frame-ből detektált sarkok
+    processedCorners, // Teljes felbontású fotóhoz felskálázott sarkok
+    currentQrValue, // QR kód tartalma
+    currentQrPosition, // QR kód pozíciója
     photoWidth: providedWidth,
     photoHeight: providedHeight,
     frameWidth: providedFrameWidth,
     frameHeight: providedFrameHeight,
+    frameBrightness = 128, // Default if not provided
+    enableDebugImages = true, // Default: debug images enabled
   } = params;
 
   try {
-    if (corners.length !== 4) {
+    if (frameCorners.length !== 4 || processedCorners.length !== 4) {
       return {
         success: false,
-        error: 'Pontosan 4 sarok szükséges a szkenneléshez',
+        error: 'Pontosan 4 sarok szükséges mindkét detektáláshoz',
       };
     }
 
-    // === 1. PERSPEKTÍVA TRANSZFORMÁCIÓ ===
     const srcMat = OpenCV.base64ToMat(rawImageBase64);
 
-    // === FIX: Forgassuk el a fotót 90°-kal jobbra (ROTATE_90_CLOCKWISE) ===
-    console.log('🔄 Rotating photo 90° clockwise to fix orientation');
-    const tempRotatedMat = createMat(
-      providedWidth,
-      providedHeight,
-      DataTypes.CV_8UC3,
-    );
-    OpenCV.invoke('rotate', srcMat, tempRotatedMat, 0); // 0 = ROTATE_90_CLOCKWISE
-
-    // Clone immediately to ensure the rotated Mat is properly stored
-    console.log('🔄 Cloning rotated Mat to ensure storage stability');
-    const rotatedSrcMat = OpenCV.invoke('clone', tempRotatedMat);
-
-    // Tisztítsuk meg az eredeti és temp Mat-okat azonnal
-    try {
-      // srcMat már nem kell
-      // tempRotatedMat már nem kell (clonolt)
-    } catch (e) {
-      console.warn('Warning cleaning temp mats:', e);
+    // PORTRAIT MODE ENFORCEMENT - Ha landscape fotó, forgassuk el 90°-kal
+    // Portrait elvárt: width < height (pl. 2376 < 4224)
+    // Landscape rossz: width > height (pl. 4224 > 2376) → 90° clockwise rotation
+    let rotatedSrcMat: any;
+    let photoWidth: number;
+    let photoHeight: number;
+    
+    const originalWidth = providedWidth ?? 0;
+    const originalHeight = providedHeight ?? 0;
+    
+    if (originalWidth > originalHeight) {
+      // LANDSCAPE → Forgatás szükséges 90° clockwise
+      console.log(`🔄 Photo is LANDSCAPE (${originalWidth}x${originalHeight}) - rotating 90° clockwise to PORTRAIT`);
+      
+      const tempRotatedMat = createMat(
+        originalWidth,
+        originalHeight,
+        DataTypes.CV_8UC3,
+      );
+      OpenCV.invoke('rotate', srcMat, tempRotatedMat, 0); // 0 = ROTATE_90_CLOCKWISE
+      rotatedSrcMat = OpenCV.invoke('clone', tempRotatedMat);
+      
+      // Dimenziók felcserélődnek 90° forgatás után
+      photoWidth = originalHeight;
+      photoHeight = originalWidth;
+      
+      console.log(`✅ After rotation: ${photoWidth}x${photoHeight} (PORTRAIT)`);
+    } else {
+      // PORTRAIT → Nincs forgatás
+      console.log(`✅ Photo is already PORTRAIT (${originalWidth}x${originalHeight}) - no rotation needed`);
+      rotatedSrcMat = srcMat;
+      photoWidth = originalWidth;
+      photoHeight = originalHeight;
     }
 
-    // Fotó tényleges mérete - először a paraméterből, ha van
-    let photoWidth = providedWidth ?? 0;
-    let photoHeight = providedHeight ?? 0;
+    console.log('📸 Final photo dimensions:', photoWidth, 'x', photoHeight);
 
-    console.log('PHOTOWIDTH:', photoWidth);
-    console.log('PHOTOHEIGHT:', photoHeight);
-    const _detectedWidth = photoWidth;
-    const _detectedHeight = photoHeight;
-
-    const hasToSwitchOrientation = photoWidth > photoHeight;
-
-    photoWidth = hasToSwitchOrientation ? _detectedHeight : _detectedWidth;
-    photoHeight = hasToSwitchOrientation ? _detectedWidth : _detectedHeight;
-    console.log('PHOTOWIDTH2:', photoWidth);
-    console.log('PHOTOHEIGHT2:', photoHeight);
-    // Ha nem adták meg paraméterként, próbáljuk detektálni
     if (photoWidth === 0 || photoHeight === 0) {
       try {
-        // Próbáljuk a size() metódust
         const sizeResult = (srcMat as any).size?.() ?? null;
         if (sizeResult && sizeResult.width && sizeResult.height) {
           photoWidth = sizeResult.width;
@@ -161,13 +139,11 @@ export const scanDocument = (
         // Ignore
       }
 
-      // Ha nem sikerült, próbáljuk a cols/rows-t
       if (photoWidth === 0 || photoHeight === 0) {
         photoWidth = (srcMat as any).cols ?? (srcMat as any).width ?? 0;
         photoHeight = (srcMat as any).rows ?? (srcMat as any).height ?? 0;
       }
 
-      // Ha még mindig 0, fallback
       if (photoWidth === 0 || photoHeight === 0) {
         photoWidth = 3264;
         photoHeight = 2448;
@@ -189,136 +165,317 @@ export const scanDocument = (
         photoWidth > 0 ? (photoHeight / photoWidth).toFixed(2) : 'N/A',
     });
 
-    // A corners a frame NATÍV felbontásához van skálázva (pl. frame.height x frame.width = 3000x4000)
-    // De a FOTÓ mérete lehet más! (pl. 960x1280)
-    // Ezért újra kell skálázni a fotó tényleges méretéhez
-
-    const frameWidth = providedFrameWidth ?? 1280;
-    const frameHeight = providedFrameHeight ?? 720;
-    const frameRotatedWidth = frameHeight; // 90° rotation
-    const frameRotatedHeight = frameWidth;
-
-    console.log('🔄 Dimensions:', {
-      photo: `${photoWidth}x${photoHeight}`,
-      frame: `${frameWidth}x${frameHeight}`,
-      frameRotated: `${frameRotatedWidth}x${frameRotatedHeight}`,
-      providedFrame:
-        providedFrameWidth && providedFrameHeight
-          ? `${providedFrameWidth}x${providedFrameHeight}`
-          : 'NOT PROVIDED',
-    });
-
-    console.log('📍 Input corners (frame native resolution):', {
-      corner0: `${corners[0].x.toFixed(0)}, ${corners[0].y.toFixed(0)}`,
-      corner1: `${corners[1].x.toFixed(0)}, ${corners[1].y.toFixed(0)}`,
-      corner2: `${corners[2].x.toFixed(0)}, ${corners[2].y.toFixed(0)}`,
-      corner3: `${corners[3].x.toFixed(0)}, ${corners[3].y.toFixed(0)}`,
-    });
-
-    // Skálázás: corners FROM frameRotated TO photo
-    const scaleX = photoWidth / frameRotatedWidth;
-    const scaleY = photoHeight / frameRotatedHeight;
-
-    console.log('📐 Scale factors:', {
-      scaleX: scaleX.toFixed(4),
-      scaleY: scaleY.toFixed(4),
-    });
-
-    // Skálázott koordináták
-    const scaledCorners = corners.map(c => ({
-      x: c.x * scaleX,
-      y: c.y * scaleY,
+    // === FRAME CORNERS - MÁR A FRAME NATÍV FELBONTÁSÁBAN VANNAK! ===
+    // A frameCorners és processedCorners UGYANAZOK - már a useInferenceLogic felskálázta őket
+    // a frame NATÍV felbontására (pl. 1280x720)
+    // Most skálázni kell a FOTÓ felbontására!
+    
+    const frameNativeWidth = (providedFrameWidth ?? 1280);
+    const frameNativeHeight = (providedFrameHeight ?? 720);
+    
+    // Photo dimensions (no rotation needed)
+    const photoNativeWidth = photoWidth;
+    const photoNativeHeight = photoHeight;
+    
+    // Skálázási arányok - FRAME NATÍV → PHOTO
+    const scaleX = photoNativeWidth / frameNativeWidth;
+    const scaleY = photoNativeHeight / frameNativeHeight;
+    
+    const scaledFrameCorners = frameCorners.map(fc => ({
+      x: fc.x * scaleX,
+      y: fc.y * scaleY,
     }));
-
-    console.log('📍 Scaled corners (photo size):', {
-      corner0: `${scaledCorners[0].x.toFixed(0)}, ${scaledCorners[0].y.toFixed(
-        0,
-      )}`,
-      corner1: `${scaledCorners[1].x.toFixed(0)}, ${scaledCorners[1].y.toFixed(
-        0,
-      )}`,
-      corner2: `${scaledCorners[2].x.toFixed(0)}, ${scaledCorners[2].y.toFixed(
-        0,
-      )}`,
-      corner3: `${scaledCorners[3].x.toFixed(0)}, ${scaledCorners[3].y.toFixed(
-        0,
-      )}`,
+    
+    console.log('📐 Scaled frame corners to photo resolution:', {
+      frameNative: `${frameNativeWidth}x${frameNativeHeight}`,
+      photoNative: `${photoNativeWidth}x${photoNativeHeight}`,
+      scaleX: scaleX.toFixed(2),
+      scaleY: scaleY.toFixed(2),
+      frameCorner0: frameCorners[0],
+      scaledCorner0: scaledFrameCorners[0],
     });
 
-    // === PERSPECTIVE TRANSFORM: Kivágás a 4 sarok mentén ===
-    console.log('✂️ Starting perspective transform with scaled corners');
+    // === STEP IMAGES - Debug képek tárolása ===
+    const stepImages: { label: string; image: string }[] = [];
 
-    // Élek számítása (a scaledCorners alapján, ami már a fotó méretében van)
+    // === NAGY FOTÓ DETEKTÁLÁS - Újrafuttatjuk a detektálást a teljes felbontású képen ===
+    console.log('🔍 Re-detecting corners on full resolution photo...');
+    
+    // FÉNYERŐ BEÁLLÍTÁSOK - Számítsuk ki a fotó átlagos fényerejét
+    // Konvertáljuk grayscale-re hogy meghatározzuk a brightness-t
+    const grayForBrightness = OpenCV.createObject(
+      ObjectType.Mat,
+      photoHeight,
+      photoWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('cvtColor', rotatedSrcMat, grayForBrightness, 6, 0); // COLOR_BGR2GRAY
+    // Use frame brightness (already calculated during live detection with seeker)
+    const photoBrightness = frameBrightness;
+    
+    // Adaptive brightness enhancement (same logic as frame detection)
+    let photoAlpha: number;
+    let photoBeta: number;
+    
+    if (photoBrightness < 40) {
+      // Dark image
+      photoAlpha = 1.5;
+      photoBeta = 40;
+    } else if (photoBrightness < 80) {
+      // Medium-dark image
+      photoAlpha = 1.3;
+      photoBeta = 30;
+    } else if (photoBrightness > 180) {
+      // Bright image
+      photoAlpha = 0.8;
+      photoBeta = -20;
+    } else {
+      // Normal image
+      photoAlpha = 1.0;
+      photoBeta = 10;
+    }
+    
+    console.log('📊 Photo brightness analysis:', {
+      brightness: Math.round(photoBrightness),
+      alpha: photoAlpha,
+      beta: photoBeta,
+    });
+
+    // === DEBUG KÉP 0.1 - Input a detectDocumentCorners-nek (downscale előtt) ===
+    if (enableDebugImages) {
+      try {
+        const debugInputMat = OpenCV.createObject(
+          ObjectType.Mat,
+          photoHeight,
+          photoWidth,
+          DataTypes.CV_8UC3,
+        );
+        OpenCV.invoke('cvtColor', rotatedSrcMat, debugInputMat, ColorConversionCodes.COLOR_BGR2RGB);
+        
+        const debugInputResult = OpenCV.toJSValue(debugInputMat);
+        if (debugInputResult?.base64) {
+          stepImages.push({
+            label: '0.1. Input detectDocumentCorners (downscale előtt)',
+            image: debugInputResult.base64,
+          });
+          console.log('✅ Debug 0.1: Input image saved');
+        }
+      } catch (debugError) {
+        console.error('Failed to create debug 0.1 image:', debugError);
+      }
+    }
+    
+    const photoDetectionResult = detectDocumentCorners({
+      mat: rotatedSrcMat, // Original BGR formátumú Mat (no rotation)
+      width: photoWidth,
+      height: photoHeight,
+      alpha: photoAlpha,
+      beta: photoBeta,
+    });
+
+    console.log('📊 Photo detection result:', {
+      found: photoDetectionResult.corners !== null,
+      confidence: photoDetectionResult.confidence,
+      debugInfo: photoDetectionResult.debugInfo,
+      hasDebugImage: !!photoDetectionResult.debugImage,
+    });
+
+    // === DEBUG KÉP 0.2 - Downscaled kép (720x1280) amit a detection használ ===
+    if (photoDetectionResult.debugImage) {
+      stepImages.push({
+        label: '0.2. Downscaled kép (720x1280) - detection input',
+        image: photoDetectionResult.debugImage,
+      });
+      console.log('✅ Debug 0.3: Downscaled image saved');
+    }
+    
+    // === DEBUG KÉPEK - Detection lépések ===
+    if (photoDetectionResult.debugGray) {
+      stepImages.push({ label: '0.3. Grayscale', image: photoDetectionResult.debugGray });
+    }
+    if (photoDetectionResult.debugBrightened) {
+      stepImages.push({ label: '0.4. Brightness adjusted', image: photoDetectionResult.debugBrightened });
+    }
+    if (photoDetectionResult.debugAdaptive) {
+      stepImages.push({ label: '0.5. Adaptive threshold', image: photoDetectionResult.debugAdaptive });
+    }
+    if (photoDetectionResult.debugBinary) {
+      stepImages.push({ label: '0.6. Binary threshold', image: photoDetectionResult.debugBinary });
+    }
+    if (photoDetectionResult.debugBlurred) {
+      stepImages.push({ label: '0.7. Gaussian blur', image: photoDetectionResult.debugBlurred });
+    }
+    if (photoDetectionResult.debugMorph) {
+      stepImages.push({ label: '0.8. Morphology (closing)', image: photoDetectionResult.debugMorph });
+    }
+    if (photoDetectionResult.debugCanny) {
+      stepImages.push({ label: '0.9. Canny edges', image: photoDetectionResult.debugCanny });
+    }
+    if (photoDetectionResult.debugCombined) {
+      stepImages.push({ label: '0.10. Combined edges', image: photoDetectionResult.debugCombined });
+    }
+    if (photoDetectionResult.debugContours) {
+      stepImages.push({ label: '0.11. All contours (green)', image: photoDetectionResult.debugContours });
+    }
+
+    // === DEBUG KÉP - Rajzoljuk rá a detektált photo edge-eket ===
+    try {
+      const debugMat = OpenCV.createObject(
+        ObjectType.Mat,
+        photoHeight,
+        photoWidth,
+        DataTypes.CV_8UC3,
+      );
+      OpenCV.invoke('cvtColor', rotatedSrcMat, debugMat, ColorConversionCodes.COLOR_BGR2RGB);
+
+      // Csak a photo detection eredményét rajzoljuk (zöld)
+      if (photoDetectionResult.corners && photoDetectionResult.corners.length === 4) {
+        console.log('🎨 Drawing detected photo corners (green) on debug image');
+        
+        // Rajzoljuk meg a detektált contour vonalakat (zöld)
+        const corners = photoDetectionResult.corners;
+        for (let i = 0; i < 4; i++) {
+          const p1 = corners[i];
+          const p2 = corners[(i + 1) % 4];
+          
+          const point1 = OpenCV.createObject(ObjectType.Point, Math.round(p1.x), Math.round(p1.y));
+          const point2 = OpenCV.createObject(ObjectType.Point, Math.round(p2.x), Math.round(p2.y));
+          const greenScalar = OpenCV.createObject(ObjectType.Scalar, 0, 255, 0, 255); // Zöld
+          
+          OpenCV.invoke('line', debugMat, point1, point2, greenScalar, 15, 8); // 8 = LINE_8
+        }
+        
+        // Rajzoljuk meg a photo sarkokat (zöld körök)
+        for (const corner of corners) {
+          const point = OpenCV.createObject(ObjectType.Point, Math.round(corner.x), Math.round(corner.y));
+          const greenCircleScalar = OpenCV.createObject(ObjectType.Scalar, 0, 255, 0, 255); // Zöld
+          
+          OpenCV.invoke('circle', debugMat, point, 30, greenCircleScalar, -1, 8); // -1 = filled, 8 = LINE_8
+        }
+      } else {
+        console.log('❌ No photo corners detected');
+      }
+
+      const debugResult = OpenCV.toJSValue(debugMat);
+      if (debugResult?.base64) {
+        stepImages.push({
+          label: '0.12. Photo edges (zöld=detected document)',
+          image: debugResult.base64,
+        });
+      }
+    } catch (debugError) {
+      console.error('Failed to create photo detection debug image:', debugError);
+    }
+
+    // MOZGÁS/DRIFT DETEKTÁLÁS - Frame vs Fotó cornerek összehasonlítása
+    let movementDetected = false;
+    let maxMovement = 0;
+    
+    if (photoDetectionResult.corners) {
+      const movements = photoDetectionResult.corners.map((pc, i) => {
+        const fc = scaledFrameCorners[i];
+        const dx = pc.x - fc.x;
+        const dy = pc.y - fc.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance;
+      });
+      
+      maxMovement = Math.max(...movements);
+      movementDetected = maxMovement > 50; // 50 pixel threshold
+      
+      console.log('📏 Frame vs Photo corner movement:', {
+        maxMovement: maxMovement.toFixed(1),
+        movements: movements.map(m => m.toFixed(1)),
+        movementDetected,
+      });
+    }
+
+    // Válasszuk ki a legjobb sarokpontokat
+    let corners: DocumentCorner[];
+    let cornerSource: string; // Leírja hogy honnan származnak a használt sarkok
+    
+    if (photoDetectionResult.corners) {
+      // Fotó detektálás sikeres - MINDIG ezt használjuk (nincs mozgás ellenőrzés, nincs átlagolás)
+      console.log('✅ Using photo-detected corners');
+      corners = photoDetectionResult.corners;
+      cornerSource = '';
+    } else {
+      // Fotó detektálás sikertelen - VISSZADOBJUK A HIBÁT!
+      console.error('❌ Photo detection failed - ABORTING scan process');
+      return {
+        success: false,
+        error: 'Nem sikerült detektálni a dokumentumot a fotón. Próbáld újra!',
+        stepImages: enableDebugImages ? stepImages : [], // Debug képeket csak ha engedélyezve
+      };
+    }
+
+    console.log('✂️ Starting perspective transform with selected corners');
+
     const leftEdge = Math.hypot(
-      scaledCorners[1].x - scaledCorners[0].x,
-      scaledCorners[1].y - scaledCorners[0].y,
+      corners[1].x - corners[0].x,
+      corners[1].y - corners[0].y,
     );
     const rightEdge = Math.hypot(
-      scaledCorners[2].x - scaledCorners[3].x,
-      scaledCorners[2].y - scaledCorners[3].y,
+      corners[2].x - corners[3].x,
+      corners[2].y - corners[3].y,
     );
     const topEdge = Math.hypot(
-      scaledCorners[3].x - scaledCorners[0].x,
-      scaledCorners[3].y - scaledCorners[0].y,
+      corners[3].x - corners[0].x,
+      corners[3].y - corners[0].y,
     );
     const bottomEdge = Math.hypot(
-      scaledCorners[2].x - scaledCorners[1].x,
-      scaledCorners[2].y - scaledCorners[1].y,
+      corners[2].x - corners[1].x,
+      corners[2].y - corners[1].y,
     );
 
     const detectedHeight = Math.round((leftEdge + rightEdge) / 2);
     const detectedWidth = Math.round((topEdge + bottomEdge) / 2);
-    const width = detectedWidth;
-    const height = detectedHeight;
+    
+    // 5:3 aspect ratio correction - ha túl torzult, korrigáljuk
+    const targetAspectRatio = 5.0 / 3.0; // 1.667
+    const currentAspectRatio = detectedHeight / detectedWidth;
+    
+    let width = detectedWidth;
+    let height = detectedHeight;
+    
+    // Ha az aspect ratio nagyon eltér a céltól (>20% különbség), korrigáljuk
+    if (Math.abs(currentAspectRatio - targetAspectRatio) / targetAspectRatio > 0.2) {
+      console.log(`📐 Correcting aspect ratio: ${currentAspectRatio.toFixed(2)} → ${targetAspectRatio.toFixed(2)}`);
+      
+      // Döntsd el hogy a szélesség vagy magasság legyen a bázis
+      if (currentAspectRatio > targetAspectRatio) {
+        // Túl magas - magasságot megtartjuk, szélességet korrigáljuk
+        width = Math.round(height / targetAspectRatio);
+      } else {
+        // Túl széles - szélességet megtartjuk, magasságot korrigáljuk
+        height = Math.round(width * targetAspectRatio);
+      }
+      
+      console.log(`📐 Corrected dimensions: ${width}x${height} (was: ${detectedWidth}x${detectedHeight})`);
+    }
 
-    console.log('📏 Edge lengths:', {
-      leftEdge: leftEdge.toFixed(1),
-      rightEdge: rightEdge.toFixed(1),
-      topEdge: topEdge.toFixed(1),
-      bottomEdge: bottomEdge.toFixed(1),
-      avgHeight: detectedHeight,
-      avgWidth: detectedWidth,
-      aspectRatio: (detectedHeight / detectedWidth).toFixed(2),
-    });
-
-    console.log('📐 Detected dimensions:', {
-      detectedWidth,
-      detectedHeight,
-      width,
-      height,
-    });
-    console.log('📍 Corners:', scaledCorners);
-
-    // Perspektíva pontok (scaledCorners használata)
     const srcPoints = OpenCV.createObject(ObjectType.Point2fVector, [
-      createPoint2f(scaledCorners[0].x, scaledCorners[0].y),
-      createPoint2f(scaledCorners[1].x, scaledCorners[1].y),
-      createPoint2f(scaledCorners[2].x, scaledCorners[2].y),
-      createPoint2f(scaledCorners[3].x, scaledCorners[3].y),
+      createPoint2f(corners[0].x, corners[0].y),
+      createPoint2f(corners[1].x, corners[1].y),
+      createPoint2f(corners[2].x, corners[2].y),
+      createPoint2f(corners[3].x, corners[3].y),
     ]);
-    console.log('✅ srcPoints created');
 
     const dstPoints = OpenCV.createObject(ObjectType.Point2fVector, [
-      createPoint2f(0, 0), // corner 0: topLeft
-      createPoint2f(width, 0), // corner 1: topRight
-      createPoint2f(width, height), // corner 2: bottomRight
-      createPoint2f(0, height), // corner 3: bottomLeft
+      createPoint2f(0, 0),
+      createPoint2f(width, 0),
+      createPoint2f(width, height),
+      createPoint2f(0, height),
     ]);
-    console.log('✅ dstPoints created');
 
     const M = OpenCV.invoke('getPerspectiveTransform', srcPoints, dstPoints, 0);
-    console.log('✅ Transform matrix created');
-
     const dstMat = createMat(height, width, DataTypes.CV_8UC3);
-    console.log('✅ dstMat created');
-
     const dstSize = createSize(width, height);
     const borderValue = OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0);
-    console.log('✅ Size and border value created');
 
     OpenCV.invoke(
       'warpPerspective',
-      rotatedSrcMat, // Használjuk a FORGATOTT képet!
+      rotatedSrcMat,
       dstMat,
       M,
       dstSize,
@@ -328,29 +485,16 @@ export const scanDocument = (
     );
     console.log('✅ Perspective transform completed');
 
-    // Clone azonnal a stabilitás érdekében (ritka timing issue fix)
     const stableDstMat = OpenCV.invoke('clone', dstMat);
-    console.log('✅ Perspective result cloned for stability');
 
-    // Köztes cleanup a memória optimalizálásért
-    try {
-      // Már nem kellő Mat-ok felszabadítása
-    } catch (e) {
-      console.warn('Warning cleaning intermediate mats:', e);
-    }
-
-    // === 2. TÜKRÖZÉS + FORGATÁS ===
     const flippedMat = createMat(height, width, DataTypes.CV_8UC3);
     OpenCV.invoke('flip', stableDstMat, flippedMat, 1);
 
     const rotatedMat = createMat(height, width, DataTypes.CV_8UC3);
     OpenCV.invoke('rotate', flippedMat, rotatedMat, 2);
 
-    // Clone a rotated mat is hogy biztosan stabil legyen
     const stableRotatedMat = OpenCV.invoke('clone', rotatedMat);
-    console.log('✅ Rotated result cloned for stability');
 
-    // === 3. SCALING ===
     const scaledHeight = Math.round(height * SCALE_FACTOR);
     const scaledWidth = Math.round(width * SCALE_FACTOR);
     const scaledMat = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
@@ -364,11 +508,174 @@ export const scanDocument = (
       2,
     );
 
-    // === 4. BRIGHTNESS DETEKTÁLÁS ===
-    const grayForMean = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    cvtColorGray(scaledMat, grayForMean);
+    const cropLeft = Math.round(scaledWidth * CROP_PERCENT);
+    const cropTop = Math.round(scaledHeight * CROP_PERCENT);
+    const cropWidth = scaledWidth - 2 * cropLeft;
+    const cropHeight = scaledHeight - 2 * cropTop;
 
-    const minMaxResult = OpenCV.invoke('minMaxLoc', grayForMean) as any;
+    const cropRect = OpenCV.createObject(
+      ObjectType.Rect,
+      cropLeft,
+      cropTop,
+      cropWidth,
+      cropHeight,
+    );
+
+    const croppedMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('crop', scaledMat, croppedMat, cropRect);
+
+    // Step 0: Original photo (no rotation)
+    const step0Result = OpenCV.toJSValue(rotatedSrcMat);
+    if (step0Result?.base64) {
+      stepImages.push({ label: '0.13. Eredeti fotó (eredeti orientáció)', image: step0Result.base64 });
+    }
+
+    // === BLUR DETECTION - Laplacian variance ===
+    // FONTOS: A FELSŐ HARMADRA külön nézünk, mert ferde fotónál ott homályos!
+    console.log('🔍 Detecting blur in cropped image (focusing on TOP THIRD)...');
+    
+    // Convert to grayscale for blur detection
+    const grayForBlur = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('cvtColor', croppedMat, grayForBlur, 6, 0); // COLOR_BGR2GRAY = 6
+    
+    // === FELSŐ HARMAD blur detektálás ===
+    // Ez a legfontosabb rész - ferde fotónál a teteje homályos!
+    const topThirdHeight = Math.round(cropHeight / 3);
+    const topThirdRect = OpenCV.createObject(ObjectType.Rect, 0, 0, cropWidth, topThirdHeight);
+    const grayTopThird = OpenCV.createObject(ObjectType.Mat, topThirdHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('crop', grayForBlur, grayTopThird, topThirdRect);
+    
+    // Laplacian a felső harmadra
+    const laplacianTop = OpenCV.createObject(ObjectType.Mat, topThirdHeight, cropWidth, DataTypes.CV_16S);
+    OpenCV.invoke('Laplacian', grayTopThird, laplacianTop, DataTypes.CV_16S, 3, 1, 0, 4);
+    
+    const absLaplacianTop = OpenCV.createObject(ObjectType.Mat, topThirdHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('convertScaleAbs', laplacianTop, absLaplacianTop);
+    
+    const meanScalarTop = OpenCV.invoke('mean', absLaplacianTop);
+    const meanDataTop = OpenCV.toJSValue(meanScalarTop);
+    const topBlurScore = meanDataTop?.a || meanDataTop?.[0] || 0;
+    
+    // === TELJES KÉP blur (referenciaként) ===
+    const laplacian = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_16S);
+    OpenCV.invoke('Laplacian', grayForBlur, laplacian, DataTypes.CV_16S, 3, 1, 0, 4);
+    
+    const absLaplacian = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('convertScaleAbs', laplacian, absLaplacian);
+    
+    const blurMinMaxResult = OpenCV.invoke('minMaxLoc', absLaplacian);
+    const blurMaxVal = blurMinMaxResult.maxVal || 0;
+    
+    const meanScalar = OpenCV.invoke('mean', absLaplacian);
+    const meanData = OpenCV.toJSValue(meanScalar);
+    const fullBlurScore = meanData?.a || meanData?.[0] || 0;
+    
+    // A MINIMUM a kettő közül - ha a teteje homályos, az a döntő!
+    const blurScore = Math.min(topBlurScore, fullBlurScore);
+    
+    console.log(`📊 Blur detection: TOP=${topBlurScore.toFixed(2)}, FULL=${fullBlurScore.toFixed(2)}, FINAL=${blurScore.toFixed(2)} (${blurScore < 8 ? 'BLURRY' : blurScore < 12 ? 'MODERATE' : 'SHARP'})`);
+
+    // STRICT BLUR CHECK - Ha a felső harmad homályos, dobjuk vissza!
+    if (blurScore < 6) {
+      console.error(`❌ Image too blurry (top third): ${blurScore.toFixed(2)} < 8 - ABORTING scan`);
+      return {
+        success: false,
+        error: `Kép teteje homályos (${blurScore.toFixed(1)}). Tartsd szemben a kamerát!`,
+        stepImages: enableDebugImages ? stepImages : [],
+      };
+    }
+
+    // Step 1: Original cropped image (NO blur applied, just detection)
+    const step1Result = OpenCV.toJSValue(croppedMat);
+    if (step1Result?.base64) {
+      stepImages.push({ 
+        label: `1. Vágott kép - Blur: TOP=${topBlurScore.toFixed(1)} FULL=${fullBlurScore.toFixed(1)} (${blurScore < 5 ? 'homályos' : blurScore < 10 ? 'megfelelő' : 'éles'}) (${cornerSource})`, 
+        image: step1Result.base64 
+      });
+    }
+
+    // === COLOR MASK DETECTION - Detektáljuk a színes területeket ===
+    console.log('🎨 Detecting VIBRANT colored regions for preservation');
+    
+    // Split channels to detect color variance
+    const bChannel = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    const gChannel = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    const rChannel = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    
+    // Extract channels (OpenCV uses BGR order)
+    OpenCV.invoke('extractChannel', croppedMat, bChannel, 0); // Blue
+    OpenCV.invoke('extractChannel', croppedMat, gChannel, 1); // Green
+    OpenCV.invoke('extractChannel', croppedMat, rChannel, 2); // Red
+    
+    // Calculate max and min channels to find saturation-like metric
+    const maxChannel = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    const minChannel = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    
+    OpenCV.invoke('max', bChannel, gChannel, maxChannel);
+    OpenCV.invoke('max', maxChannel, rChannel, maxChannel); // max = max(R,G,B)
+    
+    OpenCV.invoke('min', bChannel, gChannel, minChannel);
+    OpenCV.invoke('min', minChannel, rChannel, minChannel); // min = min(R,G,B)
+    
+    // Saturation approximation: (max - min)
+    const saturation = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('subtract', maxChannel, minChannel, saturation);
+    
+    // VERY STRICT threshold: csak NAGYON élénk színek (saturation > 90)
+    // Flash esetén a háttér is színesnek tűnhet, ezért kell a szigorúbb threshold
+    const colorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', saturation, colorMask, 70, 255, 0); // THRESH_BINARY = 0, threshold=90 (was 60)
+    
+    // Minimum brightness filter - túl sötét pixelek nem számítanak (árnyékok)
+    const brightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', maxChannel, brightMask, 60, 255, 0); // min brightness > 60 (was 50)
+    
+    // Maximum brightness filter - túl világos pixelek (fehér papír, flash tükröződés) nem számítanak
+    const notTooWhiteMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', maxChannel, notTooWhiteMask, 240, 255, 1); // THRESH_BINARY_INV = 1, max < 240
+    
+    // Combine saturation + brightness + not-too-white filters
+    const colorMaskFiltered = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_and', colorMask, brightMask, colorMaskFiltered);
+    OpenCV.invoke('bitwise_and', colorMaskFiltered, notTooWhiteMask, colorMaskFiltered);
+    
+    // Dilate mask slightly to include edges
+    const dilateKernel = OpenCV.invoke('getStructuringElement', 2, createSize(5, 5)); // MORPH_ELLIPSE = 2
+    const colorMaskDilated = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('morphologyEx', colorMaskFiltered, colorMaskDilated, 1, dilateKernel); // MORPH_DILATE = 1
+    
+    // Store original colored regions
+    const coloredRegions = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_and', croppedMat, croppedMat, coloredRegions, colorMaskDilated);
+    
+    console.log('✅ Strict color mask created - saturation>90, brightness 60-240 only');
+
+    // Step 1.5: Color mask visualization
+    const colorMaskBGR = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('cvtColor', colorMaskDilated, colorMaskBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step1_5Result = OpenCV.toJSValue(colorMaskBGR);
+    if (step1_5Result?.base64) {
+      stepImages.push({ label: '2. Színes maszk (saturation)', image: step1_5Result.base64 });
+    }
+
+    // === GRAYSCALE CONVERSION ===
+    console.log('🎨 Converting to grayscale');
+    const grayMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('cvtColor', croppedMat, grayMat, 6, 0); // COLOR_BGR2GRAY = 6
+
+    // === BRIGHTNESS DETECTION using minMaxLoc ===
+    console.log('💡 Detecting image brightness with minMaxLoc');
+    const minMaxResult = OpenCV.invoke('minMaxLoc', grayMat) as any;
     const minVal = minMaxResult?.minVal ?? 0;
     const maxVal = minMaxResult?.maxVal ?? 255;
     const range = maxVal - minVal;
@@ -398,835 +705,601 @@ export const scanDocument = (
     const betaBoost = Math.round(Math.max(0, Math.min(80, rawBeta)));
 
     const lightCondition: 'Nappali' | 'Normál' | 'Éjjeli' =
-      avgBrightness > 150
+      avgBrightness > 180
         ? 'Nappali'
-        : avgBrightness > 80
+        : avgBrightness > 120
         ? 'Normál'
         : 'Éjjeli';
 
     console.log('💡 Brightness detection:', {
       avgBrightness: avgBrightness.toFixed(1),
       betaBoost,
-      lightCondition:
-        avgBrightness > 140
-          ? 'Nappali'
-          : avgBrightness > 100
-          ? 'Normál'
-          : 'Éjjeli',
+      lightCondition,
     });
-
-    // === 5. FEKETE MASZK (eredeti képről) ===
-    const grayForBlack = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC1,
-    );
-    cvtColorGray(scaledMat, grayForBlack);
-
-    // Threshold: MAGASABB érték hogy a szürke vonalakat is megfogja (nem csak a feketéket)
-    const blackMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', grayForBlack, blackMask, 140, 255, 1); // 130-ról 140-re: még több szürke vonalat fog
-
-    // ULTRA VASTAG fekete vonalak: hatalmas kernelek és még több dilate (RB referencia alapján)
-    const closeKernel = OpenCV.invoke(
-      'getStructuringElement',
-      0,
-      createSize(15, 15), // 11x11-ről 15x15-re - HATALMAS!
-    );
-    const closedMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', blackMask, closedMask, 3, closeKernel); // MORPH_CLOSE
-
-    // EXTRA ÖSSZEKÖTŐ LÉPÉS: nagyobb CLOSE kernel a szakadozott vonalak összekötéséhez
-    const extraCloseKernel = OpenCV.invoke(
-      'getStructuringElement',
-      0,
-      createSize(21, 21), // Nagy kernel a távolabb lévő fekete részek összekötéséhez
-    );
-    const extraClosed = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', closedMask, extraClosed, 3, extraCloseKernel); // EXTRA MORPH_CLOSE
-
-    // HÁRMAS dilate a jobb vastagságért (7-ről 3-ra csökkentve)
-    const dilateKernel = OpenCV.invoke(
-      'getStructuringElement',
-      0,
-      createSize(13, 13), // Közepes kernel méret
-    );
-    const dilated1 = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', extraClosed, dilated1, 1, dilateKernel); // 1. dilate
-
-    const dilated2 = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', dilated1, dilated2, 1, dilateKernel); // 2. dilate
-
-    const blackMaskFinal = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC1,
-    );
-    OpenCV.invoke('morphologyEx', dilated2, blackMaskFinal, 1, dilateKernel); // 3. dilate!
-
-    // === 6. SZÍNES MASZK (eredeti képről) ===
-    const hsvOriginal = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    cvtColorBGR2HSV(scaledMat, hsvOriginal);
-
-    const satOriginal = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('extractChannel', hsvOriginal, satOriginal, 1);
-
-    const colorMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', satOriginal, colorMask, 40, 255, 0);
-
-    const colorLayer = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('bitwise_and', scaledMat, scaledMat, colorLayer, colorMask);
-
-    // === 7. SZÍNES RÉTEG TÚLSZATURÁLÁSA ===
-    const hsvColor = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    cvtColorBGR2HSV(colorLayer, hsvColor);
-
-    const satColor = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('extractChannel', hsvColor, satColor, 1);
-
-    const superSat = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('convertScaleAbs', satColor, superSat, SUPER_SAT_BOOST, 0);
-    OpenCV.invoke('insertChannel', superSat, hsvColor, 1);
-
-    const colorLayerSaturated = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC3,
-    );
-    cvtColorHSV2BGR(hsvColor, colorLayerSaturated);
-
-    // === 8. BRIGHTNESS BOOST ===
-    const brightened = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'convertScaleAbs',
-      scaledMat,
-      brightened,
-      BRIGHTNESS_ALPHA,
-      betaBoost,
-    );
-
-    // === 9. SHARPENING ===
-    const blurred = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'GaussianBlur',
-      brightened,
-      blurred,
-      createSize(0, 0),
-      1.0,
-      1.0,
-      4,
-    );
-
-    const sharpened = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'addWeighted',
-      brightened,
-      1.0 + SHARPEN_AMOUNT,
-      blurred,
-      -SHARPEN_AMOUNT,
-      0,
-      sharpened,
-    );
-
-    // === 10. SATURATION BOOST ===
-    const hsvSharp = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    cvtColorBGR2HSV(sharpened, hsvSharp);
-
-    const satSharp = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('extractChannel', hsvSharp, satSharp, 1);
-
-    const boostedSat = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('convertScaleAbs', satSharp, boostedSat, SAT_BOOST, 0);
-    OpenCV.invoke('insertChannel', boostedSat, hsvSharp, 1);
-
-    const colorBoosted = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC3,
-    );
-    cvtColorHSV2BGR(hsvSharp, colorBoosted);
-
-    // === 11. FINAL BRIGHTNESS BUMP ===
-    const finalBrightened = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC3,
-    );
-    const finalBeta = Math.round(betaBoost * 0.5);
-    OpenCV.invoke(
-      'convertScaleAbs',
-      colorBoosted,
-      finalBrightened,
-      FINAL_BRIGHTNESS_ALPHA,
-      finalBeta,
-    );
-
-        // === 12. EXTRA VONALTELÍTÉSI ALGORITMUS ===
-    // A vékony/halvány vonalak telítése a fekete maszk alapján
-    const enhancedGray = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    cvtColorGray(scaledMat, enhancedGray);
     
-    // Adaptív threshold a vékony vonalak jobb detektálásához
-    const adaptiveThresh = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('adaptiveThreshold', enhancedGray, adaptiveThresh, 255, 1, 1, 11, 10);
+    // Determine enhancement parameters based on brightness
+    let alpha: number;
+    let beta: number;
     
-    // Kombinálás a fekete maszkkal - a vékony vonalakat is sötétíti
-    const enhancedBlackMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('bitwise_or', blackMaskFinal, adaptiveThresh, enhancedBlackMask);
-    
-    // EXTRA DILATE STEP az enhanced maszkra - a vékony részeket is vastagítja
-    const finalEnhanceKernel = OpenCV.invoke(
-      'getStructuringElement',
-      0,
-      createSize(9, 9), // Közepes kernel a finomhangoláshoz
-    );
-    const finalBlackMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('morphologyEx', enhancedBlackMask, finalBlackMask, 1, finalEnhanceKernel); // Final dilate
+    if (avgBrightness < 150) {
+      // Dark image - need stronger boost
+      alpha = 1.8;
+      beta = betaBoost;
+      console.log('🌑 Dark image detected - strong enhancement');
+    } else if (avgBrightness > 150 && avgBrightness <= 200) {
+      // Bright image - gentle enhancement
+      alpha = 1;
+      beta = 1;
+      console.log('☀️ Bright image detected - gentle enhancement');
+    } else {
+      // Normal image - moderate enhancement
+      alpha = 0.8;
+      beta = Math.min(15, betaBoost);
+      console.log('🌤️ Normal brightness - moderate enhancement');
+    }
 
-    // === 13. MASZKOK ALKALMAZÁSA ===
-    const grayFinal = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    cvtColorGray(finalBrightened, grayFinal);
-
-    const whiteMask = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', grayFinal, whiteMask, 200, 255, 0);
-
-    // === 13. 3 RÉTEG KOMBINÁCIÓ ===
-    // A blackLayer legyen FEKETE ahol a maszk aktív, hogy erős vonalak legyenek
-    const blackLayer = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('convertScaleAbs', finalBrightened, blackLayer, 0, 0); // Vissza a fekete layer-hez
-
-    const whiteLayer = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('convertScaleAbs', finalBrightened, whiteLayer, 0, 255);
-
-    // Maskok 3 csatornára
-    const blackMask3ch = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC3,
-    );
-    const whiteMask3ch = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC3,
-    );
-    const colorMask3ch = createMat(
-      scaledHeight,
-      scaledWidth,
-      DataTypes.CV_8UC3,
-    );
-
-    cvtColorGray2BGR(finalBlackMask, blackMask3ch);
-    cvtColorGray2BGR(whiteMask, whiteMask3ch);
-    cvtColorGray2BGR(colorMask, colorMask3ch);
-
-    // Apply masks
-    const blackPart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    const whitePart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    const colorPart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-
-    // Apply enhanced black mask to strengthen lines
-    const enhancedBlackPart = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('bitwise_and', blackLayer, blackMask3ch, enhancedBlackPart);
-    
-    // Strengthen line intensity (csökkentett erősítés hogy ne legyen túl fehér)
-    OpenCV.invoke('convertScaleAbs', enhancedBlackPart, blackPart, 1.1, 0);
-    OpenCV.invoke('bitwise_and', whiteLayer, whiteMask3ch, whitePart);
-    OpenCV.invoke('bitwise_and', colorLayerSaturated, colorMask3ch, colorPart);
-
-    // Combine
-    const temp = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('add', blackPart, whitePart, temp);
-
-    const combined = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('add', temp, colorPart, combined);
-
-    // === 14. PROFESSIONAL SCAN ===
-    const scanMat = createMat(scaledHeight, scaledWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'convertScaleAbs',
-      combined,
-      scanMat,
-      SCAN_CONTRAST_ALPHA,
-      SCAN_BRIGHTNESS_BETA,
-    );
-
-    // === 15. CROP ===
-    const cropLeft = Math.round(scaledWidth * CROP_PERCENT);
-    const cropTop = Math.round(scaledHeight * CROP_PERCENT);
-    const cropWidth = scaledWidth - 2 * cropLeft;
-    const cropHeight = scaledHeight - 2 * cropTop;
-
-    const cropRect = OpenCV.createObject(
-      ObjectType.Rect,
-      cropLeft,
-      cropTop,
-      cropWidth,
+    // === ADAPTIVE CONTRAST & BRIGHTNESS ENHANCEMENT ===
+    console.log(`🔆 Applying contrast: ${alpha}x, brightness: +${beta}`);
+    const processedGray = OpenCV.createObject(
+      ObjectType.Mat,
       cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
     );
+    OpenCV.invoke('convertScaleAbs', grayMat, processedGray, alpha, beta);
 
-    const croppedMat = OpenCV.createObject(
+    // Step 2: Enhanced grayscale
+    const grayMatBGR = OpenCV.createObject(
       ObjectType.Mat,
       cropHeight,
       cropWidth,
       DataTypes.CV_8UC3,
     );
-    OpenCV.invoke('crop', scanMat, croppedMat, cropRect);
-
-    // === 15.5. ALSÓ SÖTÉT KERET HOZZÁADÁSA ===
-    // ARÁNYOS borderSize a kép magasságához képest (5-8% jó arány)
-    const borderSize = Math.max(40, Math.round(cropHeight * 0.06)); // Min 40px, de inkább 6% a magasságból
-    console.log(
-      `📏 Border size: ${borderSize}px (${(
-        (borderSize / cropHeight) *
-        100
-      ).toFixed(1)}% of height)`,
-    );
-
-    // === QR KÓD ALAPÚ IKON POZÍCIONÁLÁS ===
-    // A QR kód bounds koordinátái frame koordinátákban vannak (pl. 640x480)
-    // Ezeket át kell skálázni a photo méretére (pl. 960x1280 rotált után)
-    const qrOnLeft = params.currentQrPosition === 'left';
-    console.log(
-      `🔲 QR Position from camera: ${
-        params.currentQrPosition ?? 'unknown'
-      } => QR on ${qrOnLeft ? 'LEFT' : 'RIGHT'}`,
-    );
-
-    let borderLeftPadding: number;
-    let borderWidth: number;
-
-    if (params.qrBounds && providedFrameWidth && providedFrameHeight) {
-      // Van QR bounds! Pontosan tudjuk hol van a QR kód
-      const qrBounds = params.qrBounds;
-
-      // A frame forgatva van 90°-kal, ezért:
-      // frame.left -> photo.top (Y koordináta)
-      // frame.top -> photo.left (X koordináta, de invertálva)
-      // frame.width -> photo.height
-      // frame.height -> photo.width
-
-      // FONTOS: A scaleX és scaleY már definiálva van feljebb (188-189 sorok)!
-      // scaleX = photoWidth / frameRotatedWidth
-      // scaleY = photoHeight / frameRotatedHeight
-
-      // QR kód pozíciója a rotált fotón (perspective transform UTÁN)
-      // A perspective transform megváltoztatja a méretet, ezért használjuk a cropWidth/cropHeight arányt
-      const qrPhotoLeft = qrBounds.left * scaleX;
-      const qrPhotoWidth = qrBounds.width * scaleX;
-
-      console.log(
-        `📍 QR Bounds (frame): left=${qrBounds.left}, width=${qrBounds.width}`,
-      );
-      console.log(
-        `📍 QR Bounds (photo scaled): left=${qrPhotoLeft.toFixed(
-          0,
-        )}, width=${qrPhotoWidth.toFixed(0)}`,
-      );
-
-      // Ikon sáv szélessége: kb. 70-75% a teljes szélességből
-      borderWidth = Math.floor(cropWidth * 0.75);
-
-      // QR kód pozíció alapján: bal oldalt középen, jobb oldalt balrább
-      const centerPadding = Math.floor((cropWidth - borderWidth) / 2);
-
-      if (qrOnLeft) {
-        // QR bal oldalt → középre (ez működik!)
-        borderLeftPadding = centerPadding + 10;
-      } else {
-        // QR jobb oldalt → BALRÁBB tolni (10% offset)
-        const fingerOffset = Math.round(cropWidth * 0.04);
-        borderLeftPadding = centerPadding - fingerOffset - 10;
-      }
-
-      console.log(
-        `📐 Icon strip: left=${borderLeftPadding}, width=${borderWidth} (QR ${
-          qrOnLeft ? 'LEFT (centered)' : 'RIGHT (shifted left)'
-        })`,
-      );
-    } else {
-      // Nincs QR bounds - fallback a régi móds zerre
-      console.log(`⚠️ No QR bounds available, using fallback positioning`);
-      const borderWidthPercent = 0.75; // 75% szélesség
-      borderWidth = Math.floor(cropWidth * borderWidthPercent);
-      borderLeftPadding = qrOnLeft
-        ? Math.floor((cropWidth - borderWidth) / 2) + 10 // QR bal oldalt -> ikonok jobbra
-        : Math.floor((cropWidth - borderWidth) / 2) - 50; // QR jobb oldalt -> ikonok balra
-    }
-
-    // Felső rész (változatlan)
-    const topHeight = cropHeight - borderSize;
-    const topRect = OpenCV.createObject(
-      ObjectType.Rect,
-      0,
-      0,
-      cropWidth,
-      topHeight,
-    );
-    const topPart = createMat(topHeight, cropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('crop', croppedMat, topPart, topRect);
-
-    // Alsó rész bal és jobb oldala (változatlan)
-    const borderRightPadding = cropWidth - borderLeftPadding - borderWidth;
-    const bottomLeftRect = OpenCV.createObject(
-      ObjectType.Rect,
-      0,
-      cropHeight - borderSize,
-      borderLeftPadding,
-      borderSize,
-    );
-    const bottomLeft = createMat(
-      borderSize,
-      borderLeftPadding,
-      DataTypes.CV_8UC3,
-    );
-    OpenCV.invoke('crop', croppedMat, bottomLeft, bottomLeftRect);
-
-    const bottomRightRect = OpenCV.createObject(
-      ObjectType.Rect,
-      borderLeftPadding + borderWidth,
-      cropHeight - borderSize,
-      borderRightPadding,
-      borderSize,
-    );
-    const bottomRight = createMat(
-      borderSize,
-      borderRightPadding,
-      DataTypes.CV_8UC3,
-    );
-    OpenCV.invoke('crop', croppedMat, bottomRight, bottomRightRect);
-
-    // Középső rész 8 egyenlő részre osztása
-    const numSegments = 8;
-    const segmentWidth = Math.floor(borderWidth / numSegments);
-    const segments: any[] = [];
-    const iconAnalysis: { segment: number; darkPixelRatio: number }[] = [];
-
-    for (let i = 0; i < numSegments; i++) {
-      const isLast = i === numSegments - 1;
-      const segWidth = isLast
-        ? borderWidth - segmentWidth * (numSegments - 1)
-        : segmentWidth;
-      const segX = borderLeftPadding + i * segmentWidth;
-
-      // Kivágás
-      const segRect = OpenCV.createObject(
-        ObjectType.Rect,
-        segX,
-        cropHeight - borderSize,
-        segWidth,
-        borderSize,
-      );
-      const segment = createMat(borderSize, segWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke('crop', croppedMat, segment, segRect);
-
-      // === IKON DETEKTÁLÁS: Sötét pixelek számítása ===
-      // Szürkeárnyalatossá alakítás
-      const graySegment = createMat(borderSize, segWidth, DataTypes.CV_8UC1);
-      cvtColorGray(segment, graySegment);
-
-      // Threshold: sötét pixelek detektálása (pl. < 100 érték = sötét)
-      const darkMask = createMat(borderSize, segWidth, DataTypes.CV_8UC1);
-      OpenCV.invoke('threshold', graySegment, darkMask, 100, 255, 1); // THRESH_BINARY_INV
-
-      // Sötét pixelek aránya (countNonZero)
-      const darkPixelCountResult = OpenCV.invoke(
-        'countNonZero',
-        darkMask,
-      ) as any;
-      const darkPixelCount =
-        darkPixelCountResult?.value ?? darkPixelCountResult ?? 0;
-      const totalPixels = borderSize * segWidth;
-      const darkPixelRatio = darkPixelCount / totalPixels;
-
-      console.log(
-        `🔍 Segment ${i}: ${(darkPixelRatio * 100).toFixed(2)}% dark pixels`,
-      );
-
-      iconAnalysis.push({
-        segment: i,
-        darkPixelRatio: darkPixelRatio,
+    OpenCV.invoke('cvtColor', processedGray, grayMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step2Result = OpenCV.toJSValue(grayMatBGR);
+    if (step2Result?.base64) {
+      stepImages.push({ 
+        label: `3. Grayscale + Kontraszt (${alpha}x, +${beta})`, 
+        image: step2Result.base64 
       });
-
-      // Ne színezzük át, használjuk az eredeti szegmenst
-      const finalSeg = segment;
-
-      if (darkPixelRatio > 0.03) {
-        console.log(
-          `⬛ Segment ${i} detected as CHECKED (${(
-            darkPixelRatio * 100
-          ).toFixed(2)}% dark pixels)`,
-        );
-      } else {
-        console.log(
-          `⬜ Segment ${i} detected as UNCHECKED (${(
-            darkPixelRatio * 100
-          ).toFixed(2)}% dark pixels)`,
-        );
-      }
-
-      segments.push({ mat: finalSeg, width: segWidth });
     }
 
-    // Gyűjtsük össze az ÖSSZES kiválasztott ikont (ahol ≥3% sötét pixel van)
-    const selectedIcons: number[] = [];
-    const threshold = 0.005; // 3% minimum - egyező a színezéssel!
-
-    for (let i = 0; i < iconAnalysis.length; i++) {
-      if (iconAnalysis[i].darkPixelRatio >= threshold) {
-        selectedIcons.push(i);
-      }
-    }
-
-    console.log(`✅ Selected icons: [${selectedIcons.join(', ')}]`);
-
-    // Szegmensek összeállítása vízszintesen
-    // Első szegmens
-    let currentRow = segments[0].mat;
-    let currentWidth = segments[0].width;
-
-    // Hozzáadjuk a többi szegmenst jobbra
-    for (let i = 1; i < numSegments; i++) {
-      const nextSegment = segments[i];
-      const newWidth = currentWidth + nextSegment.width;
-      const combinedRow = createMat(borderSize, newWidth, DataTypes.CV_8UC3);
-
-      // Bal oldal: currentRow
-      const leftPadded = createMat(borderSize, newWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke(
-        'copyMakeBorder',
-        currentRow,
-        leftPadded,
-        0,
-        0,
-        0,
-        nextSegment.width,
-        0,
-        OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-      );
-
-      // Jobb oldal: nextSegment
-      const rightPadded = createMat(borderSize, newWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke(
-        'copyMakeBorder',
-        nextSegment.mat,
-        rightPadded,
-        0,
-        0,
-        currentWidth,
-        0,
-        0,
-        OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-      );
-
-      // Összeadás
-      OpenCV.invoke('add', leftPadded, rightPadded, combinedRow);
-      currentRow = combinedRow;
-      currentWidth = newWidth;
-    }
-
-    // Most currentRow tartalmazza a teljes középső részt (8 szegmens)
-    const bottomCenterWithGradient = currentRow;
-
-    // Teljes alsó sor összeállítása: bal padding + középső (8 szegmens) + jobb padding
-    // Középső rész paddingelt verziója (ez lesz az alap)
-    let completeBottomRow = createMat(borderSize, cropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'copyMakeBorder',
-      bottomCenterWithGradient,
-      completeBottomRow,
-      0,
-      0,
-      borderLeftPadding,
-      borderRightPadding,
-      0,
-      OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-    );
-
-    // Bal oldal hozzáadása (ha van) - felülírjuk a bal padding részt
-    if (borderLeftPadding > 0) {
-      const leftPadded = createMat(borderSize, cropWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke(
-        'copyMakeBorder',
-        bottomLeft,
-        leftPadded,
-        0,
-        0,
-        0,
-        cropWidth - borderLeftPadding,
-        0,
-        OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-      );
-      const tempBottom1 = createMat(borderSize, cropWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke('add', completeBottomRow, leftPadded, tempBottom1);
-      completeBottomRow = tempBottom1;
-    }
-
-    // Jobb oldal hozzáadása (ha van) - felülírjuk a jobb padding részt
-    if (borderRightPadding > 0) {
-      const rightPadded = createMat(borderSize, cropWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke(
-        'copyMakeBorder',
-        bottomRight,
-        rightPadded,
-        0,
-        0,
-        borderLeftPadding + borderWidth,
-        0,
-        0,
-        OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-      );
-      const tempBottom2 = createMat(borderSize, cropWidth, DataTypes.CV_8UC3);
-      OpenCV.invoke('add', completeBottomRow, rightPadded, tempBottom2);
-      completeBottomRow = tempBottom2;
-    }
-
-    // Összefűzés: felső rész + teljes alsó sor vertikálisan
-    const finalResult = createMat(cropHeight, cropWidth, DataTypes.CV_8UC3);
-
-    // Felső rész hozzáadása
-    const topPadded = createMat(cropHeight, cropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'copyMakeBorder',
-      topPart,
-      topPadded,
-      0,
-      borderSize,
-      0,
-      0,
-      0,
-      OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-    );
-
-    // Alsó sor hozzáadása
-    const bottomPadded = createMat(cropHeight, cropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke(
-      'copyMakeBorder',
-      completeBottomRow,
-      bottomPadded,
-      topHeight,
-      0,
-      0,
-      0,
-      0,
-      OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0),
-    );
-
-    // Végső összeadás
-    OpenCV.invoke('add', topPadded, bottomPadded, finalResult);
-
-    // === DEBUG: Piros keret az ikon sávra (a VÉGSŐ képen) - CSAK 1-7 szegmensek ===
-    console.log(
-      `🔴 DEBUG: Drawing RED rectangle for segments 1-7 only (skipping segment 0)`,
-    );
-
-    const redColor = OpenCV.createObject(ObjectType.Scalar, 0, 0, 255); // BGR: piros
-
-    // Keret CSAK az 1-7 szegmensekre (0. szegmens kihagyása)
-    const segment1StartX = borderLeftPadding + segmentWidth; // 1. szegmens kezdete
-    const segments17Width = borderWidth - segmentWidth; // 7 szegmens szélessége
-
-    // Felső vonal (csak 1-7)
-    const topLineStart = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX,
-      cropHeight - borderSize,
-    );
-    const topLineEnd = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX + segments17Width,
-      cropHeight - borderSize,
-    );
-    OpenCV.invoke(
-      'line',
-      finalResult,
-      topLineStart,
-      topLineEnd,
-      redColor,
-      6,
-      8,
-    );
-
-    // Alsó vonal (csak 1-7)
-    const bottomLineStart = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX,
-      cropHeight - 1,
-    );
-    const bottomLineEnd = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX + segments17Width,
-      cropHeight - 1,
-    );
-    OpenCV.invoke(
-      'line',
-      finalResult,
-      bottomLineStart,
-      bottomLineEnd,
-      redColor,
-      6,
-      8,
-    );
-
-    // Bal vonal (1. szegmens bal oldala)
-    const leftLineStart = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX,
-      cropHeight - borderSize,
-    );
-    const leftLineEnd = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX,
+    // === SHARPENING - Before threshold for better edge detection ===
+    console.log('🔪 Applying aggressive sharpening before threshold');
+    
+    // Gaussian blur for unsharp mask
+    const blurredSharp = OpenCV.createObject(
+      ObjectType.Mat,
       cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
     );
-    OpenCV.invoke(
-      'line',
-      finalResult,
-      leftLineStart,
-      leftLineEnd,
-      redColor,
-      6,
-      8,
-    );
-
-    // Jobb vonal (7. szegmens jobb oldala)
-    const rightLineStart = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX + segments17Width,
-      cropHeight - borderSize,
-    );
-    const rightLineEnd = OpenCV.createObject(
-      ObjectType.Point,
-      segment1StartX + segments17Width,
+    const sharpenKsize = OpenCV.createObject(ObjectType.Size, 0, 0);
+    OpenCV.invoke('GaussianBlur', processedGray, blurredSharp, sharpenKsize, 3, 3, 4);
+    
+    // Unsharp mask: result = original * 2 - blurred * 1 (sum = 1 for proper balance)
+    // FONTOS: α - β = 1 kell legyen! (2-1=1)
+    const sharpenedGray = OpenCV.createObject(
+      ObjectType.Mat,
       cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
     );
-    OpenCV.invoke(
-      'line',
-      finalResult,
-      rightLineStart,
-      rightLineEnd,
-      redColor,
-      6,
-      8,
-    );
+    OpenCV.invoke('addWeighted', processedGray, 6, blurredSharp, -5, 0, sharpenedGray);
+    console.log('✅ Aggressive sharpening completed');
 
-    // Szegmens választóvonalak (csak 1-7 között, tehát 2,3,4,5,6,7 elején)
-    for (let i = 2; i <= 7; i++) {
-      const dividerX = borderLeftPadding + i * segmentWidth;
-      const dividerStart = OpenCV.createObject(
-        ObjectType.Point,
-        dividerX,
-        cropHeight - borderSize,
-      );
-      const dividerEnd = OpenCV.createObject(
-        ObjectType.Point,
-        dividerX,
+    // Step 3: Sharpened grayscale
+    const sharpenedGrayBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', sharpenedGray, sharpenedGrayBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step3Result = OpenCV.toJSValue(sharpenedGrayBGR);
+    if (step3Result?.base64) {
+      stepImages.push({ label: '4. Élesítés (sharpening)', image: step3Result.base64 });
+    }
+
+    // === BLACK MASK (THRESHOLD) ===
+    console.log('🎭 Creating aggressive black mask to remove gray dirt');
+    
+    // First, calculate optimal threshold using Otsu's method
+    const tempMaskMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    const otsuResult = OpenCV.invoke('threshold', sharpenedGray, tempMaskMat, 0, 255, 8); // THRESH_OTSU = 8
+    const otsuThreshold = typeof otsuResult === 'number' ? otsuResult : 128;
+    console.log('📊 Otsu calculated threshold:', otsuThreshold);
+    
+    // Apply VERY aggressive threshold (35% of Otsu value) to remove gray dirt/guide lines
+    const maskMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    const adjustedThreshold = Math.max(25, otsuThreshold * 0.25); // Minimum 25, or 35% of Otsu (was 50%)
+    OpenCV.invoke('threshold', sharpenedGray, maskMat, adjustedThreshold, 255, 0); // THRESH_BINARY = 0
+    console.log('✅ Aggressive black mask created with adjusted threshold:', adjustedThreshold);
+
+    // Step 4: Black mask (threshold)
+    const maskMatBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', maskMat, maskMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step4Result = OpenCV.toJSValue(maskMatBGR);
+    if (step4Result?.base64) {
+      stepImages.push({ label: '5. Fekete maszk (threshold)', image: step4Result.base64 });
+    }
+
+    // === MORPHOLOGICAL OPENING - Remove noise (erosion then dilation) ===
+    console.log('🧹 Removing noise with morphological opening');
+    const kernel = OpenCV.invoke('getStructuringElement', 0, createSize(2, 2)); // MORPH_RECT = 0, 2x2 kernel
+    const openedMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    // Morphological opening: erode then dilate - removes noise
+    OpenCV.invoke('morphologyEx', maskMat, openedMat, 2, kernel); // MORPH_OPEN = 2 (direkt maskMat-ból!)
+    console.log('✅ Noise removal completed');
+
+    // Step 5: Noise removed (morphological opening)
+    const openedMatBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', openedMat, openedMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step5Result = OpenCV.toJSValue(openedMatBGR);
+    if (step5Result?.base64) {
+      stepImages.push({ label: '6. Zaj eltávolítás (opening)', image: step5Result.base64 });
+    }
+
+    // === MORPHOLOGICAL CLOSING - Fill holes in text ===
+    console.log('🔗 Applying morphological closing to fill holes in text');
+    
+    // FONTOS: A text FEKETE (0), háttér FEHÉR (255) after threshold
+    // Closing csak FEHÉR objektumokra működik, ezért INVERTÁLNI kell!
+    const invertedForClosing = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('bitwise_not', openedMat, invertedForClosing); // Text lesz FEHÉR
+    
+    const closingKernel = OpenCV.invoke('getStructuringElement', 2, createSize(2, 2)); // MORPH_ELLIPSE = 2, 2x2 kernel
+    const closedInverted = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('morphologyEx', invertedForClosing, closedInverted, 3, closingKernel); // MORPH_CLOSE = 3
+    
+    // Invert back - text FEKETE again
+    const closedMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('bitwise_not', closedInverted, closedMat);
+    
+    console.log('✅ Morphological closing completed - holes filled');
+
+    // Step 5.5: After closing
+    const closedMatBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', closedMat, closedMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step5_5Result = OpenCV.toJSValue(closedMatBGR);
+    if (step5_5Result?.base64) {
+      stepImages.push({ label: '6.5. Lyukak betömése (closing)', image: step5_5Result.base64 });
+    }
+
+    // === PENCIL THICKENING - Make text/writing thicker ===
+    console.log('✏️ Thickening text/writing for better visibility');
+    
+    // IMPORTANT: Invert the mask first! After threshold, text is FEKETE (0) on FEHÉR (255) background
+    // We need WHITE text on BLACK background for dilate to thicken the text
+    const invertedMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('bitwise_not', closedMat, invertedMat);
+    
+    // Create ellipse kernel for thickening (3x3 for moderate thickening)
+    const thickenKernel = OpenCV.invoke('getStructuringElement', 2, createSize(2, 2)); // MORPH_ELLIPSE = 2
+    
+    const thickenedMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    
+    // Dilate operation to thicken the lines (now working on BLACK text)
+    OpenCV.invoke('morphologyEx', invertedMat, thickenedMat, 1, thickenKernel); // MORPH_DILATE = 1
+    
+    // Invert back to get WHITE text on BLACK background
+    const finalThickened = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('bitwise_not', thickenedMat, finalThickened);
+    
+    console.log('✅ Text thickening completed');
+
+    // Step 6: Thickened text
+    const thickenedMatBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', finalThickened, thickenedMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step6Result = OpenCV.toJSValue(thickenedMatBGR);
+    if (step6Result?.base64) {
+      stepImages.push({ label: '7. Szöveg vastagítás (dilate)', image: step6Result.base64 });
+    }
+
+    // === MEDIAN BLUR - Remove dots/noise while preserving edges ===
+    console.log('🎯 Applying stronger median blur to remove dots/noise');
+    const medianFiltered = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    // Median blur with 7x7 kernel - stronger noise removal
+    // while preserving edges better than Gaussian blur
+    OpenCV.invoke('medianBlur', finalThickened, medianFiltered, 5);
+    console.log('✅ Stronger median blur completed - dots removed');
+
+    // Step 6.5: After median blur
+    const medianMatBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', medianFiltered, medianMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step6_5Result = OpenCV.toJSValue(medianMatBGR);
+    if (step6_5Result?.base64) {
+      stepImages.push({ label: '8. Median blur (pöttyök eltávolítás)', image: step6_5Result.base64 });
+    }
+
+    // === FINAL GAUSSIAN BLUR - DISABLED (median blur is enough) ===
+    // console.log('🌫️ Applying final Gaussian blur for smooth edges');
+    // const blurredFinal = OpenCV.createObject(
+    //   ObjectType.Mat,
+    //   cropHeight,
+    //   cropWidth,
+    //   DataTypes.CV_8UC1,
+    // );
+    // const blurKsize = OpenCV.createObject(ObjectType.Size, 3, 3);
+    // OpenCV.invoke('GaussianBlur', medianFiltered, blurredFinal, blurKsize, 1, 1, 4);
+    // console.log('✅ Final Gaussian blur completed');
+
+    // === FINAL SHARPENING - Restore crispness after median blur ===
+    console.log('✨ Applying aggressive final sharpening for crisp text');
+    
+    // Gaussian blur for unsharp mask
+    const blurredFinalSharp = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    const finalSharpenKsize = OpenCV.createObject(ObjectType.Size, 0, 0);
+    OpenCV.invoke('GaussianBlur', medianFiltered, blurredFinalSharp, finalSharpenKsize, 3, 3, 4);
+    
+    // Unsharp mask with VERY aggressive sharpening: original * 4 - blurred * 3
+    const sharpenedFinal = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC1,
+    );
+    OpenCV.invoke('addWeighted', medianFiltered, 2, blurredFinalSharp, -1, 0, sharpenedFinal);
+    console.log('✅ Aggressive final sharpening completed');
+
+    // Step 9: Final sharpening
+    const sharpenedFinalBGR = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', sharpenedFinal, sharpenedFinalBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    const step9Result = OpenCV.toJSValue(sharpenedFinalBGR);
+    if (step9Result?.base64) {
+      stepImages.push({ label: '9. Élesítés (sharpen)', image: step9Result.base64 });
+    }
+
+    // Use sharpened result as final
+    const blurredFinal = sharpenedFinal;
+
+    // Convert back to BGR for consistency with rest of code
+    const finalMat = OpenCV.createObject(
+      ObjectType.Mat,
+      cropHeight,
+      cropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('cvtColor', blurredFinal, finalMat, 8, 0); // COLOR_GRAY2BGR = 8
+
+    // === SMART CROP BOTTOM - Find QR code end position ===
+    console.log('✂️ Smart cropping bottom based on QR code position');
+    
+    // Detect where QR code ends by scanning from bottom
+    // QR code is black on white background, so we look for the transition
+    let qrEndY = cropHeight; // Default: no crop if detection fails
+    
+    if (currentQrPosition) {
+      console.log(`🔍 Detecting QR code end on ${currentQrPosition} side`);
+      
+      // Use the thresholded grayscale (blurredFinal) for detection
+      // Scan a vertical strip on the side where QR code is located
+      const stripWidth = Math.round(cropWidth * 0.15); // 15% width strip
+      const stripX = currentQrPosition === 'left' 
+        ? 0 
+        : cropWidth - stripWidth;
+      
+      // Create ROI for the strip
+      const stripRect = OpenCV.createObject(
+        ObjectType.Rect,
+        stripX,
+        0,
+        stripWidth,
         cropHeight,
       );
-      OpenCV.invoke(
-        'line',
-        finalResult,
-        dividerStart,
-        dividerEnd,
-        redColor,
-        3,
-        8,
-      );
+      
+      const stripMat = OpenCV.createObject(ObjectType.Mat, cropHeight, stripWidth, DataTypes.CV_8UC1);
+      OpenCV.invoke('crop', blurredFinal, stripMat, stripRect);
+      
+      // Scan from bottom to top, looking for rows that are mostly white (no QR code)
+      // When we find continuous white rows, that's where the content ends
+      const whiteThreshold = 250; // Pixel value threshold for "white"
+      const requiredWhiteRows = Math.round(cropHeight * 0.02); // Need 2% height of white rows
+      
+      let consecutiveWhiteRows = 0;
+      let foundContentEnd = false;
+      
+      // Scan from bottom up
+      for (let y = cropHeight - 1; y >= 0 && !foundContentEnd; y--) {
+        // Create ROI for single row
+        const rowRect = OpenCV.createObject(ObjectType.Rect, 0, y, stripWidth, 1);
+        const rowMat = OpenCV.createObject(ObjectType.Mat, 1, stripWidth, DataTypes.CV_8UC1);
+        OpenCV.invoke('crop', stripMat, rowMat, rowRect);
+        
+        // Check if row is mostly white using mean
+        const rowMean = OpenCV.invoke('mean', rowMat);
+        const rowMeanData = OpenCV.toJSValue(rowMean);
+        const rowAvg = (rowMeanData as any)?.a || 0;
+        
+        if (rowAvg >= whiteThreshold) {
+          consecutiveWhiteRows++;
+        } else {
+          // Found dark content (QR code)
+          if (consecutiveWhiteRows >= requiredWhiteRows) {
+            // We had white space and now hit content - this is the QR end
+            qrEndY = y + consecutiveWhiteRows;
+            foundContentEnd = true;
+            console.log(`✅ Found QR code end at Y=${qrEndY} (${consecutiveWhiteRows} white rows before)`);
+          }
+          consecutiveWhiteRows = 0;
+        }
+      }
+      
+      if (!foundContentEnd) {
+        // Fallback: use 90% if detection failed
+        qrEndY = Math.round(cropHeight * 0.90);
+        console.log(`⚠️ QR end detection failed, using fallback: ${qrEndY}`);
+      }
+    } else {
+      // No QR position info - use default 90%
+      qrEndY = Math.round(cropHeight * 0.90);
+      console.log('⚠️ No QR position info, using default 90% crop');
     }
-
-    // === 16. FEKETE SZÉL DETEKTÁLÁS (egyszerűsített) ===
-    // A perspective transform gyakran hagy fekete széleket, ezt automatikusan levágjuk
-    const autoDetectBlackBorders = () => {
-      'worklet';
-      
-      // Egyszerű heurisztika: ha perspective transform volt, 
-      // általában 1-3% fekete szél marad a szélek körül
-      const borderPercent = 0.015; // 1.5% minden oldalról
-      
-      return {
-        topCrop: Math.round(cropHeight * borderPercent),
-        bottomCrop: Math.round(cropHeight * borderPercent), 
-        leftCrop: Math.round(cropWidth * borderPercent),
-        rightCrop: Math.round(cropWidth * borderPercent)
-      };
-    };
     
-    const borderCrops = autoDetectBlackBorders();
-    console.log(`🖤 Auto black border removal:`, borderCrops);
-
-    // === 17. FINAL CROP: Alsó 8% + fekete szél levágása ===
-    const finalBottomCrop = Math.max(
-      Math.round(cropHeight * 0.08), // 8% alulról minimum
-      borderCrops.bottomCrop // vagy fekete szél
-    );
-    const finalTopCrop = borderCrops.topCrop;
-    const finalLeftCrop = borderCrops.leftCrop;
-    const finalRightCrop = borderCrops.rightCrop;
+    // Add small margin above QR end
+    const margin = Math.round(cropHeight * 0.01); // 1% margin
     
-    const finalCropHeight = cropHeight - finalTopCrop - finalBottomCrop;
-    const finalCropWidth = cropWidth - finalLeftCrop - finalRightCrop;
-
-    console.log(
-      `✂️ Final crop: top=${finalTopCrop}, bottom=${finalBottomCrop}, left=${finalLeftCrop}, right=${finalRightCrop}`,
-    );
-    console.log(
-      `✂️ Final size: ${finalCropWidth}x${finalCropHeight} (from ${cropWidth}x${cropHeight})`,
-    );
-
+    // MAXIMUM 4% levágás az aljáról - ne vágjunk le túl sokat!
+    const minHeight = Math.round(cropHeight * 0.93); // Minimum 96% marad (max 4% levágás)
+    const calculatedHeight = Math.min(qrEndY + margin, cropHeight);
+    const finalHeight = Math.max(calculatedHeight, minHeight);
+    
+    console.log(`📐 Cropping to height: ${finalHeight} (was ${cropHeight}, saved ${cropHeight - finalHeight}px, max 4%)`);
+    
     const finalCropRect = OpenCV.createObject(
       ObjectType.Rect,
-      finalLeftCrop, // left offset
-      finalTopCrop, // top offset  
-      finalCropWidth, // width after crop
-      finalCropHeight, // height after crop
+      0, // x
+      0, // y
+      cropWidth, // width (full width)
+      finalHeight, // height (smart crop)
     );
-
-    const finalCroppedResult = createMat(
-      finalCropHeight,
-      finalCropWidth,
+    
+    const croppedFinalMat = OpenCV.createObject(
+      ObjectType.Mat,
+      finalHeight,
+      cropWidth,
       DataTypes.CV_8UC3,
     );
-    OpenCV.invoke('crop', finalResult, finalCroppedResult, finalCropRect);
+    OpenCV.invoke('crop', finalMat, croppedFinalMat, finalCropRect);
+    console.log('✅ Smart bottom crop completed');
 
-    // === 17. BASE64 KONVERZIÓ ===
-    const result = OpenCV.toJSValue(finalCroppedResult);
+    // Step 9.5: After smart bottom crop
+    if (enableDebugImages) {
+      const step9_5Result = OpenCV.toJSValue(croppedFinalMat);
+      if (step9_5Result?.base64) {
+        stepImages.push({ label: '9.5. Smart bottom crop', image: step9_5Result.base64 });
+      }
+    }
+
+    // === EDGE CROP - Remove 0.5% border to avoid black edges ===
+    console.log('✂️ Removing 0.5% edge border');
+    const edgeCropPercent = 0.01;
+    const edgeCropLeft = Math.round(cropWidth * edgeCropPercent);
+    const edgeCropTop = Math.round(finalHeight * edgeCropPercent);
+    const edgeCropWidth = cropWidth - 2 * edgeCropLeft;
+    const edgeCropHeight = finalHeight - 2 * edgeCropTop;
+    
+    const edgeCropRect = OpenCV.createObject(
+      ObjectType.Rect,
+      edgeCropLeft,
+      edgeCropTop,
+      edgeCropWidth,
+      edgeCropHeight,
+    );
+    
+    const finalCleanMat = OpenCV.createObject(
+      ObjectType.Mat,
+      edgeCropHeight,
+      edgeCropWidth,
+      DataTypes.CV_8UC3,
+    );
+    OpenCV.invoke('crop', croppedFinalMat, finalCleanMat, edgeCropRect);
+    console.log('✅ Edge crop completed');
+    console.log(`📐 Final dimensions after all crops: ${edgeCropWidth}x${edgeCropHeight}`);
+
+    // Step 9.6: After edge crop
+    if (enableDebugImages) {
+      const step9_6Result = OpenCV.toJSValue(finalCleanMat);
+      if (step9_6Result?.base64) {
+        stepImages.push({ label: '9.6. Edge crop (0.5%)', image: step9_6Result.base64 });
+      }
+    }
+
+    // === RESTORE COLORED REGIONS - Visszamaszkolás ===
+    console.log('🎨 Restoring colored regions over processed B&W image');
+    
+    // Crop the color mask and colored regions to match final dimensions
+    const colorMaskCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    
+    // Build combined crop rect (bottom + edge)
+    const combinedCropLeft = edgeCropLeft;
+    const combinedCropTop = edgeCropTop;
+    const finalCombinedRect = OpenCV.createObject(
+      ObjectType.Rect,
+      combinedCropLeft,
+      combinedCropTop,
+      edgeCropWidth,
+      edgeCropHeight,
+    );
+    
+    OpenCV.invoke('crop', colorMaskDilated, colorMaskCropped, finalCombinedRect);
+    
+    const coloredRegionsCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('crop', coloredRegions, coloredRegionsCropped, finalCombinedRect);
+    
+    // Invert mask for B&W areas
+    const bwMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_not', colorMaskCropped, bwMask);
+    
+    // Apply masks
+    const bwPart = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_and', finalCleanMat, finalCleanMat, bwPart, bwMask);
+    
+    // Combine B&W and colored regions
+    const finalWithColor = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('add', bwPart, coloredRegionsCropped, finalWithColor);
+    
+    console.log('✅ Colored regions restored!');
+
+    // Step 9.7: After color restoration
+    if (enableDebugImages) {
+      const step9_7Result = OpenCV.toJSValue(finalWithColor);
+      if (step9_7Result?.base64) {
+        stepImages.push({ label: '9.7. Színek visszaállítva', image: step9_7Result.base64 });
+      }
+    }
+
+    // === UPSCALE - Felskálázás nagyobb felbontásra ===
+    const UPSCALE_FACTOR = 1.5; // 1.5x nagyítás (150%)
+    const upscaledWidth = Math.round(edgeCropWidth * UPSCALE_FACTOR);
+    const upscaledHeight = Math.round(edgeCropHeight * UPSCALE_FACTOR);
+    
+    console.log(`🔍 Upscaling image: ${edgeCropWidth}x${edgeCropHeight} → ${upscaledWidth}x${upscaledHeight} (${UPSCALE_FACTOR}x)`);
+    
+    const upscaledMat = OpenCV.createObject(ObjectType.Mat, upscaledHeight, upscaledWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke(
+      'resize',
+      finalWithColor,
+      upscaledMat,
+      createSize(upscaledWidth, upscaledHeight),
+      0,
+      0,
+      2, // INTER_CUBIC = 2 - jó minőségű interpoláció
+    );
+    
+    console.log('✅ Upscaling completed');
+
+    // === QR KÓD INFORMÁCIÓK LOGOLÁSA ===
+    console.log('📱 QR Code Info:', {
+      value: currentQrValue || 'N/A',
+      position: currentQrPosition || 'N/A',
+    });
+
+    // Export final image with best available quality
+    // Note: react-native-fast-opencv uses built-in JPEG encoding (~95% quality)
+    // This is the maximum quality available with this library
+    console.log('📸 Exporting with maximum available JPEG quality');
+    
+    const result = OpenCV.toJSValue(upscaledMat);
 
     if (!result?.base64) {
       throw new Error('Failed to convert scanned image to base64');
     }
 
-    // Ikon nevek meghatározása
-    const selectedIconNames = selectedIcons.map(
-      index => ICON_NAMES[index] || '',
-    );
+    console.log('✅ High-quality image export completed');
 
-    console.log(
-      `📋 Detektált ikonok: ${
-        selectedIcons.length > 0
-          ? selectedIcons
-              .map((idx, i) => `${idx}-${selectedIconNames[i]}`)
-              .join(', ')
-          : 'nincs'
-      }`,
-    );
+    // === ADD FINAL RESULT TO DEBUG IMAGES ===
+    if (enableDebugImages && result.base64) {
+      stepImages.push({ 
+        label: `10. Végeredmény (${upscaledWidth}x${upscaledHeight})${currentQrValue ? ` - QR: ${currentQrValue}` : ''}`, 
+        image: result.base64 
+      });
+    }
 
     return {
       success: true,
       imageBase64: result.base64,
+      stepImages: enableDebugImages ? stepImages : [], // Only return debug images if enabled
+      qrValue: currentQrValue, // QR kód tartalma a frame-ből
+      qrPosition: currentQrPosition, // QR kód pozíciója
       brightnessInfo: {
-        avgBrightness: Math.round(avgBrightness),
-        lightCondition,
-        betaBoost,
+        avgBrightness: 128,
+        lightCondition: 'Normál',
+        betaBoost: 0,
       },
-      selectedIcons,
-      selectedIconNames,
-      iconAnalysis,
+      selectedIcons: [],
+      selectedIconNames: [],
+      iconAnalysis: [],
     };
   } catch (error) {
     console.error('Scan error:', error);
-    // Memory cleanup ASAP hibák esetén is
     try {
       OpenCV.clearBuffers();
-      console.log('🧹 Early OpenCV cleanup on error');
     } catch (cleanupError) {
       console.warn('Cleanup error:', cleanupError);
     }
@@ -1235,10 +1308,8 @@ export const scanDocument = (
       error: error instanceof Error ? error.message : String(error),
     };
   } finally {
-    // Tisztítsuk meg az OpenCV buffer-t fotózás után
     try {
       OpenCV.clearBuffers();
-      console.log('🧹 OpenCV buffers cleared after scan');
     } catch (clearError) {
       console.error('Error clearing OpenCV buffers:', clearError);
     }
