@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Image,
+  Linking,
+  Alert,
+  AppState,
 } from 'react-native';
 import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
@@ -14,6 +17,8 @@ import { sendFilesApiService } from '../store/api/sendFilesApi';
 import { setHistory } from '../store/appSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { processFileNameTemplate } from '../utils/saveImage';
+import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
+import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
 
 type RouteParams = {
   savedFilePath: string;
@@ -84,20 +89,23 @@ const DestinationSelectScreen = () => {
     }
   };
 
-  const sendFileToDestination = async () => {
+  const sendFileToDestination = async (destinationType?: string, newSettings?: any) => {
     if (!selectedDestinations || selectedDestinations.length === 0) {
       console.warn('No destinations selected');
       return;
     }
 
-    await saveFilesToAsyncstorage({
-      files: [savedFilePath],
-      destinations: selectedDestinations,
-    });
+    if (!destinationType) {
+      await saveFilesToAsyncstorage({
+        files: [savedFilePath],
+        destinations: selectedDestinations,
+      });
 
-    console.log(
-      `Sending file at ${savedFilePath} to destination types ${selectedDestinations.join(', ')}`,
-    );
+      console.log(
+        `Sending file at ${savedFilePath} to destination types ${selectedDestinations.join(', ')}`,
+      );
+    }
+
 
     // Send to all selected destinations
     for (const selectedDestinationType of selectedDestinations) {
@@ -148,6 +156,11 @@ const DestinationSelectScreen = () => {
       };
       const finalDest = destinationConfig || fallbackDestination;
 
+      if (destinationType && finalDest.destination !== destinationType) {
+        console.log(`Skipping destination ${selectedDestinationType} as it does not match specified type ${destinationType}`);
+        continue;
+      }
+
       // If destination is email, dispatch uploadAndSendFile
       if (finalDest.destination === 'email') {
         console.log('📧 Sending via email to:', user.email);
@@ -175,9 +188,13 @@ const DestinationSelectScreen = () => {
           const processedTemplate = processFileNameTemplate(fileNameTemplate);
           const timestamp = Date.now();
           const fileName = `${processedTemplate}_${timestamp}.jpg`;
+
+          const accesstoken = newSettings?.dropboxAccessToken || settings.dropboxAccessToken;
+          const refreshtoken = newSettings?.dropboxRefreshToken || settings.dropboxRefreshToken;
+
           await sendFilesApiService.uploadToDropbox(
-            settings.dropboxAccessToken,
-            settings.dropboxRefreshToken,
+            accesstoken,
+            refreshtoken,
             [{ fileName, filePath: savedFilePath }],
             finalDest,
           );
@@ -193,9 +210,13 @@ const DestinationSelectScreen = () => {
           const processedTemplate = processFileNameTemplate(fileNameTemplate);
           const timestamp = Date.now();
           const fileName = `${processedTemplate}_${timestamp}.jpg`;
+
+          const accesstoken = newSettings?.oneDriveAccessToken || settings.oneDriveAccessToken;
+          const refreshtoken = newSettings?.oneDriveRefreshToken || settings.oneDriveRefreshToken;
+
           await sendFilesApiService.uploadToOneDrive(
-            settings.oneDriveAccessToken,
-            settings.oneDriveRefreshToken,
+            accesstoken,
+            refreshtoken,
             [{ fileName, filePath: savedFilePath }],
             finalDest,
           );
@@ -235,6 +256,236 @@ const DestinationSelectScreen = () => {
       parentNavigation.navigate('History');
     }
   };
+
+  // handle deeplink if user has to log in again
+  // Dropbox OAuth configuration
+  const clientId = DROPBOX_CLIENT;
+
+  // OneDrive OAuth configuration
+  const oneDriveRedirectUri = 'berri://onedrive-auth';
+  const oneDriveClientId = ONEDRIVE_CLIENT;
+
+  const exchangeDropboxCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl = 'https://api.dropboxapi.com/oauth2/token';
+
+        // IMPORTANT: Use the EXACT same redirect_uri as in the authorization request
+        const exactRedirectUri = 'berri://dropbox-auth'; // Must match authorization request
+        
+        const body = new URLSearchParams({
+          code: authCode,
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          redirect_uri: exactRedirectUri, // Use exact match
+          code_verifier: verifier,
+        });
+
+        console.log('🔄 Token exchange request details:', {
+          authCode: authCode,
+          clientId: clientId,
+          redirectUri: exactRedirectUri,
+          codeVerifierLength: verifier.length,
+          codeVerifierPreview: verifier.substring(0, 15) + '...'
+        });
+
+        console.log('📤 Sending token exchange request to:', tokenUrl);
+        console.log('📤 Request body:', body.toString());
+        
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+        
+        console.log('📥 Token exchange response:', {
+          status: response.status,
+          ok: response.ok,
+          data: data
+        });
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveDropboxToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Create updated settings with new Dropbox tokens
+            const updatedSettings = {
+              ...settings,
+              dropboxAccessToken: tokens.accessToken,
+              dropboxRefreshToken: tokens.refreshToken
+            };
+
+            console.log('🔄 Using fresh Dropbox tokens for resend:', {
+              hasNewAccessToken: !!tokens.accessToken,
+              hasNewRefreshToken: !!tokens.refreshToken
+            });
+
+            try {
+              await sendFileToDestination("dropbox", updatedSettings);
+
+              
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save Dropbox tokens:', error);
+          }
+        } else {
+          console.error('❌ Token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during token exchange:', error);
+      }
+    },
+    [clientId, dispatch, navigation, selectedDestinations, destinations, user, settings],
+  );
+
+  const exchangeOneDriveCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl =
+          'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+
+        const body = new URLSearchParams({
+          code: authCode,
+          client_id: oneDriveClientId,
+          redirect_uri: oneDriveRedirectUri,
+          grant_type: 'authorization_code',
+          code_verifier: verifier,
+        });
+
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveOneDriveToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            // Create updated settings with new OneDrive tokens
+            const updatedSettings = {
+              ...settings,
+              oneDriveAccessToken: tokens.accessToken,
+              oneDriveRefreshToken: tokens.refreshToken
+            };
+
+            console.log('🔄 Using fresh OneDrive tokens for resend:', {
+              hasNewAccessToken: !!tokens.accessToken,
+              hasNewRefreshToken: !!tokens.refreshToken
+            });
+
+            // Based on screen:
+            try {
+              await sendFileToDestination("onedrive", updatedSettings);
+
+              Alert.alert('Success', 'Scan has been resent successfully!', [
+                {
+                  text: 'OK',
+                  onPress: () => navigation.goBack(),
+                },
+              ]);
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save OneDrive tokens:', error);
+          }
+        } else {
+          console.error('❌ OneDrive token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during OneDrive token exchange:', error);
+      }
+    },
+    [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation, selectedDestinations, destinations, user, settings],
+  );
+
+  useEffect(() => {
+    const handleURL = (url: string) => {
+      if (url.includes('dropbox-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          console.log('🔑 Retrieved code verifier for Dropbox:', codeVerifierOutside);
+          console.log('🔑 Exchanging Dropbox auth code for token:', authCode);
+          exchangeDropboxCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange code for token.',
+          );
+        }
+      } else if (url.includes('onedrive-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeOneDriveCodeForToken(authCode, codeVerifierOutside);
+        } else if (codeMatch && !codeVerifierOutside) {
+          console.error(
+            '❌ Code verifier not found! Cannot exchange OneDrive code for token.',
+          );
+        }
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        setTimeout(() => {
+          Linking.getInitialURL().then(url => {
+            if (url) {
+              handleURL(url);
+            }
+          });
+        }, 100);
+      }
+    };
+
+    Linking.getInitialURL().then(url => {
+      if (url) {
+        handleURL(url);
+      }
+    });
+
+    const appStateSubscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
+
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => {
+      handleURL(url);
+    });
+
+    return () => {
+      appStateSubscription.remove();
+      urlSubscription.remove();
+    };
+  }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
+
 
   return (
     <Layout type="dark" headerTitle="Where should we send your scans?">
