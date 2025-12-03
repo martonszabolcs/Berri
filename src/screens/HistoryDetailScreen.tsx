@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { Dirs } from 'react-native-file-access';
 import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 
@@ -26,6 +27,17 @@ interface FileInfo {
   filename: string;
   url: string;
 }
+
+// Helper to build full file path from filename or url
+const getFullFilePath = (file: FileInfo): string => {
+  const urlOrFilename = file.url || file.filename;
+  // If it's already a full path (contains /), use it as-is
+  if (urlOrFilename.includes('/')) {
+    return `file://${urlOrFilename}`;
+  }
+  // Otherwise, it's just a filename - build full path from Documents dir
+  return `file://${Dirs.DocumentDir}/${urlOrFilename}`;
+};
 
 interface HistoryEntry {
   timestamp: number;
@@ -420,7 +432,7 @@ const HistoryDetailScreen = () => {
             history.files.map((file, index) => (
               <View key={index} style={styles.imageContainer}>
                 <Image
-                  source={{ uri: `file://${file.url}` }}
+                  source={{ uri: getFullFilePath(file) }}
                   style={styles.image}
                   resizeMode="contain"
                 />

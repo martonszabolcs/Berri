@@ -6,7 +6,7 @@ import {
   ONEDRIVE_CLIENT,
 } from '../../config';
 import { store } from '../index';
-import { FileSystem } from 'react-native-file-access';
+import { Dirs, FileSystem } from 'react-native-file-access';
 import { Buffer } from 'buffer';
 import { Linking, Platform } from 'react-native';
 import {
@@ -19,6 +19,16 @@ import { uploadAndSendFile } from '../uploadSlice';
 import RNFS from 'react-native-fs';
 import { PDFDocument, rgb } from 'pdf-lib';
 import ImageResizer from 'react-native-image-resizer';
+
+// Helper to build full file path from filename or url
+const getFullFilePath = (urlOrFilename: string): string => {
+  // If it's already a full path (contains /), use it as-is
+  if (urlOrFilename.includes('/')) {
+    return urlOrFilename.replace('file://', '');
+  }
+  // Otherwise, it's just a filename - build full path from Documents dir
+  return `${Dirs.DocumentDir}/${urlOrFilename}`;
+};
 
 class SendFilesApiService {
   private codeVerifier: string | null = null;
@@ -87,7 +97,7 @@ class SendFilesApiService {
 
     const newFileArray = history.files.map((file: any) => ({
       fileName: file.filename,
-      filePath: file.url,
+      filePath: getFullFilePath(file.url || file.filename),
     }));
 
     // Send to all destinations from the history entry

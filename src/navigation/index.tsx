@@ -213,6 +213,12 @@ const MainTabs = () => {
           tabBarLabel: 'New Scan',
           tabBarIcon: renderNewScanTabBarIcon,
         }}
+        listeners={({ navigation }) => ({
+          tabPress: (e) => {
+            // Reset the NewScan stack to CameraScreen when tab is pressed
+            navigation.navigate('NewScan', { screen: 'CameraScreen' });
+          },
+        })}
       />
       <Tab.Screen
         name="Destinations"

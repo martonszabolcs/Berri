@@ -25,11 +25,12 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  FlatList,
 } from 'react-native';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
 import { saveScannedDocument } from '../utils/saveImage';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useAppSelector } from '../store/hooks';
 
 interface DocumentCorner {
@@ -117,6 +118,30 @@ export default function App() {
   const navigation = useNavigation();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
+  // === HIDE TAB BAR ON THIS SCREEN ===
+  useFocusEffect(
+    React.useCallback(() => {
+      // Hide tab bar when screen is focused
+      const parent = navigation.getParent();
+      parent?.setOptions({
+        tabBarStyle: { display: 'none' },
+      });
+
+      // Show tab bar when leaving screen
+      return () => {
+        parent?.setOptions({
+          tabBarStyle: {
+            backgroundColor: 'rgba(37, 37, 68, 1)',
+            borderTopWidth: 0,
+            height: 70,
+            paddingTop: 10,
+            display: 'flex',
+          },
+        });
+      };
+    }, [navigation])
+  );
+
   // Default DetectionResult - inicializálás lag elkerülésére
   const defaultDetectionResult: DetectionResult = {
     corners: [],
@@ -200,6 +225,19 @@ export default function App() {
   );
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [capturedQrValue, setCapturedQrValue] = useState<string | null>(null); // QR kód érték a végeredményhez
+  
+  // === MULTI-IMAGE COLLECTION ===
+  // Collected images for multi-page document
+  interface CapturedImage {
+    id: string;
+    imageBase64: string;
+    qrValue: string | null;
+    timestamp: number;
+  }
+  const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
+  const [showGalleryModal, setShowGalleryModal] = useState(false);
+  const [galleryStartIndex, setGalleryStartIndex] = useState(0);
+  
   const [stepImages, setStepImages] = useState<
     { label: string; image: string }[]
   >([]);
@@ -233,6 +271,9 @@ export default function App() {
 
   // Status infobox animation - csúszik le középről
   const infoboxTranslateY = useRef(new Animated.Value(0)).current;
+
+  // Thumbnail scroll ref for smooth animation
+  const thumbnailScrollRef = useRef<ScrollView>(null);
 
   // Stabilized detection status - smooth transitions
   const [stableDetectionStatus, setStableDetectionStatus] = useState({
@@ -953,32 +994,67 @@ export default function App() {
         // Várunk egy picit hogy megjelenjen
         await new Promise<void>(resolve => setTimeout(resolve, 50));
 
-        // Animáció: lassabban, simábban - LENT MARAD
+        // Animáció: a thumbnail stripbe csúszik be smooth-an
+        // A thumbnail strip bottom: 100px, kb 120px magas (thumbnails + continue gomb)
+        // Célpont: a thumbnail sor közepe
+        const a4Ratio = 1.414;
+        const a4Width = screenWidth * 0.85;
+        const a4Height = a4Width * a4Ratio;
+        const startY = (screenHeight - a4Height) / 2;
+        const targetY = screenHeight - 30; // thumbnail strip középpontja (~100 + 80 padding/content)
+        const targetScale = 60 / a4Width; // Scale to thumbnail size (60px width)
+        
         Animated.parallel([
           Animated.timing(a4Scale, {
-            toValue: 0.25, // Még kisebb
-            duration: 600, // Hosszabb animáció
+            toValue: targetScale,
+            duration: 500,
             useNativeDriver: true,
           }),
           Animated.timing(a4TranslateY, {
-            toValue: screenHeight * 1.2, // Lejjebb csúszik és OTT MARAD
-            duration: 600,
+            toValue: targetY - startY,
+            duration: 500,
             useNativeDriver: true,
           }),
-          // NINCS opacity animáció - látható marad!
+          Animated.timing(a4Opacity, {
+            toValue: 0,
+            duration: 400,
+            delay: 300, // Fade out near the end
+            useNativeDriver: true,
+          }),
         ]).start();
 
-        // Várunk az animációra + 400ms extra várakozás lent
-        await new Promise<void>(resolve => setTimeout(resolve, 1300));
+        // Várunk az animációra (500ms) + kis extra
+        await new Promise<void>(resolve => setTimeout(resolve, 600));
 
-        setCapturedImageUri(scanResult.imageBase64); // Beszkennelt kép
-        setCapturedQrValue(scanResult.qrValue || null); // QR kód érték
-        setOriginalPhotoUri(photoBase64); // Eredeti fotó
-        setDebugCorners(scanResult.debugCorners || null);
-        setSelectedIcons(scanResult.selectedIcons || []);
-        setSelectedIconNames(scanResult.selectedIconNames || []);
-        setBrightnessInfo(scanResult.brightnessInfo || null);
-        setShowCapturedImage(true);
+        // === MULTI-IMAGE: Add image to collection instead of showing modal ===
+        const newImage: CapturedImage = {
+          id: `img_${Date.now()}`,
+          imageBase64: scanResult.imageBase64,
+          qrValue: scanResult.qrValue || null,
+          timestamp: Date.now(),
+        };
+        setCapturedImages(prev => [...prev, newImage]);
+        
+        // Reset for next capture - NO MODAL
+        setCapturedImageUri(null);
+        setCapturedQrValue(null);
+        setOriginalPhotoUri(null);
+        setDebugCorners(null);
+        setSelectedIcons([]);
+        setSelectedIconNames([]);
+        setBrightnessInfo(null);
+        setShowA4Animation(false);
+        setA4AnimationImage(null);
+        
+        // Reset QR lock for new scan
+        qrLockRef.current = null;
+        qrValueLockRef.current = null;
+        
+        // Reset auto-capture flag for next photo
+        autoCaptureTriggeredRef.current = false;
+        autoCaptureTimerRef.current = null;
+        
+        console.log('📸 Image added to collection. Total:', capturedImages.length + 1);
       }
     } catch (error) {
       // Silent fail - user can retry
@@ -991,6 +1067,10 @@ export default function App() {
       overlayScale.setValue(1);
       overlayTranslateY.setValue(0);
       overlayOpacity.setValue(1);
+
+      // Reset auto-capture for next attempt
+      autoCaptureTriggeredRef.current = false;
+      autoCaptureTimerRef.current = null;
 
       // 🟢 START: Indítsuk újra a frame processor-t!
       console.log('▶️ Resuming frame processor');
@@ -1006,6 +1086,7 @@ export default function App() {
     a4TranslateY,
     a4Opacity,
     debugImagesEnabled,
+    capturedImages.length,
   ]);
 
   // === SHARE FUNCTIONALITY ===
@@ -1019,7 +1100,7 @@ export default function App() {
       console.log('✅ Document saved permanently:', savedPath);
 
       // Navigate to DestinationSelectScreen with the saved file path
-      navigation.navigate('DestinationSelectScreen', {
+      (navigation as any).navigate('DestinationSelectScreen', {
         savedFilePath: savedPath,
         destinationType: 1,
       });
@@ -1031,10 +1112,7 @@ export default function App() {
 
       await FileSystem.writeFile(tempPath, capturedImageUri, 'base64');
 
-      await Share.share({
-        url: `file://${tempPath}`,
-        message: 'Beszkennelt BERRĪ füzet',
-      });
+    
     } catch (error) {
       console.error('Share error:', error);
     }
@@ -1387,8 +1465,8 @@ export default function App() {
     corners.slice(1).forEach(c => path.lineTo(c.x, c.y));
     path.close();
 
-    // Determine overlay color and style
-    const COLORS = { GREEN: '#B2FBA5', YELLOW: '#FFF52E', RED: '#FF746C' };
+    // Determine overlay color and style - Purple theme to match app
+    const COLORS = { GREEN: '#C4A8FF', YELLOW: '#FFF52E', RED: '#FF746C' }; // Purple instead of green
 
     let pathColor: string;
     let pathStyle: 'fill' | 'stroke' = 'stroke';
@@ -1521,24 +1599,22 @@ export default function App() {
             </TouchableOpacity>
           )} */}
 
-          {/* Torch (világítás) gomb */}
+          {/* Torch (és vaku) gomb */}
           <TouchableOpacity
             style={[styles.torchButton]}
             onPress={() => setTorchEnabled(!torchEnabled)}
           >
             <Text style={styles.torchButtonText}>
-              {torchEnabled ? '🔦 BE' : '🔦 KI'}
+              {torchEnabled ? '🔦' : '🔦'}
             </Text>
           </TouchableOpacity>
 
-          {/* Debug Images toggle - jobb felső sarok */}
+          {/* Vissza gomb - bal felső sarok */}
           <TouchableOpacity
-            style={[styles.debugToggleButton]}
-            onPress={() => setDebugImagesEnabled(!debugImagesEnabled)}
+            style={styles.backButton}
+            onPress={() => (navigation as any).navigate('History')}
           >
-            <Text style={styles.debugToggleText}>
-              {debugImagesEnabled ? '🐛 ON' : '🐛 OFF'}
-            </Text>
+            <Text style={styles.backButtonText}>←</Text>
           </TouchableOpacity>
 
           {/* Document overlay - ANIMÁLT verzió - MARAD AMÍG A4 NEM JELENIK MEG */}
@@ -1578,7 +1654,7 @@ export default function App() {
           {!isFrameProcessorActive && !showA4Animation && (
             <View style={styles.processingSpinnerOverlay}>
               <View style={styles.processingSpinnerContainer}>
-                <ActivityIndicator size="large" color="#00ff00" />
+                <ActivityIndicator size="large" color="#C4A8FF" />
                 <Text style={styles.processingSpinnerText}>
                   {captureStatusMessage}
                 </Text>
@@ -1694,6 +1770,83 @@ export default function App() {
                 </Animated.View>
               );
             })()}
+
+          {/* === THUMBNAIL STRIP & CONTINUE BUTTON === */}
+          {capturedImages.length > 0 && (
+            <View style={styles.thumbnailStripContainer}>
+              {/* Thumbnail row */}
+              <ScrollView 
+                ref={thumbnailScrollRef}
+                horizontal 
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.thumbnailScrollContent}
+                onContentSizeChange={() => {
+                  // Auto-scroll to end when new image is added
+                  thumbnailScrollRef.current?.scrollToEnd({ animated: true });
+                }}
+              >
+                {capturedImages.map((img, index) => (
+                  <TouchableOpacity
+                    key={img.id}
+                    style={styles.thumbnailWrapper}
+                    onPress={() => {
+                      setGalleryStartIndex(index);
+                      setShowGalleryModal(true);
+                    }}
+                  >
+                    <Image
+                      source={{ uri: `data:image/jpeg;base64,${img.imageBase64}` }}
+                      style={styles.thumbnailImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.thumbnailBadge}>
+                      <Text style={styles.thumbnailBadgeText}>{index + 1}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              
+              {/* Continue button - below thumbnails */}
+              <TouchableOpacity
+                style={styles.continueButton}
+                onPress={async () => {
+                  if (capturedImages.length === 0) return;
+                  
+                  try {
+                    // Save ALL captured images
+                    const savedPaths: string[] = [];
+                    
+                    for (const image of capturedImages) {
+                      const savedPath = await saveScannedDocument(image.imageBase64, settings);
+                      if (savedPath) {
+                        savedPaths.push(savedPath);
+                        console.log('✅ Image saved:', savedPath);
+                      }
+                    }
+                    
+                    if (savedPaths.length > 0) {
+                      console.log(`✅ All ${savedPaths.length} documents saved`);
+                      
+                      // Clear captured images
+                      setCapturedImages([]);
+                      
+                      // Navigate to destination select with ALL file paths
+                      (navigation as any).navigate('DestinationSelectScreen', {
+                        savedFilePaths: savedPaths,
+                        destinationType: 1,
+                      });
+                    }
+                  } catch (error) {
+                    console.error('Error saving documents:', error);
+                  }
+                }}
+              >
+                <Text style={styles.continueButtonText}>
+                  Tovább ({capturedImages.length})
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
 
           {/* UI Controls */}
           <View style={styles.controlsContainer}>
@@ -1844,6 +1997,79 @@ export default function App() {
           </TouchableOpacity>
         </View>
       )}
+
+      {/* === FULLSCREEN GALLERY MODAL === */}
+      {showGalleryModal && capturedImages.length > 0 && (
+        <View style={styles.galleryModalContainer}>
+          {/* Header */}
+          <View style={styles.galleryHeader}>
+            <Text style={styles.galleryTitle}>
+              ({capturedImages.length}). kép
+            </Text>
+            <TouchableOpacity
+              style={styles.galleryCloseButton}
+              onPress={() => setShowGalleryModal(false)}
+            >
+              <Text style={styles.galleryCloseText}>✕</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Swipeable gallery */}
+          <FlatList
+            data={capturedImages}
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            initialScrollIndex={galleryStartIndex}
+            getItemLayout={(_, index) => ({
+              length: screenWidth,
+              offset: screenWidth * index,
+              index,
+            })}
+            keyExtractor={item => item.id}
+            renderItem={({ item, index }) => (
+              <View style={[styles.galleryImageContainer, { width: screenWidth }]}>
+                <ScrollView
+                  style={styles.zoomScrollView}
+                  contentContainerStyle={styles.zoomScrollContent}
+                  maximumZoomScale={5}
+                  minimumZoomScale={1}
+                  showsHorizontalScrollIndicator={false}
+                  showsVerticalScrollIndicator={false}
+                  centerContent={true}
+                  bouncesZoom={true}
+                >
+                  <Image
+                    source={{ uri: `data:image/jpeg;base64,${item.imageBase64}` }}
+                    style={[styles.galleryImage, { width: screenWidth * 0.85, height: screenHeight * 0.6 }]}
+                    resizeMode="contain"
+                  />
+                </ScrollView>
+                {/* Page indicator */}
+                <View style={styles.galleryPageIndicator}>
+                  <Text style={styles.galleryPageText}>
+                    {index + 1} / {capturedImages.length}
+                  </Text>
+                </View>
+                {/* Delete button for this image */}
+                <TouchableOpacity
+                  style={styles.galleryDeleteButton}
+                  onPress={() => {
+                    const newImages = capturedImages.filter(img => img.id !== item.id);
+                    setCapturedImages(newImages);
+                    // Close modal if no images left
+                    if (newImages.length === 0) {
+                      setShowGalleryModal(false);
+                    }
+                  }}
+                >
+                  <Text style={styles.galleryDeleteText}>Törlés</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -1862,7 +2088,7 @@ const styles = StyleSheet.create({
   },
   switchButton: {
     position: 'absolute',
-    top: 60,
+    top: 20,
     right: 20,
     zIndex: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -1877,28 +2103,43 @@ const styles = StyleSheet.create({
   },
   torchButton: {
     position: 'absolute',
-    top: 60,
-    right: 140,
-    zIndex: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  torchButtonText: {
-    color: 'white',
-    fontSize: 14,
-    fontWeight: '500',
-  },
-  debugToggleButton: {
-    position: 'absolute',
-    top: 60,
+    top: 20,
     right: 20,
     zIndex: 10,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 25,
+  },
+  torchButtonText: {
+    color: 'white',
+    fontSize: 20,
+  },
+  backButton: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 25,
+  },
+  backButtonText: {
+    color: 'white',
+    fontSize: 22,
+    fontWeight: '300',
+  },
+  debugToggleButton: {
+    position: 'absolute',
+    top: 20,
+    right: 80,
+    zIndex: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
     paddingHorizontal: 15,
     paddingVertical: 8,
     borderRadius: 20,
+    display: 'none',
   },
   debugToggleText: {
     color: 'white',
@@ -1944,7 +2185,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   statusDetected: {
-    backgroundColor: '#B2FBA5', // Green - all good
+    backgroundColor: '#C4A8FF', // Purple - all good (matches app theme)
   },
   statusWarning: {
     backgroundColor: '#FFEE8C', // Yellow - warning
@@ -2138,7 +2379,7 @@ const styles = StyleSheet.create({
   },
   shareButton: {
     position: 'absolute',
-    top: 60,
+    top: 20,
     left: 20,
     backgroundColor: 'rgba(0, 122, 255, 0.9)',
     paddingHorizontal: 20,
@@ -2153,7 +2394,7 @@ const styles = StyleSheet.create({
   },
   closeModalButton: {
     position: 'absolute',
-    top: 60,
+    top: 20,
     right: 20,
     backgroundColor: 'rgba(255, 59, 48, 0.9)',
     paddingHorizontal: 20,
@@ -2168,7 +2409,7 @@ const styles = StyleSheet.create({
   },
   topQrContainer: {
     position: 'absolute',
-    top: 60,
+    top: 20,
     left: '50%',
     transform: [{ translateX: -75 }],
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -2297,5 +2538,141 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#666',
     marginTop: 8,
+  },
+  // === THUMBNAIL STRIP STYLES ===
+  thumbnailStripContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 0,
+    right: 0,
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    zIndex: 50,
+  },
+  thumbnailScrollContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 12,
+    paddingBottom: 12,
+    paddingTop: 10, // Space for badge overflow
+  },
+  thumbnailWrapper: {
+    marginRight: 10,
+    position: 'relative',
+    overflow: 'visible', // Allow badge to overflow
+  },
+  thumbnailImage: {
+    width: 60,
+    height: 80,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  thumbnailBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: 'rgba(37, 37, 68, 1)',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(0, 0, 0, 0.6)',
+  },
+  thumbnailBadgeText: {
+    color: 'white',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  continueButton: {
+    backgroundColor: 'rgba(37, 37, 68, 1)',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  continueButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  // === GALLERY MODAL STYLES ===
+  galleryModalContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    zIndex: 1000,
+  },
+  galleryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  galleryTitle: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  galleryCloseButton: {
+    padding: 8,
+  },
+  galleryCloseText: {
+    color: 'white',
+    fontSize: 28,
+    fontWeight: '300',
+  },
+  galleryImageContainer: {
+    flex: 1,
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    paddingTop: 10,
+  },
+  zoomScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  zoomScrollContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  galleryImage: {
+    borderRadius: 12,
+  },
+  galleryDeleteButton: {
+    marginTop: 30,
+    backgroundColor: 'rgba(255, 82, 82, 0.9)',
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 25,
+  },
+  galleryDeleteText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  galleryPageIndicator: {
+    marginTop: 20,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+  },
+  galleryPageText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

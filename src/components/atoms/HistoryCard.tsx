@@ -2,6 +2,7 @@ import React from 'react';
 import { View, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import { Dirs } from 'react-native-file-access';
 import Text from './Text';
 
 interface FileInfo {
@@ -32,6 +33,17 @@ interface HistoryCardProps {
   onToggleSelection?: (id: string | number) => void;
 }
 
+// Helper to build full file path from filename or url
+const getFullFilePath = (file: FileInfo): string => {
+  const urlOrFilename = file.url || file.filename;
+  // If it's already a full path (contains /), use it as-is
+  if (urlOrFilename.includes('/')) {
+    return `file://${urlOrFilename}`;
+  }
+  // Otherwise, it's just a filename - build full path from Documents dir
+  return `file://${Dirs.DocumentDir}/${urlOrFilename}`;
+};
+
 const HistoryCard = ({ 
   history, 
   isGridView = false, 
@@ -60,7 +72,7 @@ const HistoryCard = ({
         {/* Image on top */}
         <View style={styles.gridImageContainer}>
           <Image 
-            source={{ uri: `file://${history.files[0]?.url}` }} 
+            source={{ uri: history.files[0] ? getFullFilePath(history.files[0]) : undefined }} 
             style={[styles.gridImage, isSelected ? { borderColor: '#3b82f6', borderWidth: 2 } : {}]}
             resizeMode="cover"
           />
@@ -93,7 +105,7 @@ const HistoryCard = ({
     <TouchableOpacity style={styles.container} onPress={handlePress}>
       <View style={styles.imageContainer}>
         <Image 
-          source={{ uri: `file://${history.files[0]?.url}` }} 
+          source={{ uri: history.files[0] ? getFullFilePath(history.files[0]) : undefined }} 
           style={styles.image}
           resizeMode="cover"
         />

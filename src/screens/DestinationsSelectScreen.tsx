@@ -16,7 +16,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { processFileNameTemplate } from '../utils/saveImage';
 
 type RouteParams = {
-  savedFilePath: string;
+  savedFilePath?: string;
+  savedFilePaths?: string[];
   destinationType?: number | number[];
 };
 
@@ -24,24 +25,28 @@ const DestinationSelectScreen = () => {
   const route = useRoute();
   const navigation = useNavigation();
   const dispatch = useAppDispatch();
-  const { savedFilePath, destinationType = [1] } = route.params as RouteParams;
+  const { savedFilePath, savedFilePaths, destinationType = [1] } = route.params as RouteParams;
+  
+  // Support both single file and multiple files
+  const allFilePaths = savedFilePaths || (savedFilePath ? [savedFilePath] : []);
 
   const destinations = useAppSelector(state => state.app.destinations);
   const user = useAppSelector(state => state.app.user);
   const settings = useAppSelector(state => state.app.settings);
   const [allDestinations, setAllDestinations] = useState<any[]>([]);
+  const [isSending, setIsSending] = useState(false);
   const [selectedDestinations, setSelectedDestinations] = useState<number[]>(
     Array.isArray(destinationType) ? destinationType : [destinationType],
   );
 
-  // Log the received file path
+  // Log the received file path(s)
   useEffect(() => {
     console.log(
-      '📁 DestinationSelectScreen received file path:',
-      savedFilePath,
+      '📁 DestinationSelectScreen received file paths:',
+      allFilePaths,
     );
     setSelectedDestinations(Array.isArray(destinationType) ? destinationType : [destinationType]);
-  }, [savedFilePath, destinationType]);
+  }, [allFilePaths, destinationType]);
 
   useEffect(() => {
     const all = [1, 2, 3, 4, 5, 6, 7];
@@ -63,13 +68,16 @@ const DestinationSelectScreen = () => {
       const history = await AsyncStorage.getItem('history');
       const historyArray = history ? JSON.parse(history) : [];
 
-      // append new data
+      // append new data - save only filename for portability
       const newEntry = {
         timestamp: Date.now(),
-        files: data.files.map(filePath => ({
-          url: filePath.replace('file://', ''), // Remove file:// prefix for cross-platform compatibility
-          filename: filePath.split('/').pop() || 'unknown_file',
-        })),
+        files: data.files.map(filePath => {
+          const filename = filePath.split('/').pop() || 'unknown_file';
+          return {
+            url: filename, // Store only filename, not full path (path changes on reinstall)
+            filename: filename,
+          };
+        }),
         destinations: data.destinations, // Now array of destinations
       };
       historyArray.push(newEntry);
@@ -90,13 +98,21 @@ const DestinationSelectScreen = () => {
       return;
     }
 
-    await saveFilesToAsyncstorage({
-      files: [savedFilePath],
-      destinations: selectedDestinations,
-    });
+    // Prevent double submission
+    if (isSending) {
+      console.warn('Already sending, ignoring duplicate request');
+      return;
+    }
+    setIsSending(true);
+
+    try {
+      await saveFilesToAsyncstorage({
+        files: allFilePaths,
+        destinations: selectedDestinations,
+      });
 
     console.log(
-      `Sending file at ${savedFilePath} to destination types ${selectedDestinations.join(', ')}`,
+      `Sending ${allFilePaths.length} file(s) to destination types ${selectedDestinations.join(', ')}`,
     );
 
     // Send to all selected destinations
@@ -156,14 +172,17 @@ const DestinationSelectScreen = () => {
           // Create file array in the format expected by uploadToEmail
           const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
           const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          const timestamp = Date.now();
-          const fileName = `${processedTemplate}_${timestamp}.jpg`;
           
-          const newFileArray = [{ fileName, filePath: savedFilePath }];
+          // Build array from ALL file paths
+          const newFileArray = allFilePaths.map((filePath, index) => {
+            const timestamp = Date.now() + index; // Unique timestamp for each file
+            const fileName = `${processedTemplate}_${timestamp}.jpg`;
+            return { fileName, filePath };
+          });
 
-          console.log('📧 Uploading via email using sendFilesApiService.uploadToEmail...');
+          console.log('📧 Uploading via email using sendFilesApiService.uploadToEmail...', newFileArray.length, 'files');
           await sendFilesApiService.uploadToEmail(newFileArray, finalDest);
-          console.log('✅ File sent via email successfully');
+          console.log('✅ Files sent via email successfully');
         } catch (error) {
           console.error('❌ Error sending via email:', error);
         }
@@ -173,15 +192,21 @@ const DestinationSelectScreen = () => {
         try {
           const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
           const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          const timestamp = Date.now();
-          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          
+          // Build array from ALL file paths
+          const newFileArray = allFilePaths.map((filePath, index) => {
+            const timestamp = Date.now() + index;
+            const fileName = `${processedTemplate}_${timestamp}.jpg`;
+            return { fileName, filePath };
+          });
+          
           await sendFilesApiService.uploadToDropbox(
             settings.dropboxAccessToken,
             settings.dropboxRefreshToken,
-            [{ fileName, filePath: savedFilePath }],
+            newFileArray,
             finalDest,
           );
-          console.log('✅ File uploaded to Dropbox successfully');
+          console.log('✅ Files uploaded to Dropbox successfully');
         } catch (error) {
           console.error('❌ Error uploading to Dropbox:', error);
         }
@@ -191,15 +216,21 @@ const DestinationSelectScreen = () => {
         try {
           const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
           const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          const timestamp = Date.now();
-          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          
+          // Build array from ALL file paths
+          const newFileArray = allFilePaths.map((filePath, index) => {
+            const timestamp = Date.now() + index;
+            const fileName = `${processedTemplate}_${timestamp}.jpg`;
+            return { fileName, filePath };
+          });
+          
           await sendFilesApiService.uploadToOneDrive(
             settings.oneDriveAccessToken,
             settings.oneDriveRefreshToken,
-            [{ fileName, filePath: savedFilePath }],
+            newFileArray,
             finalDest,
           );
-          console.log('✅ File uploaded to OneDrive successfully');
+          console.log('✅ Files uploaded to OneDrive successfully');
         } catch (error) {
           console.error('❌ Error uploading to OneDrive:', error);
         }
@@ -208,15 +239,21 @@ const DestinationSelectScreen = () => {
         try {
           const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
           const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          const timestamp = Date.now();
-          const fileName = `${processedTemplate}_${timestamp}.jpg`;
+          
+          // Build array from ALL file paths
+          const newFileArray = allFilePaths.map((filePath, index) => {
+            const timestamp = Date.now() + index;
+            const fileName = `${processedTemplate}_${timestamp}.jpg`;
+            return { fileName, filePath };
+          });
+          
           await sendFilesApiService.uploadToGoogleDrive(
             settings.googleDriveAccessToken,
             settings.googleDriveRefreshToken,
-            [{ fileName, filePath: savedFilePath }],
+            newFileArray,
             finalDest,
           );
-          console.log('✅ File uploaded to Google Drive successfully');
+          console.log('✅ Files uploaded to Google Drive successfully');
         } catch (error) {
           console.error('❌ Error uploading to Google Drive:', error);
         }
@@ -229,6 +266,12 @@ const DestinationSelectScreen = () => {
     }
 
     console.log('✅ All destinations processed successfully');
+    } catch (error) {
+      console.error('❌ Error in sendFileToDestination:', error);
+    } finally {
+      setIsSending(false);
+    }
+    
     // Navigate to History tab after successful send
     const parentNavigation = navigation.getParent();
     if (parentNavigation) {
@@ -281,12 +324,12 @@ const DestinationSelectScreen = () => {
           ))}
         </View>
         <Button
-          title={`Send`}
+          title={isSending ? 'Sending...' : 'Send'}
           onPress={() => sendFileToDestination()}
           variant="normal"
           size="large"
           buttonStyle={styles.sendButton}
-          disabled={selectedDestinations.length === 0}
+          disabled={selectedDestinations.length === 0 || isSending}
         />
       </ScrollView>
     </Layout>

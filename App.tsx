@@ -72,7 +72,8 @@ function App() {
     <Provider store={store}>
       <SafeAreaProvider>
         <SafeAreaView
-          style={{ flex: 1, backgroundColor: isDarkMode ? '#000' : '#fff' }}
+        edges={["top"]}
+          style={{ flex: 1, backgroundColor: isDarkMode ? '#252544' : '#252544' }}
         >
           <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
           <Navigation />

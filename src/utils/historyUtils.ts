@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { FileSystem } from 'react-native-file-access';
+import { Dirs, FileSystem } from 'react-native-file-access';
 import { AppDispatch } from '../store';
 import { setHistory } from '../store/appSlice';
 
@@ -14,6 +14,19 @@ interface HistoryEntry {
   destinations?: number[]; // New multi-destination support
   files: FileInfo[];
 }
+
+/**
+ * Helper to build full file path from filename or url
+ */
+const getFullFilePath = (file: FileInfo): string => {
+  const urlOrFilename = file.url || file.filename;
+  // If it's already a full path (contains /), use it as-is
+  if (urlOrFilename.includes('/')) {
+    return urlOrFilename.replace('file://', '');
+  }
+  // Otherwise, it's just a filename - build full path from Documents dir
+  return `${Dirs.DocumentDir}/${urlOrFilename}`;
+};
 
 /**
  * Delete a history entry and all associated files from phone storage
@@ -31,7 +44,7 @@ export const deleteHistoryEntry = async (
     console.log(`🗑️ Deleting ${historyEntry.files.length} file(s) from phone storage...`);
     for (const file of historyEntry.files) {
       try {
-        const filePath = file.url.startsWith('file://') ? file.url.replace('file://', '') : file.url;
+        const filePath = getFullFilePath(file);
         const fileExists = await FileSystem.exists(filePath);
         
         if (fileExists) {
@@ -91,7 +104,7 @@ export const deleteMultipleHistoryEntries = async (
       // Delete all files for this history entry
       for (const file of historyEntry.files) {
         try {
-          const filePath = file.url.startsWith('file://') ? file.url.replace('file://', '') : file.url;
+          const filePath = getFullFilePath(file);
           const fileExists = await FileSystem.exists(filePath);
           
           if (fileExists) {
