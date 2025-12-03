@@ -21,8 +21,8 @@ type LoginScreenNavigationProp = StackNavigationProp<
 >;
 
 const LoginScreen = () => {
-  const [email, setEmail] = useState('weruss.kiss@gmail.com');
-  const [password, setPassword] = useState('1234Aa!!');
+  const [email, setEmail] = useState(''); //'weruss.kiss@gmail.com'
+  const [password, setPassword] = useState(''); //'1234Aa!!'
   const [isLoading, setIsLoading] = useState(false);
   const navigation = useNavigation<LoginScreenNavigationProp>();
   const dispatch = useAppDispatch();
