@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   ScrollView,
   StyleSheet,
   TouchableOpacity,
   Image,
+  Linking,
+  Alert,
+  AppState,
 } from 'react-native';
 import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
@@ -14,6 +17,8 @@ import { sendFilesApiService } from '../store/api/sendFilesApi';
 import { setHistory } from '../store/appSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { processFileNameTemplate } from '../utils/saveImage';
+import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
+import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
 
 type RouteParams = {
   savedFilePath?: string;
@@ -64,27 +69,23 @@ const DestinationSelectScreen = () => {
     destinations: number[];
   }) => {
     try {
-      // read asyncstorage history
       const history = await AsyncStorage.getItem('history');
       const historyArray = history ? JSON.parse(history) : [];
 
-      // append new data - save only filename for portability
       const newEntry = {
         timestamp: Date.now(),
         files: data.files.map(filePath => {
           const filename = filePath.split('/').pop() || 'unknown_file';
           return {
-            url: filename, // Store only filename, not full path (path changes on reinstall)
+            url: filename,
             filename: filename,
           };
         }),
-        destinations: data.destinations, // Now array of destinations
+        destinations: data.destinations,
       };
       historyArray.push(newEntry);
 
-      // save back to asyncstorage
       await AsyncStorage.setItem('history', JSON.stringify(historyArray));
-      // reload new data to redux slice
       dispatch(setHistory(historyArray));
       console.log('💾 Saving files to AsyncStorage:', data.files, 'to destinations:', data.destinations);
     } catch (error) {
@@ -92,13 +93,12 @@ const DestinationSelectScreen = () => {
     }
   };
 
-  const sendFileToDestination = async () => {
+  const sendFileToDestination = async (filterDestinationType?: string, newSettings?: any) => {
     if (!selectedDestinations || selectedDestinations.length === 0) {
       console.warn('No destinations selected');
       return;
     }
 
-    // Prevent double submission
     if (isSending) {
       console.warn('Already sending, ignoring duplicate request');
       return;
@@ -106,178 +106,315 @@ const DestinationSelectScreen = () => {
     setIsSending(true);
 
     try {
-      await saveFilesToAsyncstorage({
-        files: allFilePaths,
-        destinations: selectedDestinations,
-      });
+      if (!filterDestinationType) {
+        await saveFilesToAsyncstorage({
+          files: allFilePaths,
+          destinations: selectedDestinations,
+        });
+      }
 
-    console.log(
-      `Sending ${allFilePaths.length} file(s) to destination types ${selectedDestinations.join(', ')}`,
-    );
+      console.log(`Sending ${allFilePaths.length} file(s) to destination types ${selectedDestinations.join(', ')}`);
 
-    // Send to all selected destinations
-    for (const selectedDestinationType of selectedDestinations) {
-      console.log(`📤 Processing destination ${selectedDestinationType}...`);
-      
-      // Find the selected destination
-      // const selectedDest = allDestinations.find(
-      //   dest => dest.type === selectedDestinationType,
-      // );
+      for (const selectedDestinationType of selectedDestinations) {
+        console.log(`📤 Processing destination ${selectedDestinationType}...`);
 
-      // if (!selectedDest) {
-      //   console.error(`Selected destination ${selectedDestinationType} not found`);
-      //   continue;
-      // }
-
-      // Check if destination exists, create if needed
-      let destinationConfig = destinations.find(dest => dest.type === selectedDestinationType);
-      
-      if (!destinationConfig) {
-        console.log(`📧 User has no destination of type ${selectedDestinationType}, creating email destination with user email`);
+        let destinationConfig = destinations.find(dest => dest.type === selectedDestinationType);
         
-        try {
-          // Use the same API as ChangeDestinationScreen
-          const { updateDestinationSettings } = await import('../store/api/userApiService');
+        if (!destinationConfig) {
+          console.log(`📧 User has no destination of type ${selectedDestinationType}, creating email destination with user email`);
           
-          const success = await updateDestinationSettings(selectedDestinationType.toString(), {
-            destination: 'email',
-            emails: user.email,
-          });
-          
-          if (success) {
-            console.log('✅ Email destination created successfully');
-            // Refresh user data to get updated destinations
-            const { refreshUser } = await import('../store/appSlice');
-            await dispatch(refreshUser());
-          } else {
-            console.error('❌ Failed to create email destination');
+          try {
+            const { updateDestinationSettings } = await import('../store/api/userApiService');
+            const success = await updateDestinationSettings(selectedDestinationType.toString(), {
+              destination: 'email',
+              emails: user.email,
+            });
+            
+            if (success) {
+              console.log('✅ Email destination created successfully');
+              const { refreshUser } = await import('../store/appSlice');
+              await dispatch(refreshUser());
+            } else {
+              console.error('❌ Failed to create email destination');
+            }
+          } catch (error) {
+            console.error('❌ Error creating email destination:', error);
           }
-        } catch (error) {
-          console.error('❌ Error creating email destination:', error);
+        }
+
+        const fallbackDestination = {
+          type: selectedDestinationType,
+          destination: 'email',
+          emails: user.email,
+        };
+        const finalDest = destinationConfig || fallbackDestination;
+
+        if (filterDestinationType && finalDest.destination !== filterDestinationType) {
+          console.log(`Skipping destination ${selectedDestinationType} as it does not match specified type ${filterDestinationType}`);
+          continue;
+        }
+
+        if (finalDest.destination === 'email') {
+          console.log('📧 Sending via email to:', user.email);
+
+          try {
+            const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+            const processedTemplate = processFileNameTemplate(fileNameTemplate);
+            
+            const newFileArray = allFilePaths.map((filePath, index) => {
+              const timestamp = Date.now() + index;
+              const fileName = `${processedTemplate}_${timestamp}.jpg`;
+              return { fileName, filePath };
+            });
+
+            console.log('📧 Uploading via email...', newFileArray.length, 'files');
+            await sendFilesApiService.uploadToEmail(newFileArray, finalDest);
+            console.log('✅ Files sent via email successfully');
+          } catch (error) {
+            console.error('❌ Error sending via email:', error);
+          }
+        } else if (finalDest.destination === 'dropbox') {
+          console.log('📤 Sending to Dropbox...');
+
+          try {
+            const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+            const processedTemplate = processFileNameTemplate(fileNameTemplate);
+            
+            const newFileArray = allFilePaths.map((filePath, index) => {
+              const timestamp = Date.now() + index;
+              const fileName = `${processedTemplate}_${timestamp}.jpg`;
+              return { fileName, filePath };
+            });
+
+            const accessToken = newSettings?.dropboxAccessToken || settings.dropboxAccessToken;
+            const refreshToken = newSettings?.dropboxRefreshToken || settings.dropboxRefreshToken;
+            
+            await sendFilesApiService.uploadToDropbox(accessToken, refreshToken, newFileArray, finalDest);
+            console.log('✅ Files uploaded to Dropbox successfully');
+          } catch (error) {
+            console.error('❌ Error uploading to Dropbox:', error);
+          }
+        } else if (finalDest.destination === 'onedrive') {
+          console.log('📤 Sending to OneDrive...');
+
+          try {
+            const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+            const processedTemplate = processFileNameTemplate(fileNameTemplate);
+            
+            const newFileArray = allFilePaths.map((filePath, index) => {
+              const timestamp = Date.now() + index;
+              const fileName = `${processedTemplate}_${timestamp}.jpg`;
+              return { fileName, filePath };
+            });
+
+            const accessToken = newSettings?.oneDriveAccessToken || settings.oneDriveAccessToken;
+            const refreshToken = newSettings?.oneDriveRefreshToken || settings.oneDriveRefreshToken;
+            
+            await sendFilesApiService.uploadToOneDrive(accessToken, refreshToken, newFileArray, finalDest);
+            console.log('✅ Files uploaded to OneDrive successfully');
+          } catch (error) {
+            console.error('❌ Error uploading to OneDrive:', error);
+          }
+        } else if (finalDest.destination === 'googledrive') {
+          console.log('📤 Sending to Google drive...');
+          try {
+            const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
+            const processedTemplate = processFileNameTemplate(fileNameTemplate);
+            
+            const newFileArray = allFilePaths.map((filePath, index) => {
+              const timestamp = Date.now() + index;
+              const fileName = `${processedTemplate}_${timestamp}.jpg`;
+              return { fileName, filePath };
+            });
+            
+            await sendFilesApiService.uploadToGoogleDrive(
+              settings.googleDriveAccessToken,
+              settings.googleDriveRefreshToken,
+              newFileArray,
+              finalDest,
+            );
+            console.log('✅ Files uploaded to Google Drive successfully');
+          } catch (error) {
+            console.error('❌ Error uploading to Google Drive:', error);
+          }
+        } else {
+          console.log(`📤 Sending to ${finalDest.destination} - not implemented yet`);
         }
       }
 
-      const fallbackDestination = {
-        type: selectedDestinationType,
-        destination: 'email',
-        emails: user.email,
-      };
-      const finalDest = destinationConfig || fallbackDestination;
-
-      // If destination is email, dispatch uploadAndSendFile
-      if (finalDest.destination === 'email') {
-        console.log('📧 Sending via email to:', user.email);
-
-        try {
-          // Create file array in the format expected by uploadToEmail
-          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
-          const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          
-          // Build array from ALL file paths
-          const newFileArray = allFilePaths.map((filePath, index) => {
-            const timestamp = Date.now() + index; // Unique timestamp for each file
-            const fileName = `${processedTemplate}_${timestamp}.jpg`;
-            return { fileName, filePath };
-          });
-
-          console.log('📧 Uploading via email using sendFilesApiService.uploadToEmail...', newFileArray.length, 'files');
-          await sendFilesApiService.uploadToEmail(newFileArray, finalDest);
-          console.log('✅ Files sent via email successfully');
-        } catch (error) {
-          console.error('❌ Error sending via email:', error);
-        }
-      } else if (finalDest.destination === 'dropbox') {
-        console.log('📤 Sending to Dropbox...');
-
-        try {
-          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
-          const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          
-          // Build array from ALL file paths
-          const newFileArray = allFilePaths.map((filePath, index) => {
-            const timestamp = Date.now() + index;
-            const fileName = `${processedTemplate}_${timestamp}.jpg`;
-            return { fileName, filePath };
-          });
-          
-          await sendFilesApiService.uploadToDropbox(
-            settings.dropboxAccessToken,
-            settings.dropboxRefreshToken,
-            newFileArray,
-            finalDest,
-          );
-          console.log('✅ Files uploaded to Dropbox successfully');
-        } catch (error) {
-          console.error('❌ Error uploading to Dropbox:', error);
-        }
-      } else if (finalDest.destination === 'onedrive') {
-        console.log('📤 Sending to OneDrive...');
-
-        try {
-          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
-          const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          
-          // Build array from ALL file paths
-          const newFileArray = allFilePaths.map((filePath, index) => {
-            const timestamp = Date.now() + index;
-            const fileName = `${processedTemplate}_${timestamp}.jpg`;
-            return { fileName, filePath };
-          });
-          
-          await sendFilesApiService.uploadToOneDrive(
-            settings.oneDriveAccessToken,
-            settings.oneDriveRefreshToken,
-            newFileArray,
-            finalDest,
-          );
-          console.log('✅ Files uploaded to OneDrive successfully');
-        } catch (error) {
-          console.error('❌ Error uploading to OneDrive:', error);
-        }
-      } else if (finalDest.destination === 'googledrive') {
-        console.log('📤 Sending to Google drive...');
-        try {
-          const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
-          const processedTemplate = processFileNameTemplate(fileNameTemplate);
-          
-          // Build array from ALL file paths
-          const newFileArray = allFilePaths.map((filePath, index) => {
-            const timestamp = Date.now() + index;
-            const fileName = `${processedTemplate}_${timestamp}.jpg`;
-            return { fileName, filePath };
-          });
-          
-          await sendFilesApiService.uploadToGoogleDrive(
-            settings.googleDriveAccessToken,
-            settings.googleDriveRefreshToken,
-            newFileArray,
-            finalDest,
-          );
-          console.log('✅ Files uploaded to Google Drive successfully');
-        } catch (error) {
-          console.error('❌ Error uploading to Google Drive:', error);
-        }
-      } else {
-        // Handle other destination types
-        console.log(
-          `📤 Sending to ${finalDest.destination} - not implemented yet`,
-        );
-      }
-    }
-
-    console.log('✅ All destinations processed successfully');
+      console.log('✅ All destinations processed successfully');
     } catch (error) {
       console.error('❌ Error in sendFileToDestination:', error);
     } finally {
       setIsSending(false);
     }
     
-    // Navigate to History tab after successful send
     const parentNavigation = navigation.getParent();
     if (parentNavigation) {
       parentNavigation.navigate('History');
     }
   };
+
+  const clientId = DROPBOX_CLIENT;
+  const oneDriveRedirectUri = 'berri://onedrive-auth';
+  const oneDriveClientId = ONEDRIVE_CLIENT;
+
+  const exchangeDropboxCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl = 'https://api.dropboxapi.com/oauth2/token';
+        const exactRedirectUri = 'berri://dropbox-auth';
+        
+        const body = new URLSearchParams({
+          code: authCode,
+          grant_type: 'authorization_code',
+          client_id: clientId,
+          redirect_uri: exactRedirectUri,
+          code_verifier: verifier,
+        });
+
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveDropboxToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            const updatedSettings = {
+              ...settings,
+              dropboxAccessToken: tokens.accessToken,
+              dropboxRefreshToken: tokens.refreshToken
+            };
+
+            try {
+              await sendFileToDestination("dropbox", updatedSettings);
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save Dropbox tokens:', error);
+          }
+        } else {
+          console.error('❌ Token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during token exchange:', error);
+      }
+    },
+    [clientId, dispatch, navigation, selectedDestinations, destinations, user, settings],
+  );
+
+  const exchangeOneDriveCodeForToken = useCallback(
+    async (authCode: string, verifier: string) => {
+      try {
+        const tokenUrl = 'https://login.microsoftonline.com/common/oauth2/v2.0/token';
+
+        const body = new URLSearchParams({
+          code: authCode,
+          client_id: oneDriveClientId,
+          redirect_uri: oneDriveRedirectUri,
+          grant_type: 'authorization_code',
+          code_verifier: verifier,
+        });
+
+        const response = await fetch(tokenUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          try {
+            const tokens = {
+              accessToken: data.access_token,
+              refreshToken: data.refresh_token,
+            };
+
+            await dispatch(saveOneDriveToken(tokens)).unwrap();
+            sendFilesApiService.setCodeVerifier(null);
+
+            const updatedSettings = {
+              ...settings,
+              oneDriveAccessToken: tokens.accessToken,
+              oneDriveRefreshToken: tokens.refreshToken
+            };
+
+            try {
+              await sendFileToDestination("onedrive", updatedSettings);
+              Alert.alert('Success', 'Scan has been resent successfully!');
+            } catch (error) {
+              console.error('❌ Error resending files:', error);
+              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+            }
+          } catch (error) {
+            console.error('❌ Failed to save OneDrive tokens:', error);
+          }
+        } else {
+          console.error('❌ OneDrive token exchange failed:', data);
+        }
+      } catch (error) {
+        console.error('❌ Error during OneDrive token exchange:', error);
+      }
+    },
+    [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation, selectedDestinations, destinations, user, settings],
+  );
+
+  useEffect(() => {
+    const handleURL = (url: string) => {
+      if (url.includes('dropbox-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeDropboxCodeForToken(authCode, codeVerifierOutside);
+        }
+      } else if (url.includes('onedrive-auth')) {
+        const codeMatch = url.match(/code=([^&]+)/);
+        const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
+        if (codeMatch && codeVerifierOutside) {
+          const authCode = codeMatch[1];
+          exchangeOneDriveCodeForToken(authCode, codeVerifierOutside);
+        }
+      }
+    };
+
+    const handleAppStateChange = (nextAppState: string) => {
+      if (nextAppState === 'active') {
+        setTimeout(() => {
+          Linking.getInitialURL().then(url => {
+            if (url) handleURL(url);
+          });
+        }, 100);
+      }
+    };
+
+    Linking.getInitialURL().then(url => {
+      if (url) handleURL(url);
+    });
+
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+    const urlSubscription = Linking.addEventListener('url', ({ url }) => handleURL(url));
+
+    return () => {
+      appStateSubscription.remove();
+      urlSubscription.remove();
+    };
+  }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
+
 
   return (
     <Layout type="dark" headerTitle="Where should we send your scans?">
@@ -306,9 +443,7 @@ const DestinationSelectScreen = () => {
                 />
                 <View style={styles.destinationInfo}>
                   <Text style={styles.destinationText}>
-                    {destination.destination === 'email'
-                      ? 'E-mail'
-                      : destination.destination}
+                    {destination.destination === 'email' ? 'E-mail' : destination.destination}
                   </Text>
                   <Text style={styles.destinationText}>{user.email}</Text>
                 </View>
@@ -337,37 +472,18 @@ const DestinationSelectScreen = () => {
 };
 
 const styles = StyleSheet.create({
-  content: {
-    flex: 1,
-  },
+  content: { flex: 1 },
   destinationCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     paddingHorizontal: 20,
     paddingVertical: 10,
     marginBottom: 10,
   },
-  cardContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 15,
-  },
-  arrowIcon: {
-    width: 20,
-    height: 20,
-    tintColor: '#007BD1',
-    marginRight: 20,
-  },
-  destinationInfo: {
-    flex: 1,
-  },
-  destinationText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: 'white',
-  },
-  sendButton: {
-    margin: 20,
-  },
+  cardContent: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+  arrowIcon: { width: 20, height: 20, tintColor: '#007BD1', marginRight: 20 },
+  destinationInfo: { flex: 1 },
+  destinationText: { fontSize: 12, fontWeight: '500', color: 'white' },
+  sendButton: { margin: 20 },
 });
 
 export default DestinationSelectScreen;
