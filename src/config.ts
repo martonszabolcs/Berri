@@ -10,7 +10,9 @@ export const BACKEND_URL = API_CONFIG.BASE_URL;
 export const DROPBOX_CLIENT='auallulak67ttt3';
 export const DROPBOX_SECRET='c10kgbtuu589pop';
 
-export const ONEDRIVE_CLIENT='8f0f0858-4c15-42fe-87f7-c3257fa040ae';
+export const ONEDRIVE_CLIENT='2e6f8fa1-f207-4ca3-803a-e980ed470bf0';
+
+// '8f0f0858-4c15-42fe-87f7-c3257fa040ae';
 
 
 /////
