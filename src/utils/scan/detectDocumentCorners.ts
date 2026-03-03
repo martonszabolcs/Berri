@@ -12,6 +12,7 @@ import {
 } from 'react-native-fast-opencv';
 
 // === CONFIGURATION - SYNCHRONIZED WITH useInferenceLogic.tsx ===
+const ENABLE_DEBUG_IMAGES = false; // Set to true to enable debug image generation (slow!)
 const MIN_AREA_RATIO = 0.001; // 0.1% - fotó downscale után nagyon kicsik a contourok
 const MAX_AREA_RATIO = 0.95;
 const CROP_MARGIN_RATIO = 0.005; // 0.5% = ~3-4px - nagyon kicsi margin hogy ne zárja ki a dokumentum szélét
@@ -248,16 +249,19 @@ export const detectDocumentCorners = (
     const dsize = OpenCV.createObject(ObjectType.Size, FRAME_WIDTH, FRAME_HEIGHT);
     OpenCV.invoke('resize', mat, downscaled, dsize, 0, 0, 3); // 3 = INTER_AREA (best for downscaling)
     
-    console.log('📸 Downscaled image created - returning as debugImage');
-    const downscaledRGB = OpenCV.createObject(
-      ObjectType.Mat,
-      FRAME_HEIGHT,
-      FRAME_WIDTH,
-      DataTypes.CV_8UC3,
-    );
-    OpenCV.invoke('cvtColor', downscaled, downscaledRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const downscaledResult = OpenCV.toJSValue(downscaledRGB);
-    const debugDownscaledImage = downscaledResult?.base64 || null;
+    let debugDownscaledImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      console.log('📸 Downscaled image created - returning as debugImage');
+      const downscaledRGB = OpenCV.createObject(
+        ObjectType.Mat,
+        FRAME_HEIGHT,
+        FRAME_WIDTH,
+        DataTypes.CV_8UC3,
+      );
+      OpenCV.invoke('cvtColor', downscaled, downscaledRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const downscaledResult = OpenCV.toJSValue(downscaledRGB);
+      debugDownscaledImage = downscaledResult?.base64 || null;
+    }
     
     // === STEP 2: Run EXACT SAME detection as useInferenceLogic.tsx ===
     // Convert to grayscale
@@ -269,12 +273,14 @@ export const detectDocumentCorners = (
     );
     OpenCV.invoke('cvtColor', downscaled, gray, ColorConversionCodes.COLOR_BGR2GRAY);
 
-    // Debug: grayscale
-    const grayRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', gray, grayRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', grayRGB, grayRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const grayDebug = OpenCV.toJSValue(grayRGB);
-    const debugGrayImage = grayDebug?.base64 || null;
+    let debugGrayImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const grayRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', gray, grayRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', grayRGB, grayRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const grayDebug = OpenCV.toJSValue(grayRGB);
+      debugGrayImage = grayDebug?.base64 || null;
+    }
 
     // Apply brightness adjustment (using provided alpha/beta)
     const brightened = OpenCV.createObject(
@@ -285,12 +291,14 @@ export const detectDocumentCorners = (
     );
     OpenCV.invoke('convertScaleAbs', gray, brightened, alpha, beta);
 
-    // Debug: brightened
-    const brightenedRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', brightened, brightenedRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', brightenedRGB, brightenedRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const brightenedDebug = OpenCV.toJSValue(brightenedRGB);
-    const debugBrightenedImage = brightenedDebug?.base64 || null;
+    let debugBrightenedImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const brightenedRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', brightened, brightenedRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', brightenedRGB, brightenedRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const brightenedDebug = OpenCV.toJSValue(brightenedRGB);
+      debugBrightenedImage = brightenedDebug?.base64 || null;
+    }
 
     const cropMarginW = Math.floor(FRAME_WIDTH * CROP_MARGIN_RATIO);
     const cropMarginH = Math.floor(FRAME_HEIGHT * CROP_MARGIN_RATIO);
@@ -317,12 +325,14 @@ export const detectDocumentCorners = (
       ADAPTIVE_THRESHOLD_C,
     );
 
-    // Debug: adaptive threshold
-    const adaptiveRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', enhanced, adaptiveRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', adaptiveRGB, adaptiveRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const adaptiveDebug = OpenCV.toJSValue(adaptiveRGB);
-    const debugAdaptiveImage = adaptiveDebug?.base64 || null;
+    let debugAdaptiveImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const adaptiveRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', enhanced, adaptiveRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', adaptiveRGB, adaptiveRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const adaptiveDebug = OpenCV.toJSValue(adaptiveRGB);
+      debugAdaptiveImage = adaptiveDebug?.base64 || null;
+    }
 
     // Binary threshold
     const binary = OpenCV.createObject(
@@ -340,12 +350,14 @@ export const detectDocumentCorners = (
       ThresholdTypes.THRESH_BINARY,
     );
 
-    // Debug: binary threshold
-    const binaryRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', binary, binaryRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', binaryRGB, binaryRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const binaryDebug = OpenCV.toJSValue(binaryRGB);
-    const debugBinaryImage = binaryDebug?.base64 || null;
+    let debugBinaryImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const binaryRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', binary, binaryRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', binaryRGB, binaryRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const binaryDebug = OpenCV.toJSValue(binaryRGB);
+      debugBinaryImage = binaryDebug?.base64 || null;
+    }
 
     // Gaussian blur
     const blurred = OpenCV.createObject(
@@ -357,24 +369,28 @@ export const detectDocumentCorners = (
     const ksize = OpenCV.createObject(ObjectType.Size, GAUSSIAN_BLUR_KERNEL_SIZE, GAUSSIAN_BLUR_KERNEL_SIZE);
     OpenCV.invoke('GaussianBlur', brightened, blurred, ksize, 0);
 
-    // Debug: blurred
-    const blurredRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', blurred, blurredRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', blurredRGB, blurredRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const blurredDebug = OpenCV.toJSValue(blurredRGB);
-    const debugBlurredImage = blurredDebug?.base64 || null;
+    let debugBlurredImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const blurredRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', blurred, blurredRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', blurredRGB, blurredRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const blurredDebug = OpenCV.toJSValue(blurredRGB);
+      debugBlurredImage = blurredDebug?.base64 || null;
+    }
 
     // Morphological closing
     const kernelSize = OpenCV.createObject(ObjectType.Size, MORPHOLOGY_KERNEL_SIZE, MORPHOLOGY_KERNEL_SIZE);
     const kernel = OpenCV.invoke('getStructuringElement', MorphShapes.MORPH_RECT, kernelSize);
     OpenCV.invoke('morphologyEx', binary, binary, MorphTypes.MORPH_CLOSE, kernel);
 
-    // Debug: morphology (after closing)
-    const morphRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', binary, morphRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', morphRGB, morphRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const morphDebug = OpenCV.toJSValue(morphRGB);
-    const debugMorphImage = morphDebug?.base64 || null;
+    let debugMorphImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const morphRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', binary, morphRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', morphRGB, morphRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const morphDebug = OpenCV.toJSValue(morphRGB);
+      debugMorphImage = morphDebug?.base64 || null;
+    }
 
     // Canny edge detection
     const edges = OpenCV.createObject(
@@ -385,12 +401,14 @@ export const detectDocumentCorners = (
     );
     OpenCV.invoke('Canny', blurred, edges, CANNY_THRESHOLD_LOW, CANNY_THRESHOLD_HIGH);
 
-    // Debug: Canny edges
-    const cannyRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', edges, cannyRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', cannyRGB, cannyRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const cannyDebug = OpenCV.toJSValue(cannyRGB);
-    const debugCannyImage = cannyDebug?.base64 || null;
+    let debugCannyImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const cannyRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', edges, cannyRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', cannyRGB, cannyRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const cannyDebug = OpenCV.toJSValue(cannyRGB);
+      debugCannyImage = cannyDebug?.base64 || null;
+    }
 
     // SKIP combining binary and edges - use ONLY Canny edges for contour detection
     // Reason: binary threshold causes morphology closing to merge document edges with background
@@ -399,12 +417,14 @@ export const detectDocumentCorners = (
     // Use edges (Canny only) for contour detection
     const finalEdges = edges; // Use Canny edges directly
 
-    // Debug: combined edges (now just Canny)
-    const combinedRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', finalEdges, combinedRGB, ColorConversionCodes.COLOR_GRAY2BGR);
-    OpenCV.invoke('cvtColor', combinedRGB, combinedRGB, ColorConversionCodes.COLOR_BGR2RGB);
-    const combinedDebug = OpenCV.toJSValue(combinedRGB);
-    const debugCombinedImage = combinedDebug?.base64 || null;
+    let debugCombinedImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const combinedRGB = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', finalEdges, combinedRGB, ColorConversionCodes.COLOR_GRAY2BGR);
+      OpenCV.invoke('cvtColor', combinedRGB, combinedRGB, ColorConversionCodes.COLOR_BGR2RGB);
+      const combinedDebug = OpenCV.toJSValue(combinedRGB);
+      debugCombinedImage = combinedDebug?.base64 || null;
+    }
 
     // Find contours
     const contours = OpenCV.createObject(ObjectType.MatVector);
@@ -419,22 +439,21 @@ export const detectDocumentCorners = (
     const contoursData = OpenCV.toJSValue(contours);
     const contoursSize = contoursData.array.length;
 
-    // ABSOLUTE MINIMUM: Document must be at least 20% of image area
-    const MINIMUM_DOCUMENT_AREA_RATIO = 0.20;
+    // ABSOLUTE MINIMUM: Document must be at least 10% of image area
+    const MINIMUM_DOCUMENT_AREA_RATIO = 0.10;
     const absoluteMinArea = imgArea * MINIMUM_DOCUMENT_AREA_RATIO;
     
-    console.log(`🔍 Found ${contoursSize} contours at frame resolution. Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}, ABSOLUTE MIN (20%): ${absoluteMinArea.toFixed(0)}`);
+    console.log(`🔍 Found ${contoursSize} contours at frame resolution. Area range: ${minArea.toFixed(0)} - ${maxArea.toFixed(0)}, ABSOLUTE MIN (10%): ${absoluteMinArea.toFixed(0)}`);
 
-    // Debug: Draw all contours on downscaled image
-    const contoursDebugMat = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
-    OpenCV.invoke('cvtColor', downscaled, contoursDebugMat, ColorConversionCodes.COLOR_BGR2RGB);
-    
-    // Draw all contours in green (use -1 to draw all)
-    const greenScalar = OpenCV.createObject(ObjectType.Scalar, 0, 255, 0, 255);
-    OpenCV.invoke('drawContours', contoursDebugMat, contours, -1, greenScalar, 2, 8);
-    
-    const contoursDebugResult = OpenCV.toJSValue(contoursDebugMat);
-    const debugContoursImage = contoursDebugResult?.base64 || null;
+    let debugContoursImage: string | null = null;
+    if (ENABLE_DEBUG_IMAGES) {
+      const contoursDebugMat = OpenCV.createObject(ObjectType.Mat, FRAME_HEIGHT, FRAME_WIDTH, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', downscaled, contoursDebugMat, ColorConversionCodes.COLOR_BGR2RGB);
+      const greenScalar = OpenCV.createObject(ObjectType.Scalar, 0, 255, 0, 255);
+      OpenCV.invoke('drawContours', contoursDebugMat, contours, -1, greenScalar, 2, 8);
+      const contoursDebugResult = OpenCV.toJSValue(contoursDebugMat);
+      debugContoursImage = contoursDebugResult?.base64 || null;
+    }
 
     // === STEP 3: Process contours (EXACT COPY from useInferenceLogic.tsx) ===
     let documentContour = null;
@@ -450,14 +469,53 @@ export const detectDocumentCorners = (
     for (let i = 0; i < contoursSize; i++) {
       const contour = OpenCV.copyObjectFromVector(contours, i);
       const areaResult = OpenCV.invoke('contourArea', contour);
-      const area = areaResult.value;
+      
+      // Debug: log the full structure of areaResult for first contour
+      if (i === 0) {
+        console.log(`🔍 FULL areaResult structure:`, JSON.stringify(areaResult));
+        console.log(`🔍 areaResult keys:`, areaResult && typeof areaResult === 'object' ? Object.keys(areaResult) : 'not object');
+      }
+      
+      // Handle different return types from contourArea
+      // Try multiple ways to extract the value
+      let area: number;
+      if (typeof areaResult === 'number') {
+        area = areaResult;
+      } else if (areaResult && typeof areaResult === 'object') {
+        // Try different possible property names
+        area = areaResult.value ?? areaResult.area ?? areaResult.result ?? 
+               (typeof areaResult[0] === 'number' ? areaResult[0] : 0);
+        // If still 0 or very small, try toJSValue
+        if (area < 100) {
+          try {
+            const jsValue = OpenCV.toJSValue(areaResult);
+            if (i === 0) {
+              console.log(`🔍 toJSValue result:`, JSON.stringify(jsValue), typeof jsValue);
+            }
+            if (typeof jsValue === 'number') {
+              area = jsValue;
+            } else if (jsValue && typeof jsValue === 'object') {
+              area = jsValue.value ?? jsValue.area ?? jsValue[0] ?? 0;
+            }
+          } catch (e) {
+            // toJSValue failed, keep previous value
+          }
+        }
+      } else {
+        area = 0;
+      }
+      
+      // Debug first few contours
+      if (i < 3) {
+        console.log(`🔍 Contour #${i} area:`, { area, type: typeof areaResult });
+      }
 
-      // CRITICAL: Absolute minimum check - document MUST be >= 20% of image
+      // CRITICAL: Absolute minimum check - document MUST be >= 10% of image
       if (area < absoluteMinArea) {
         tooSmallCount++;
         if (tooSmallCount <= 3) {
-          const areaPercent = (area / imgArea * 100).toFixed(1);
-          console.log(`❌ #${i}: TOO_SMALL (${areaPercent}% < 20% minimum)`);
+          const areaPercent = ((area / imgArea) * 100).toFixed(1);
+          console.log(`❌ #${i}: TOO_SMALL (${areaPercent}% < 10% minimum)`);
         }
         continue;
       }
@@ -497,13 +555,16 @@ export const detectDocumentCorners = (
         const perimeter = perimeterResult.value;
         const aspectRatio = rectData.width / rectData.height;
 
-        // STRICT portrait filter - dokumentum 5:3 aspect ratio = 0.6
-        // Elfogadunk: 0.4 - 0.95 közötti értékeket (széles portrait tartomány)
-        // Elutasítunk: > 0.95 (szinte négyzet vagy landscape)
-        if (aspectRatio < 0.4 || aspectRatio > 0.95) {
+        // Accept both portrait AND landscape documents
+        // Portrait: aspect 0.4 - 0.95 (taller than wide)
+        // Landscape: aspect 1.05 - 2.5 (wider than tall)
+        // Reject: ~1.0 (square-ish shapes that are likely not documents)
+        const isPortrait = aspectRatio >= 0.4 && aspectRatio <= 0.95;
+        const isLandscape = aspectRatio >= 1.05 && aspectRatio <= 2.5;
+        if (!isPortrait && !isLandscape) {
           aspectFilterCount++;
           if (aspectFilterCount <= 3) {
-            console.log(`❌ #${i}: WRONG_ASPECT (aspect:${aspectRatio.toFixed(2)}, need 0.4-0.95 for portrait, w:${rectData.width} h:${rectData.height})`);
+            console.log(`❌ #${i}: WRONG_ASPECT (aspect:${aspectRatio.toFixed(2)}, need 0.4-0.95 portrait or 1.05-2.5 landscape, w:${rectData.width} h:${rectData.height})`);
           }
           continue;
         }

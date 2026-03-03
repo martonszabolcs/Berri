@@ -26,10 +26,10 @@ const FRAME_SKIP_INTERVAL = 1; // Minden N. frame feldolgozása (1=minden, 2=min
 const DEBUG_IMAGE_INTERVAL = 1; // Debug kép generálási gyakoriság (ha DEBUG_ON=true)
 
 // === KÉPFELDOLGOZÁS ===
-const MAX_PROCESS_DIMENSION = 1080; // Max feldolgozási felbontás (visszaállítva 1080-ra)
+const MAX_PROCESS_DIMENSION = 4080; // Max feldolgozási felbontás (csökkentve a jobb teljesítményért)
 
 // === BLUR (HOMÁLYOSSÁG) DETEKTÁLÁS ===
-const BLUR_THRESHOLD = 2; // Laplacian variance küszöb (alacsonyabb = homályos) - 2 felett jónak számít (csökkentve gyengébb fényhez)
+const BLUR_THRESHOLD = 1; // Laplacian variance küszöb (alacsonyabb = homályos) - 2 felett jónak számít (csökkentve gyengébb fényhez)
 
 // === DOKUMENTUM MÉRET KORLÁTOK ===
 const MIN_AREA_RATIO = 0.08; // Min dokumentum terület a kép %-ában (8% - csökkentve)
@@ -48,23 +48,23 @@ const MAX_VERTICAL_RATIO = 5.0; // Max bal/jobb oldal arány (perspektíva torz�
 
 // === STABILITÁS ÉS ANTI-VILLOGÁS ===
 const STABLE_DETECTION_THRESHOLD = 1; // Hány egymást követő frame kell a stabil detektáláshoz
-const STABLE_NO_DETECTION_THRESHOLD = 6; // Hány frame kell a "nincs dokumentum" státuszhoz
+const STABLE_NO_DETECTION_THRESHOLD = 20; // Hány frame kell a "nincs dokumentum" státuszhoz
 const REACTIVATE_AFTER_FRAMES = 150; // Frozen state újraaktiválás N frame után
 
 // === BRIGHTNESS SEEKER (FÉNYERŐ KALIBRÁLÁS) ===
 const BRIGHTNESS_SEEKER_MAX_OFFSET = 250; // Max POZITÍV offset értéke (növelve 180-ról)
-const BRIGHTNESS_SEEKER_MIN_OFFSET = -250; // Max NEGATÍV offset értéke (növelve -200-ról)
-const BRIGHTNESS_SEEKER_STEP = 15; // Lépésköz (növelve 10-ről - gyorsabb pásztázás)
+const BRIGHTNESS_SEEKER_MIN_OFFSET = -50; // Max NEGATÍV offset értéke (növelve -200-ról)
+const BRIGHTNESS_SEEKER_STEP = 1; // Lépésköz (növelve 10-ről - gyorsabb pásztázás)
 const BRIGHTNESS_CHANGE_INTERVAL = 1; // Fényerő váltás gyakorisága (frame-ekben)
 
 // === OPENCV PARAMÉTEREK ===
 const ADAPTIVE_THRESHOLD_BLOCK_SIZE = 25; // Adaptív threshold blokk méret
-const ADAPTIVE_THRESHOLD_C = 10; // Adaptív threshold C konstans
-const BINARY_THRESHOLD = 100; // Egyszerű threshold érték
+const ADAPTIVE_THRESHOLD_C = 1; // Adaptív threshold C konstans
+const BINARY_THRESHOLD = 10; // Egyszerű threshold érték
 const CANNY_THRESHOLD_LOW = 50; // Canny él detektálás alsó küszöb
 const CANNY_THRESHOLD_HIGH = 150; // Canny él detektálás felső küszöb
-const GAUSSIAN_BLUR_KERNEL_SIZE = 5; // Gaussian blur kernel méret (5x5)
-const MORPHOLOGY_KERNEL_SIZE = 5; // Morfológiai műveletek kernel méret (5x5)
+const GAUSSIAN_BLUR_KERNEL_SIZE = 3; // Gaussian blur kernel méret (5x5)
+const MORPHOLOGY_KERNEL_SIZE = 10; // Morfológiai műveletek kernel méret (5x5)
 
 // === CONTOUR (KÖRVONAL) APPROXIMÁCIÓ ===
 const EPSILON_VALUES = [0.005, 0.01, 0.02, 0.05]; // Epsilon szorzók polygon approximációhoz
@@ -896,11 +896,27 @@ export const useInferenceLogic = (
           CANNY_THRESHOLD_HIGH,
         ); // Balanced - jó detektálás és sebesség
 
+        // DILATE - Vonalak összezárása (mint scanDocument.ts-ben)
+        // Ez segít, hogy a megszakadt élek összeérjenek és zárt kontúrt alkossanak
+        const dilateKernelSize = OpenCV.createObject(ObjectType.Size, 3, 3);
+        const dilateKernel = OpenCV.invoke(
+          'getStructuringElement',
+          MorphShapes.MORPH_RECT,
+          dilateKernelSize,
+        );
+        OpenCV.invoke(
+          'morphologyEx',
+          edges,
+          edges, // in-place dilate
+          MorphTypes.MORPH_DILATE,
+          dilateKernel,
+        );
+
         // SKIP combining binary and edges - use ONLY Canny edges for contour detection
         // Reason: binary threshold causes morphology closing to merge document edges with background
         // OpenCV.invoke('bitwise_or', binary, edges, edges);
         
-        // Use edges (Canny only) for contour detection - same as detectDocumentCorners.ts
+        // Use edges (Canny only, dilated) for contour detection - same as detectDocumentCorners.ts
 
         // 7. Find contours
         const contours = OpenCV.createObject(ObjectType.MatVector);
@@ -948,10 +964,14 @@ export const useInferenceLogic = (
             const perimeter = perimeterResult.value;
             const aspectRatio = rectData.width / rectData.height;
 
-            // CSAK ÁLLÓ TÉGLALAP - magasság legyen nagyobb mint szélesség
-            // Minimum 1.3x magasabb legyen (aspect ratio < 0.77)
-            if (aspectRatio >= MIN_PORTRAIT_ASPECT_RATIO) {
-              continue; // Skip négyzet és fekvő téglalapok
+            // Accept both portrait AND landscape documents
+            // Portrait: aspect < 0.9 (taller than wide)
+            // Landscape: aspect > 1.1 (wider than tall)
+            // Reject: ~1.0 (square-ish shapes that are likely not documents)
+            const isPortrait = aspectRatio < MIN_PORTRAIT_ASPECT_RATIO; // < 0.9
+            const isLandscape = aspectRatio > 1.1;
+            if (!isPortrait && !isLandscape) {
+              continue; // Skip négyzet alakú formák
             }
 
             // Calculate solidity approximation using bounding rectangle

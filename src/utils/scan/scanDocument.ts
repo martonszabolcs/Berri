@@ -1,5 +1,5 @@
 import { Alert } from 'react-native';
-import { OpenCV, ObjectType, DataTypes, ColorConversionCodes } from 'react-native-fast-opencv';
+import { OpenCV, ObjectType, DataTypes, ColorConversionCodes, RetrievalModes, ContourApproximationModes } from 'react-native-fast-opencv';
 import { detectDocumentCorners } from './detectDocumentCorners';
 
 interface DocumentCorner {
@@ -53,7 +53,12 @@ interface ScanDocumentResult {
 }
 
 const SCALE_FACTOR = 1.0;
-const CROP_PERCENT = 0.01;
+const CROP_PERCENT = 0.007; // Disabled - no initial crop
+
+// Target output resolution - A4-like at 300 DPI equivalent
+// 5:3 aspect ratio (BERRĪ notebook), high resolution output
+const TARGET_OUTPUT_WIDTH = 2100;  // ~300 DPI width
+const TARGET_OUTPUT_HEIGHT = 3500; // ~300 DPI height (5:3 ratio)
 
 const createMat = (h: number, w: number, type: number) =>
   OpenCV.createObject(ObjectType.Mat, h, w, type);
@@ -128,6 +133,28 @@ export const scanDocument = (
 
     console.log('📸 Final photo dimensions:', photoWidth, 'x', photoHeight);
 
+    // === TESZT MÓD: Downscale to 12MP (iPhone 12 szimuláció) ===
+    const TEST_MODE_12MP = false; // TESZT: állítsd false-ra az éles verzióhoz
+    const TARGET_12MP = 12_000_000; // 12 megapixel
+    
+    if (TEST_MODE_12MP && photoWidth * photoHeight > TARGET_12MP) {
+      const currentPixels = photoWidth * photoHeight;
+      const scaleFactor = Math.sqrt(TARGET_12MP / currentPixels);
+      const newWidth = Math.round(photoWidth * scaleFactor);
+      const newHeight = Math.round(photoHeight * scaleFactor);
+      
+      console.log(`🔽 TESZT: Downscaling from ${photoWidth}x${photoHeight} (${(currentPixels/1_000_000).toFixed(1)}MP) to ${newWidth}x${newHeight} (${((newWidth*newHeight)/1_000_000).toFixed(1)}MP)`);
+      
+      const downscaledMat = OpenCV.createObject(ObjectType.Mat, newHeight, newWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('resize', rotatedSrcMat, downscaledMat, createSize(newWidth, newHeight), 0, 0, 2); // INTER_CUBIC
+      
+      rotatedSrcMat = downscaledMat;
+      photoWidth = newWidth;
+      photoHeight = newHeight;
+      
+      console.log('✅ TESZT: Downscale to 12MP completed');
+    }
+
     if (photoWidth === 0 || photoHeight === 0) {
       try {
         const sizeResult = (srcMat as any).size?.() ?? null;
@@ -201,82 +228,56 @@ export const scanDocument = (
     // === NAGY FOTÓ DETEKTÁLÁS - Újrafuttatjuk a detektálást a teljes felbontású képen ===
     console.log('🔍 Re-detecting corners on full resolution photo...');
     
-    // FÉNYERŐ BEÁLLÍTÁSOK - Számítsuk ki a fotó átlagos fényerejét
-    // Konvertáljuk grayscale-re hogy meghatározzuk a brightness-t
-    const grayForBrightness = OpenCV.createObject(
-      ObjectType.Mat,
-      photoHeight,
-      photoWidth,
-      DataTypes.CV_8UC1,
-    );
-    OpenCV.invoke('cvtColor', rotatedSrcMat, grayForBrightness, 6, 0); // COLOR_BGR2GRAY
-    // Use frame brightness (already calculated during live detection with seeker)
-    const photoBrightness = frameBrightness;
+    // FÉNYERŐ BEÁLLÍTÁSOK - Többféle brightness beállítással próbálkozunk
+    // Ha az egyik nem működik, próbáljuk a másikat
+    const brightnessSettings = [
+      { alpha: 1.0, beta: 10, name: 'normal' },
+      { alpha: 1.3, beta: 30, name: 'bright' },
+      { alpha: 1.5, beta: 50, name: 'very-bright' },
+      { alpha: 0.8, beta: -20, name: 'dark' },
+    ];
     
-    // Adaptive brightness enhancement (same logic as frame detection)
-    let photoAlpha: number;
-    let photoBeta: number;
+    let photoDetectionResult: any = null;
+    let usedSettings: { alpha: number; beta: number; name: string } | null = null;
     
-    if (photoBrightness < 40) {
-      // Dark image
-      photoAlpha = 1.5;
-      photoBeta = 40;
-    } else if (photoBrightness < 80) {
-      // Medium-dark image
-      photoAlpha = 1.3;
-      photoBeta = 30;
-    } else if (photoBrightness > 180) {
-      // Bright image
-      photoAlpha = 0.8;
-      photoBeta = -20;
-    } else {
-      // Normal image
-      photoAlpha = 1.0;
-      photoBeta = 10;
-    }
-    
-    console.log('📊 Photo brightness analysis:', {
-      brightness: Math.round(photoBrightness),
-      alpha: photoAlpha,
-      beta: photoBeta,
-    });
-
-    // === DEBUG KÉP 0.1 - Input a detectDocumentCorners-nek (downscale előtt) ===
-    if (enableDebugImages) {
-      try {
-        const debugInputMat = OpenCV.createObject(
-          ObjectType.Mat,
-          photoHeight,
-          photoWidth,
-          DataTypes.CV_8UC3,
-        );
-        OpenCV.invoke('cvtColor', rotatedSrcMat, debugInputMat, ColorConversionCodes.COLOR_BGR2RGB);
-        
-        const debugInputResult = OpenCV.toJSValue(debugInputMat);
-        if (debugInputResult?.base64) {
-          stepImages.push({
-            label: '0.1. Input detectDocumentCorners (downscale előtt)',
-            image: debugInputResult.base64,
-          });
-          console.log('✅ Debug 0.1: Input image saved');
-        }
-      } catch (debugError) {
-        console.error('Failed to create debug 0.1 image:', debugError);
+    for (const settings of brightnessSettings) {
+      console.log(`🔍 Trying photo detection with ${settings.name} (alpha=${settings.alpha}, beta=${settings.beta})...`);
+      
+      const result = detectDocumentCorners({
+        mat: rotatedSrcMat,
+        width: photoWidth,
+        height: photoHeight,
+        alpha: settings.alpha,
+        beta: settings.beta,
+        enableDebugImages: enableDebugImages,
+      });
+      
+      if (result.corners && result.corners.length === 4) {
+        console.log(`✅ Photo detection succeeded with ${settings.name} settings!`);
+        photoDetectionResult = result;
+        usedSettings = settings;
+        break;
       }
     }
     
-    const photoDetectionResult = detectDocumentCorners({
-      mat: rotatedSrcMat, // Original BGR formátumú Mat (no rotation)
-      width: photoWidth,
-      height: photoHeight,
-      alpha: photoAlpha,
-      beta: photoBeta,
-    });
+    // Ha egyik sem működött, használjuk az utolsó eredményt (debug céljából)
+    if (!photoDetectionResult) {
+      console.log('❌ All brightness settings failed');
+      photoDetectionResult = detectDocumentCorners({
+        mat: rotatedSrcMat,
+        width: photoWidth,
+        height: photoHeight,
+        alpha: 1.0,
+        beta: 10,
+        enableDebugImages: enableDebugImages,
+      });
+    }
 
     console.log('📊 Photo detection result:', {
       found: photoDetectionResult.corners !== null,
       confidence: photoDetectionResult.confidence,
       debugInfo: photoDetectionResult.debugInfo,
+      usedSettings: usedSettings?.name || 'none',
       hasDebugImage: !!photoDetectionResult.debugImage,
     });
 
@@ -398,14 +399,15 @@ export const scanDocument = (
       // Fotó detektálás sikeres - MINDIG ezt használjuk (nincs mozgás ellenőrzés, nincs átlagolás)
       console.log('✅ Using photo-detected corners');
       corners = photoDetectionResult.corners;
-      cornerSource = '';
+      cornerSource = 'photo';
     } else {
       // Fotó detektálás sikertelen - VISSZADOBJUK A HIBÁT!
+      // NEM használhatjuk a frame sarokpontokat, mert a felhasználó mozoghatott közben!
       console.error('❌ Photo detection failed - ABORTING scan process');
       return {
         success: false,
         error: 'Nem sikerült detektálni a dokumentumot a fotón. Próbáld újra!',
-        stepImages: enableDebugImages ? stepImages : [], // Debug képeket csak ha engedélyezve
+        stepImages: enableDebugImages ? stepImages : [],
       };
     }
 
@@ -431,28 +433,12 @@ export const scanDocument = (
     const detectedHeight = Math.round((leftEdge + rightEdge) / 2);
     const detectedWidth = Math.round((topEdge + bottomEdge) / 2);
     
-    // 5:3 aspect ratio correction - ha túl torzult, korrigáljuk
-    const targetAspectRatio = 5.0 / 3.0; // 1.667
-    const currentAspectRatio = detectedHeight / detectedWidth;
+    // Use fixed high-resolution output size for best quality
+    // This ensures consistent output regardless of detection size
+    let width = TARGET_OUTPUT_WIDTH;
+    let height = TARGET_OUTPUT_HEIGHT;
     
-    let width = detectedWidth;
-    let height = detectedHeight;
-    
-    // Ha az aspect ratio nagyon eltér a céltól (>20% különbség), korrigáljuk
-    if (Math.abs(currentAspectRatio - targetAspectRatio) / targetAspectRatio > 0.2) {
-      console.log(`📐 Correcting aspect ratio: ${currentAspectRatio.toFixed(2)} → ${targetAspectRatio.toFixed(2)}`);
-      
-      // Döntsd el hogy a szélesség vagy magasság legyen a bázis
-      if (currentAspectRatio > targetAspectRatio) {
-        // Túl magas - magasságot megtartjuk, szélességet korrigáljuk
-        width = Math.round(height / targetAspectRatio);
-      } else {
-        // Túl széles - szélességet megtartjuk, magasságot korrigáljuk
-        height = Math.round(width * targetAspectRatio);
-      }
-      
-      console.log(`📐 Corrected dimensions: ${width}x${height} (was: ${detectedWidth}x${detectedHeight})`);
-    }
+    console.log(`📐 Using fixed output resolution: ${width}x${height} (detected: ${detectedWidth}x${detectedHeight})`);
 
     const srcPoints = OpenCV.createObject(ObjectType.Point2fVector, [
       createPoint2f(corners[0].x, corners[0].y),
@@ -536,7 +522,7 @@ export const scanDocument = (
     }
 
     // === BLUR DETECTION - Laplacian variance ===
-    // FONTOS: A FELSŐ HARMADRA külön nézünk, mert ferde fotónál ott homályos!
+    /* // FONTOS: A FELSŐ HARMADRA külön nézünk, mert ferde fotónál ott homályos!
     console.log('🔍 Detecting blur in cropped image (focusing on TOP THIRD)...');
     
     // Convert to grayscale for blur detection
@@ -588,13 +574,13 @@ export const scanDocument = (
         error: `Kép teteje homályos (${blurScore.toFixed(1)}). Tartsd szemben a kamerát!`,
         stepImages: enableDebugImages ? stepImages : [],
       };
-    }
+    } */
 
     // Step 1: Original cropped image (NO blur applied, just detection)
     const step1Result = OpenCV.toJSValue(croppedMat);
     if (step1Result?.base64) {
       stepImages.push({ 
-        label: `1. Vágott kép - Blur: TOP=${topBlurScore.toFixed(1)} FULL=${fullBlurScore.toFixed(1)} (${blurScore < 5 ? 'homályos' : blurScore < 10 ? 'megfelelő' : 'éles'}) (${cornerSource})`, 
+        label: `1. Vágott kép`,
         image: step1Result.base64 
       });
     }
@@ -802,7 +788,7 @@ export const scanDocument = (
     }
 
     // === BLACK MASK (THRESHOLD) ===
-    console.log('🎭 Creating aggressive black mask to remove gray dirt');
+    console.log('🎭 Creating adaptive black mask based on resolution');
     
     // First, calculate optimal threshold using Otsu's method
     const tempMaskMat = OpenCV.createObject(
@@ -815,16 +801,51 @@ export const scanDocument = (
     const otsuThreshold = typeof otsuResult === 'number' ? otsuResult : 128;
     console.log('📊 Otsu calculated threshold:', otsuThreshold);
     
-    // Apply VERY aggressive threshold (35% of Otsu value) to remove gray dirt/guide lines
+    // === RESOLUTION + BRIGHTNESS ADAPTIVE THRESHOLD ===
+    // iPhone 15 (48 MP): 0.25 → mindig agresszív (elég detail)
+    // iPhone 12 (12 MP) + lámpafény (sötét): 0.75 → enyhébb (ne nyúljon bele a szövegbe)
+    // iPhone 12 (12 MP) + nappali fény (világos): 0.45 → köztes (zajok ne jöjjenek be)
+    const totalPixels = cropWidth * cropHeight;
+    //const isHighRes = false; // TESZT: mindig 12MP-ként kezel (iPhone 12 szimuláció)
+    const isHighRes = totalPixels > 3_000_000; // > 3 megapixel threshold (48MP vs 12MP)
+    const isDark = avgBrightness < 120; // Lámpafény (sötét környezet)
+    // Felbontás + fényerő alapú threshold multiplier
+    let thresholdMultiplier: number;
+    let reasoning: string;
+    
+    if (isHighRes) {
+      // Nagy felbontás (iPhone 15) - mindig agresszív
+      thresholdMultiplier = 0.25;
+      reasoning = 'iPhone 15 (48MP) - agresszív threshold';
+    } else if (isDark) {
+      // Kis felbontás + lámpafény - enyhébb (ne törölje a szöveget)
+      thresholdMultiplier = 0.75;
+      reasoning = 'iPhone 12 (12MP) + lámpafény - enyhébb threshold';
+    } else {
+      // Kis felbontás + nappali fény - köztes (zajok ne jöjjenek)
+      thresholdMultiplier = 0.45;
+      reasoning = 'iPhone 12 (12MP) + nappali fény - köztes threshold';
+    }
+    
+    console.log('📐 Resolution + Brightness threshold:', {
+      totalPixels,
+      avgBrightness,
+      isHighRes,
+      isDark,
+      multiplier: thresholdMultiplier,
+      reasoning,
+    });
+    
+    // Apply adaptive threshold
     const maskMat = OpenCV.createObject(
       ObjectType.Mat,
       cropHeight,
       cropWidth,
       DataTypes.CV_8UC1,
     );
-    const adjustedThreshold = Math.max(25, otsuThreshold * 0.25); // Minimum 25, or 35% of Otsu (was 50%)
+    const adjustedThreshold = Math.max(25, otsuThreshold * thresholdMultiplier);
     OpenCV.invoke('threshold', sharpenedGray, maskMat, adjustedThreshold, 255, 0); // THRESH_BINARY = 0
-    console.log('✅ Aggressive black mask created with adjusted threshold:', adjustedThreshold);
+    console.log('✅ Adaptive black mask created with adjusted threshold:', adjustedThreshold);
 
     // Step 4: Black mask (threshold)
     const maskMatBGR = OpenCV.createObject(
@@ -925,7 +946,7 @@ export const scanDocument = (
     OpenCV.invoke('bitwise_not', closedMat, invertedMat);
     
     // Create ellipse kernel for thickening (3x3 for moderate thickening)
-    const thickenKernel = OpenCV.invoke('getStructuringElement', 2, createSize(2, 2)); // MORPH_ELLIPSE = 2
+    const thickenKernel = OpenCV.invoke('getStructuringElement', 2, createSize(1, 1)); // MORPH_ELLIPSE = 2
     
     const thickenedMat = OpenCV.createObject(
       ObjectType.Mat,
@@ -1047,89 +1068,150 @@ export const scanDocument = (
     );
     OpenCV.invoke('cvtColor', blurredFinal, finalMat, 8, 0); // COLOR_GRAY2BGR = 8
 
-    // === SMART CROP BOTTOM - Find QR code end position ===
-    console.log('✂️ Smart cropping bottom based on QR code position');
+    // === SMART CROP BOTTOM - Find square QR code at bottom ===
+    console.log('✂️ Smart cropping bottom - searching for square QR code');
     
-    // Detect where QR code ends by scanning from bottom
-    // QR code is black on white background, so we look for the transition
+    // A QR kód négyzet alakú, fekete, a kép alján van fehér háttéren
+    // Keresünk egy négyzet alakú sötét területet az alsó 25%-ban
     let qrEndY = cropHeight; // Default: no crop if detection fails
+    let qrDetected = false;
     
-    if (currentQrPosition) {
-      console.log(`🔍 Detecting QR code end on ${currentQrPosition} side`);
+    try {
+      // Csak az alsó 15%-ot vizsgáljuk - a QR kód a legalsó részen van
+      const searchHeight = Math.round(cropHeight * 0.15);
+      const searchStartY = cropHeight - searchHeight;
       
-      // Use the thresholded grayscale (blurredFinal) for detection
-      // Scan a vertical strip on the side where QR code is located
-      const stripWidth = Math.round(cropWidth * 0.15); // 15% width strip
-      const stripX = currentQrPosition === 'left' 
-        ? 0 
-        : cropWidth - stripWidth;
-      
-      // Create ROI for the strip
-      const stripRect = OpenCV.createObject(
+      // ROI az alsó részhez
+      const bottomRect = OpenCV.createObject(
         ObjectType.Rect,
-        stripX,
         0,
-        stripWidth,
-        cropHeight,
+        searchStartY,
+        cropWidth,
+        searchHeight,
       );
       
-      const stripMat = OpenCV.createObject(ObjectType.Mat, cropHeight, stripWidth, DataTypes.CV_8UC1);
-      OpenCV.invoke('crop', blurredFinal, stripMat, stripRect);
+      const bottomMat = OpenCV.createObject(ObjectType.Mat, searchHeight, cropWidth, DataTypes.CV_8UC1);
+      // Use original grayscale (grayMat) for QR detection - processed image may lose QR details
+      OpenCV.invoke('crop', grayMat, bottomMat, bottomRect);
       
-      // Scan from bottom to top, looking for rows that are mostly white (no QR code)
-      // When we find continuous white rows, that's where the content ends
-      const whiteThreshold = 250; // Pixel value threshold for "white"
-      const requiredWhiteRows = Math.round(cropHeight * 0.02); // Need 2% height of white rows
+      // Threshold - invertálva, hogy a fekete QR kód fehér legyen (kontúr kereséshez)
+      // Lower threshold (100) to better detect dark QR codes
+      const threshMat = OpenCV.createObject(ObjectType.Mat, searchHeight, cropWidth, DataTypes.CV_8UC1);
+      OpenCV.invoke('threshold', bottomMat, threshMat, 100, 255, 1); // THRESH_BINARY_INV = 1
       
-      let consecutiveWhiteRows = 0;
-      let foundContentEnd = false;
+      // Kontúrok keresése
+      const contours = OpenCV.createObject(ObjectType.MatVector);
+      OpenCV.invoke(
+        'findContours',
+        threshMat,
+        contours,
+        RetrievalModes.RETR_EXTERNAL,
+        ContourApproximationModes.CHAIN_APPROX_SIMPLE,
+      );
       
-      // Scan from bottom up
-      for (let y = cropHeight - 1; y >= 0 && !foundContentEnd; y--) {
-        // Create ROI for single row
-        const rowRect = OpenCV.createObject(ObjectType.Rect, 0, y, stripWidth, 1);
-        const rowMat = OpenCV.createObject(ObjectType.Mat, 1, stripWidth, DataTypes.CV_8UC1);
-        OpenCV.invoke('crop', stripMat, rowMat, rowRect);
+      const contoursData = OpenCV.toJSValue(contours);
+      const contoursSize = contoursData?.array?.length || 0;
+      console.log(`🔍 Found ${contoursSize} contours in bottom region`);
+      
+      // Keressük a legnagyobb négyzet alakú kontúrt
+      let bestQrContour = null;
+      let bestQrArea = 0;
+      
+      // Minimum QR méret: a kép szélességének 2%-a négyzet (smaller to catch small QR)
+      const minQrSize = cropWidth * 0.02;
+      const minQrArea = minQrSize * minQrSize;
+      
+      // Maximum QR méret: a kép szélességének 25%-a négyzet
+      const maxQrSize = cropWidth * 0.25;
+      const maxQrArea = maxQrSize * maxQrSize;
+      
+      for (let i = 0; i < contoursSize; i++) {
+        const contour = OpenCV.copyObjectFromVector(contours, i);
+        const boundingRect = OpenCV.invoke('boundingRect', contour);
+        const rectData = OpenCV.toJSValue(boundingRect);
         
-        // Check if row is mostly white using mean
-        const rowMean = OpenCV.invoke('mean', rowMat);
-        const rowMeanData = OpenCV.toJSValue(rowMean);
-        const rowAvg = (rowMeanData as any)?.a || 0;
-        
-        if (rowAvg >= whiteThreshold) {
-          consecutiveWhiteRows++;
-        } else {
-          // Found dark content (QR code)
-          if (consecutiveWhiteRows >= requiredWhiteRows) {
-            // We had white space and now hit content - this is the QR end
-            qrEndY = y + consecutiveWhiteRows;
-            foundContentEnd = true;
-            console.log(`✅ Found QR code end at Y=${qrEndY} (${consecutiveWhiteRows} white rows before)`);
+        if (rectData) {
+          const { x, y, width: w, height: h } = rectData;
+          const area = w * h;
+          
+          // Négyzet alakú? (aspect ratio 0.7 - 1.4 között)
+          const aspectRatio = w / h;
+          const isSquare = aspectRatio >= 0.7 && aspectRatio <= 1.4;
+          
+          // Bal VAGY jobb alsó sarokban van?
+          const isLeftSide = x < cropWidth * 0.3;
+          const isRightSide = (x + w) > cropWidth * 0.7;
+          const isCorner = isLeftSide || isRightSide;
+          
+          // A QR kódnak az alsó 50%-ban kell lennie a keresési területen belül
+          const isAtBottom = (y + h) > searchHeight * 0.5;
+          
+          // Megfelelő méretű?
+          const isSizeOk = area >= minQrArea && area <= maxQrArea;
+          
+          // Log potential candidates for debugging
+          if (isSizeOk && isSquare) {
+            console.log(`📦 Contour ${i}: x=${x}, y=${y}, w=${w}, h=${h}, aspect=${aspectRatio.toFixed(2)}, isCorner=${isCorner}, isAtBottom=${isAtBottom}`);
           }
-          consecutiveWhiteRows = 0;
+          
+          // Accept if square AND correct size AND in corner AND at bottom AND larger than previous
+          if (isSquare && isSizeOk && isCorner && isAtBottom && area > bestQrArea) {
+            bestQrArea = area;
+            bestQrContour = {
+              x: x,
+              y: y + searchStartY, // Visszakonvertálás teljes kép koordinátára
+              width: w,
+              height: h,
+            };
+          }
         }
       }
       
-      if (!foundContentEnd) {
-        // Fallback: use 90% if detection failed
-        qrEndY = Math.round(cropHeight * 0.90);
-        console.log(`⚠️ QR end detection failed, using fallback: ${qrEndY}`);
+      if (bestQrContour) {
+        // QR kód teteje = levágási pont
+        qrEndY = bestQrContour.y;
+        qrDetected = true;
+        console.log(`✅ Found square QR code at Y=${qrEndY}, size=${bestQrContour.width}x${bestQrContour.height}`);
+        
+        // Debug alert showing QR detection result
+       /*  Alert.alert(
+          'QR Detektálva',
+          `Érték: ${currentQrValue || 'nincs'}\nY=${qrEndY}, size=${bestQrContour.width}x${bestQrContour.height}`
+        ); */
+      } else {
+        // Fallback: 93% ha nem találtunk QR kódot
+        qrEndY = Math.round(cropHeight * 0.93);
+        console.log('⚠️ No square QR code found, using fallback 93%');
+        
+        // Debug alert when QR not found
+        //Alert.alert('QR NEM találva', `QR érték: ${currentQrValue || 'nincs'}\nFallback: 93%`);
       }
-    } else {
-      // No QR position info - use default 90%
-      qrEndY = Math.round(cropHeight * 0.90);
-      console.log('⚠️ No QR position info, using default 90% crop');
+      
+    } catch (qrError) {
+      console.warn('⚠️ QR detection error:', qrError);
+      qrEndY = Math.round(cropHeight * 0.93);
     }
     
-    // Add small margin above QR end
+    // Add margin above QR top - biztonsági margó a QR kód fölött
     const margin = Math.round(cropHeight * 0.01); // 1% margin
     
-    // MAXIMUM 4% levágás az aljáról - ne vágjunk le túl sokat!
-    const minHeight = Math.round(cropHeight * 0.93); // Minimum 96% marad (max 4% levágás)
-    const calculatedHeight = Math.min(qrEndY + margin, cropHeight);
-    const finalHeight = Math.max(calculatedHeight, minHeight);
+    // Ha találtunk QR kódot, akkor annak tetejéig tartjuk meg a képet
+    // qrEndY = a QR kód TETEJE (y koordináta a kép tetejétől)
+    // finalHeight = ennyi pixelt tartunk meg felülről
+    let finalHeight: number;
+    if (qrDetected) {
+      // qrEndY a QR kód teteje, margin-t levonjuk
+      finalHeight = qrEndY - margin; // Subtract margin to ensure QR is fully cropped
+      // Minimum 88% marad, maximum 97% - ne vágjunk túl sokat
+      finalHeight = Math.max(finalHeight, Math.round(cropHeight * 0.88));
+      finalHeight = Math.min(finalHeight, Math.round(cropHeight * 0.97));
+      console.log(`📐 QR top at Y=${qrEndY}, margin=${margin}, finalHeight=${finalHeight} (${((finalHeight/cropHeight)*100).toFixed(1)}%)`);
+    } else {
+      // Fallback: 93% marad
+      finalHeight = Math.round(cropHeight * 0.93);
+    }
     
-    console.log(`📐 Cropping to height: ${finalHeight} (was ${cropHeight}, saved ${cropHeight - finalHeight}px, max 4%)`);
+    console.log(`📐 Cropping to height: ${finalHeight} (was ${cropHeight}, QR detected: ${qrDetected})`);
     
     const finalCropRect = OpenCV.createObject(
       ObjectType.Rect,
@@ -1157,8 +1239,8 @@ export const scanDocument = (
     }
 
     // === EDGE CROP - Remove 0.5% border to avoid black edges ===
-    console.log('✂️ Removing 0.5% edge border');
-    const edgeCropPercent = 0.01;
+    // Edge crop disabled - no border removal
+    const edgeCropPercent = 0;
     const edgeCropLeft = Math.round(cropWidth * edgeCropPercent);
     const edgeCropTop = Math.round(finalHeight * edgeCropPercent);
     const edgeCropWidth = cropWidth - 2 * edgeCropLeft;
@@ -1234,8 +1316,28 @@ export const scanDocument = (
       }
     }
 
+    // === LIGHT BLUR - Smooth edges slightly ===
+    // DISABLED FOR SPEED TEST
+    /*
+    console.log('🌊 Applying light Gaussian blur for smooth edges');
+    const finalSmoothedWithColor = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    const lightBlurKsize = OpenCV.createObject(ObjectType.Size, 3, 3);
+    OpenCV.invoke('GaussianBlur', finalWithColor, finalSmoothedWithColor, lightBlurKsize, 0.5, 0.5, 4);
+    console.log(`✅ Final size: ${edgeCropWidth}x${edgeCropHeight} (light blur applied)`);
+    */
+    const finalSmoothedWithColor = finalWithColor; // Use directly without blur
+    console.log(`✅ Final size: ${edgeCropWidth}x${edgeCropHeight} (no blur)`);
+
+    // Step 9.8: After anti-aliasing
+    if (enableDebugImages) {
+      const step9_8Result = OpenCV.toJSValue(finalSmoothedWithColor);
+      if (step9_8Result?.base64) {
+        stepImages.push({ label: '9.8. Anti-aliasing', image: step9_8Result.base64 });
+      }
+    }
+
     // === UPSCALE - Felskálázás nagyobb felbontásra ===
-    const UPSCALE_FACTOR = 1.5; // 1.5x nagyítás (150%)
+    /* const UPSCALE_FACTOR = 1.5; // 1.5x nagyítás (150%)
     const upscaledWidth = Math.round(edgeCropWidth * UPSCALE_FACTOR);
     const upscaledHeight = Math.round(edgeCropHeight * UPSCALE_FACTOR);
     
@@ -1252,7 +1354,7 @@ export const scanDocument = (
       2, // INTER_CUBIC = 2 - jó minőségű interpoláció
     );
     
-    console.log('✅ Upscaling completed');
+    console.log('✅ Upscaling completed'); */
 
     // === QR KÓD INFORMÁCIÓK LOGOLÁSA ===
     console.log('📱 QR Code Info:', {
@@ -1265,7 +1367,7 @@ export const scanDocument = (
     // This is the maximum quality available with this library
     console.log('📸 Exporting with maximum available JPEG quality');
     
-    const result = OpenCV.toJSValue(upscaledMat);
+    const result = OpenCV.toJSValue(finalSmoothedWithColor);
 
     if (!result?.base64) {
       throw new Error('Failed to convert scanned image to base64');
@@ -1276,7 +1378,7 @@ export const scanDocument = (
     // === ADD FINAL RESULT TO DEBUG IMAGES ===
     if (enableDebugImages && result.base64) {
       stepImages.push({ 
-        label: `10. Végeredmény (${upscaledWidth}x${upscaledHeight})${currentQrValue ? ` - QR: ${currentQrValue}` : ''}`, 
+        label: `10. Végeredmény${currentQrValue ? ` - QR: ${currentQrValue}` : ''}`, 
         image: result.base64 
       });
     }

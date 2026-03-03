@@ -232,6 +232,7 @@ export default function App() {
     id: string;
     imageBase64: string;
     qrValue: string | null;
+    qrPosition: 'left' | 'right' | null;
     timestamp: number;
   }
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
@@ -254,7 +255,7 @@ export default function App() {
     betaBoost: number;
   } | null>(null);
   const [isFrameProcessorActive, setIsFrameProcessorActive] = useState(true); // Frame processor on/off switch
-  const [debugImagesEnabled, setDebugImagesEnabled] = useState(true); // Debug step images on/off
+  const [debugImagesEnabled, setDebugImagesEnabled] = useState(false); // Debug step images on/off - FALSE for speed!
 
   // Animation states for capture
   const [isCaptureAnimating, setIsCaptureAnimating] = useState(false);
@@ -296,6 +297,20 @@ export default function App() {
       requestPermission();
     }
   }, [hasPermission, requestPermission]);
+
+  // Pre-warm FileSystem and Share modules to avoid first-use delay
+  useEffect(() => {
+    const prewarm = async () => {
+      try {
+        // Pre-warm FileSystem by checking if cache dir exists
+        const cacheExists = await FileSystem.exists(Dirs.CacheDir);
+        console.log('📦 FileSystem pre-warmed, cache exists:', cacheExists);
+      } catch (e) {
+        // Ignore errors - this is just pre-warming
+      }
+    };
+    prewarm();
+  }, []);
 
   // Android-specific: Reset debug image key when switching to debug view
   useEffect(() => {
@@ -704,7 +719,7 @@ export default function App() {
       // === TÖBBSZÖRI FOTÓZÁS BLUR ÉS DETECTION MIATT ===
       // Maximum 3 fotót próbálunk, amíg nem lesz éles ÉS sikeres corner detection
       const MAX_PHOTO_ATTEMPTS = 3;
-      const BLUR_THRESHOLD = 1; // Lowered because center 60% check gives lower variance than full frame
+      const BLUR_THRESHOLD = 2; // Laplacian variance küszöb - 2 felett éles
 
       let photoBase64 = '';
       let photoSize = { width: 0, height: 0 };
@@ -723,7 +738,7 @@ export default function App() {
 
         // Fotó készítése
         const photo = await camera.current.takePhoto({
-          enableShutterSound: false,
+          enableShutterSound: true,
         });
 
         console.log(`📸 Photo ${photoAttempt} taken:`, photo);
@@ -1031,6 +1046,7 @@ export default function App() {
           id: `img_${Date.now()}`,
           imageBase64: scanResult.imageBase64,
           qrValue: scanResult.qrValue || null,
+          qrPosition: captureQrPosition || null,
           timestamp: Date.now(),
         };
         setCapturedImages(prev => [...prev, newImage]);
@@ -1191,8 +1207,8 @@ export default function App() {
       smoothedResults.length > 0 &&
       smoothedResults[0].corners.length === 4 &&
       smoothedResults[0].confidence >= MIN_CONFIDENCE_THRESHOLD &&
-      hasQrValue && // QR KÓD KELL AZ AUTO-CAPTURE-HEZ!
-      !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS!
+      //hasQrValue && // QR KÓD KELL AZ AUTO-CAPTURE-HEZ! - KIKAPCSOLVA, QR NÉLKÜL IS FOTÓZ
+      !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS - BEKAPCSOLVA!
       !isCapturing &&
       !isCaptureAnimating &&
       !showCapturedImage &&
@@ -1236,8 +1252,8 @@ export default function App() {
               smoothedResults.length > 0 &&
               smoothedResults[0].corners.length === 4 &&
               smoothedResults[0].confidence >= MIN_CONFIDENCE_THRESHOLD &&
-              finalHasQrValue && // QR KÓD KELL!
-              !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS!
+              //finalHasQrValue && // QR KÓD KELL!
+              !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS - BEKAPCSOLVA!
               !isCapturing &&
               !isCaptureAnimating &&
               !showCapturedImage;
@@ -1802,6 +1818,13 @@ export default function App() {
                     <View style={styles.thumbnailBadge}>
                       <Text style={styles.thumbnailBadgeText}>{index + 1}</Text>
                     </View>
+                    {img.qrPosition && (
+                      <View style={styles.thumbnailQrBadge}>
+                        <Text style={styles.thumbnailQrBadgeText}>
+                          {img.qrPosition === 'left' ? 'L' : 'R'}
+                        </Text>
+                      </View>
+                    )}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -1973,6 +1996,9 @@ export default function App() {
           <TouchableOpacity
             style={styles.closeModalButton}
             onPress={() => {
+              console.log('🔄 FULL RESET - Starting fresh capture session');
+              
+              // === 1. MODAL & IMAGE STATES ===
               setShowCapturedImage(false);
               setCapturedImageUri(null);
               setStepImages([]);
@@ -1981,14 +2007,47 @@ export default function App() {
               setSelectedIcons([]);
               setSelectedIconNames([]);
               setBrightnessInfo(null);
-              setShowA4Animation(false); // A4 animáció elrejtése
-              setA4AnimationImage(null); // A4 kép törlése
+              setShowA4Animation(false);
+              setA4AnimationImage(null);
 
-              // ÚJ CAPTURE-HEZ ENGEDJÜK ÚJ QR OLVASÁST!
+              // === 2. CAPTURE STATES ===
+              setIsCapturing(false);
+              setIsCaptureAnimating(false);
+              setCaptureStatusMessage('Tarts mozdulatlanul');
+              
+              // === 3. FRAME PROCESSOR ===
+              setIsFrameProcessorActive(true);
+
+              // === 4. DETECTION STATES - CRITICAL! ===
+              setSmoothedResults([]); // Clear detection buffer!
+              setStableDetectionStatus({
+                isDetected: false,
+                consecutiveDetected: 0,
+                consecutiveNotDetected: 0,
+              });
+              setStableIsBlurry(false);
+
+              // === 5. QR STATES ===
               qrLockRef.current = null;
-              qrValueLockRef.current = null; // QR érték lock törlése
-              setCapturedQrValue(null); // QR érték törlése
-              console.log('🔓 QR unlocked - ready for new scan');
+              qrValueLockRef.current = null;
+              setCapturedQrValue(null);
+
+              // === 6. AUTO-CAPTURE STATES ===
+              if (autoCaptureTimerRef.current) {
+                clearTimeout(autoCaptureTimerRef.current);
+                autoCaptureTimerRef.current = null;
+              }
+              autoCaptureTriggeredRef.current = false;
+
+              // === 7. ANIMATION VALUES ===
+              overlayScale.setValue(1);
+              overlayTranslateY.setValue(0);
+              overlayOpacity.setValue(1);
+              a4Scale.setValue(1);
+              a4TranslateY.setValue(0);
+              a4Opacity.setValue(1);
+
+              console.log('✅ FULL RESET COMPLETE - Ready for new scan');
             }}
           >
             <Text style={styles.closeModalButtonText}>
@@ -2588,6 +2647,24 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 11,
     fontWeight: '700',
+  },
+  thumbnailQrBadge: {
+    position: 'absolute',
+    bottom: -6,
+    left: -6,
+    backgroundColor: 'rgba(59, 130, 246, 1)',
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'rgba(255, 255, 255, 0.8)',
+  },
+  thumbnailQrBadgeText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '800',
   },
   continueButton: {
     backgroundColor: 'rgba(37, 37, 68, 1)',
