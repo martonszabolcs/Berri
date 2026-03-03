@@ -409,10 +409,14 @@ const ChangeDestinationScreen = () => {
           saveTokens(tokens.accessToken, tokens.refreshToken || '');
 
         } catch (error) {
+                Alert.alert('Error', 'Failed to get tokens' + JSON.stringify(error));
+
           console.log('GOOOOOGLE error', error);
         }
       } catch (error) {
         console.log('GOOOOOGLE error', JSON.stringify(error));
+              Alert.alert('Error', 'Failed to Signin.' + JSON.stringify(error));
+
       }
 
       // const userInfo = await GoogleSignin.signIn();
@@ -464,6 +468,7 @@ const ChangeDestinationScreen = () => {
       console.log('after configure');
     } catch (error) {
       console.error('GOOGLE SIGNIN CONFIGURE ERROR', error);
+      Alert.alert('Error', 'Failed to configure Google Signin.' + JSON.stringify(error));
     }
   }, []);
 
