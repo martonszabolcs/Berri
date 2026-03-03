@@ -11,10 +11,11 @@ import {
 } from 'react-native';
 import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
 
 import { sendFilesApiService } from '../store/api/sendFilesApi';
-import { setHistory } from '../store/appSlice';
+import { setHistory, refreshUser } from '../store/appSlice';
+import { store } from '../store/index';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { processFileNameTemplate } from '../utils/saveImage';
 import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
@@ -106,6 +107,11 @@ const DestinationSelectScreen = () => {
     setIsSending(true);
 
     try {
+      // Refresh user data before sending to get latest destination settings
+      await dispatch(refreshUser());
+      // Re-read destinations from store after refresh
+      const freshDestinations = store.getState().app.destinations;
+      
       if (!filterDestinationType) {
         await saveFilesToAsyncstorage({
           files: allFilePaths,
@@ -118,7 +124,7 @@ const DestinationSelectScreen = () => {
       for (const selectedDestinationType of selectedDestinations) {
         console.log(`📤 Processing destination ${selectedDestinationType}...`);
 
-        let destinationConfig = destinations.find(dest => dest.type === selectedDestinationType);
+        let destinationConfig = freshDestinations.find((dest: any) => dest.type === selectedDestinationType);
         
         if (!destinationConfig) {
           console.log(`📧 User has no destination of type ${selectedDestinationType}, creating email destination with user email`);
@@ -155,7 +161,7 @@ const DestinationSelectScreen = () => {
         }
 
         if (finalDest.destination === 'email') {
-          console.log('📧 Sending via email to:', user.email);
+          console.log('📧 Sending via email to:', finalDest.emails);
 
           try {
             const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
@@ -249,8 +255,17 @@ const DestinationSelectScreen = () => {
       setIsSending(false);
     }
     
+    // Navigate to History tab AND reset the NewScanStack back to CameraScreen (init state)
     const parentNavigation = navigation.getParent();
     if (parentNavigation) {
+      // First reset the NewScanStack so CameraScreen starts fresh
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'CameraScreen' }],
+        })
+      );
+      // Then switch to History tab
       parentNavigation.navigate('History');
     }
   };
@@ -445,7 +460,7 @@ const DestinationSelectScreen = () => {
                   <Text style={styles.destinationText}>
                     {destination.destination === 'email' ? 'E-mail' : destination.destination}
                   </Text>
-                  <Text style={styles.destinationText}>{user.email}</Text>
+                  <Text style={styles.destinationText}>{destination.emails || user.email}</Text>
                 </View>
                 {selectedDestinations.includes(destination.type) && (
                   <Image

@@ -30,7 +30,7 @@ import {
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
 import { saveScannedDocument } from '../utils/saveImage';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useAppSelector } from '../store/hooks';
 
 interface DocumentCorner {
@@ -116,6 +116,7 @@ export default function App() {
   // === DEBUG FLAG - SZINKRONBAN A useInferenceLogic.tsx-ben lévővel ===
   const DEBUG_ON = false; // false = nincs debug kép, jobb teljesítmény!
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // === HIDE TAB BAR ON THIS SCREEN ===
@@ -1568,7 +1569,7 @@ export default function App() {
                 photo={true}
                 enableFpsGraph={false}
                 torch={torchEnabled ? 'on' : 'off'}
-                isActive={!showCapturedImage}
+                isActive={isFocused && !showCapturedImage}
                 frameProcessor={frameProcessor}
                 resizeMode="cover"
                 onLayout={event => {
@@ -2614,6 +2615,7 @@ const styles = StyleSheet.create({
   thumbnailScrollContent: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingLeft: 10,
     paddingRight: 12,
     paddingBottom: 12,
     paddingTop: 10, // Space for badge overflow
@@ -2729,7 +2731,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   galleryDeleteButton: {
-    marginTop: 30,
+    marginBottom: 30,
     backgroundColor: 'rgba(255, 82, 82, 0.9)',
     paddingHorizontal: 32,
     paddingVertical: 14,

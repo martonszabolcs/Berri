@@ -62,7 +62,7 @@ export const uploadAndSendFile = createAsyncThunk(
       
       if (!hasTypeDestination) {
         console.log(`📧 User has no destination of type ${type}, creating email destination with user email`);
-        const userEmail = state.app.user.email;
+        const userEmail = user.email;
         if (userEmail) {
           // Use the same API as ChangeDestinationScreen
           const { updateDestinationSettings } = await import('./api/userApiService');

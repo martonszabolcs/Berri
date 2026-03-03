@@ -480,7 +480,7 @@ const ChangeDestinationScreen = () => {
           />
           <View style={styles.emailContainer}>
             <Text style={styles.emailLabel}>Email</Text>
-            <Text style={styles.emailText}>{user.email}</Text>
+            <Text style={styles.emailText}>{destination?.emails || user.email}</Text>
           </View>
         </View>
 
