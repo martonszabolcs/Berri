@@ -1,0 +1,26 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: berri
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  # Mailhog disabled - using existing mailpit on ports 1025/8025
+  # mailhog:
+  #   image: mailhog/mailhog:latest
+  #   ports:
+  #     - '1025:1025' # SMTP port
+  #     - '8025:8025' # Web UI port
+  #   environment:
+  #     - MH_STORAGE=maildir
+  #   volumes:
+  #     - mailhog_data:/tmp
+
+volumes:
+  pgdata:
+  # mailhog_data:

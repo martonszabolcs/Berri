@@ -1,6 +1,7 @@
 import axios, { AxiosResponse } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Linking, Alert } from 'react-native';
+import { Linking } from 'react-native';
+import { showErrorToast } from '../../utils/toast';
 import { API_CONFIG } from '../../config';
 import { updateCloudStorageToken } from './userApiService';
 
@@ -147,7 +148,7 @@ class OneDriveApiService {
       // Check if URL can be opened
       const supported = await Linking.canOpenURL(authUrl);
       if (!supported) {
-        Alert.alert('Hiba', 'Nem sikerült megnyitni a OneDrive authentikációt');
+        showErrorToast('Authentication Error', 'Failed to open OneDrive authentication');
         return false;
       }
 

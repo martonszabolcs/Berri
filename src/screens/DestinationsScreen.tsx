@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useMemo } from 'react';
 import { View, ScrollView, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -15,15 +15,13 @@ const DestinationsScreen = () => {
   const navigation = useNavigation<DestinationsScreenNavigationProp>();
   const destinations = useAppSelector((state) => state.app.destinations);
   const user = useAppSelector((state) => state.app.user);
-  const [allDestinations, setAllDestinations] = useState<any[]>([]);
 
-  useEffect(() => {
+  const allDestinations = useMemo(() => {
     const all = [1,2,3,4,5,6,7];
-    const allDest = all.map((type) => {
+    return all.map((type) => {
       const savedDest = destinations.find((dest) => dest.type === type);
       return savedDest ? {...savedDest, saved: true} : { type, destination: "email", emails: user.email, saved: false };
     });
-    setAllDestinations(allDest);
   }, [destinations, user.email]);
 
   const openDrawer = () => {

@@ -5,7 +5,7 @@ import {
   DROPBOX_SECRET,
   ONEDRIVE_CLIENT,
 } from '../../config';
-import { store } from '../index';
+import { getStore } from '../storeRef';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { Buffer } from 'buffer';
 import { Linking, Platform } from 'react-native';
@@ -210,7 +210,7 @@ class SendFilesApiService {
     try {
       console.log('📧 Uploading multiple files to email...');
       
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');
@@ -418,14 +418,14 @@ class SendFilesApiService {
 
       if (response.data && response.data.access_token) {
         // Save new access token to settings using Redux
-        await store.dispatch(
+        await getStore().dispatch(
           saveDropboxToken({
             accessToken: response.data.access_token,
             refreshToken: refreshToken,
           }),
         );
 
-        await store.dispatch(refreshUser());
+        await getStore().dispatch(refreshUser());
 
         console.log('✅ New Dropbox access token saved to settings');
         return response.data.access_token;
@@ -601,14 +601,14 @@ class SendFilesApiService {
 
       if (response.data && response.data.access_token) {
         // Save new access token to settings using Redux
-        await store.dispatch(
+        await getStore().dispatch(
           saveOneDriveToken({
             accessToken: response.data.access_token,
             refreshToken: response.data.refresh_token || refreshToken, // Use new refresh token if provided, otherwise keep the old one
           }),
         );
 
-        await store.dispatch(refreshUser());
+        await getStore().dispatch(refreshUser());
 
         console.log('✅ New OneDrive access token saved to settings');
         return response.data.access_token;
@@ -660,6 +660,8 @@ class SendFilesApiService {
         scopes: ['https://www.googleapis.com/auth/drive.file'],
         webClientId:
           '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
+        iosClientId:
+          '827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76.apps.googleusercontent.com',
         offlineAccess: true,
         forceCodeForRefreshToken: true,
         hostedDomain: '',
@@ -667,6 +669,14 @@ class SendFilesApiService {
       });
 
       console.log('🌐 Starting Google Drive authentication...');
+
+      // Sign out first to clear any cached session with old scopes
+      try {
+        await GoogleSignin.signOut();
+        console.log('🔄 Signed out from previous session');
+      } catch (signOutError) {
+        console.log('ℹ️ No previous session to sign out from');
+      }
 
       // Check Play Services for Android
       if (Platform.OS === 'android') {
@@ -684,14 +694,14 @@ class SendFilesApiService {
       console.log('🔑 Google Drive tokens received');
 
       // Save tokens using Redux
-      await store.dispatch(
+      await getStore().dispatch(
         saveGoogleDriveToken({
           accessToken: tokens.accessToken,
           refreshToken: tokens.refreshToken || '',
         }),
       );
 
-      await store.dispatch(refreshUser());
+      await getStore().dispatch(refreshUser());
 
       console.log('✅ Google Drive tokens saved successfully');
 
@@ -785,13 +795,15 @@ class SendFilesApiService {
       console.error('Google Drive upload error:', error.message);
       if (
         error.message?.includes('401') ||
-        error.message?.includes('Unauthorized')
+        error.message?.includes('Unauthorized') ||
+        error.message?.includes('403') ||
+        error.message?.includes('insufficient')
       ) {
-        console.log('GOOGLE DRIVE EXPIRED!!!!!!');
+        console.log('GOOGLE DRIVE TOKEN EXPIRED OR INSUFFICIENT SCOPES - Re-authenticating...');
         try {
           await this.connectToGoogleDrive();
 
-          const settings = store.getState().app.settings;
+          const settings = getStore().getState().app.settings;
           console.log(
             '🔄 Retrying Google Drive upload after reconnect',
             settings.googleDriveAccessToken,
@@ -813,7 +825,7 @@ class SendFilesApiService {
           );
           try {
             await this.connectToGoogleDrive();
-            const settings = store.getState().app.settings;
+            const settings = getStore().getState().app.settings;
 
             console.log(
               '🔄🔄🔄  Retrying Google Drive upload after reconnect',
@@ -845,7 +857,7 @@ class SendFilesApiService {
     file: File | any, // Can be File object or React Native file object
   ): Promise<{ message: string; sentTo: string[] } | null> {
     try {
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');

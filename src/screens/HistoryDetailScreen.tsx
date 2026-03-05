@@ -8,12 +8,15 @@ import {
   Alert,
   AppState,
   Linking,
+  Modal,
+  Dimensions,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Dirs } from 'react-native-file-access';
 import { Layout, Text, DestinationIcon } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { showErrorToast, showSuccessToast, showInfoToast } from '../utils/toast';
 
 import { sendFilesApiService } from '../store/api/sendFilesApi';
 import {
@@ -73,6 +76,9 @@ const HistoryDetailScreen = () => {
   const [selectedDestinations, setSelectedDestinations] = useState<number[]>(
     history.destinations || (history.destination ? [history.destination] : []),
   );
+  const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
+  const screenWidth = Dimensions.get('window').width;
+  const screenHeight = Dimensions.get('window').height;
 
   const displayName = `${history.files?.[0]?.filename}`;
   const displayDate = new Date(history.timestamp).toLocaleDateString();
@@ -113,10 +119,11 @@ const HistoryDetailScreen = () => {
         onPress: async () => {
           try {
             await deleteHistoryEntry(history, currentHistory, dispatch);
+            showSuccessToast('Scan Deleted', 'The scan has been removed');
             navigation.goBack();
           } catch (error) {
             console.error('❌ Error deleting history entry:', error);
-            Alert.alert('Error', 'Failed to delete scan. Please try again.');
+            showErrorToast('Delete Failed', 'Could not delete scan. Please try again.');
           }
         },
       },
@@ -125,9 +132,9 @@ const HistoryDetailScreen = () => {
 
   const handleResend = async () => {
     if (selectedDestinations.length === 0) {
-      Alert.alert(
+      showInfoToast(
         'No Destinations',
-        'Please select at least one destination to resend to.',
+        'Please select at least one destination',
       );
       return;
     }
@@ -153,15 +160,11 @@ const HistoryDetailScreen = () => {
                 dispatch,
               );
 
-              Alert.alert('Success', 'Scan has been resent successfully!', [
-                {
-                  text: 'OK',
-                  onPress: () => navigation.goBack(),
-                },
-              ]);
+              showSuccessToast('Scan Sent!', 'Successfully resent to destination(s)');
+              setTimeout(() => navigation.goBack(), 1500);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+              showErrorToast('Resend Failed', 'Could not send scan. Please try again.');
             }
           },
         },
@@ -252,15 +255,11 @@ const HistoryDetailScreen = () => {
                 dispatch,
               );
 
-              Alert.alert('Success', 'Scan has been resent successfully!', [
-                {
-                  text: 'OK',
-                  onPress: () => navigation.goBack(),
-                },
-              ]);
+              showSuccessToast('Scan Sent!', 'Successfully resent via Dropbox');
+              setTimeout(() => navigation.goBack(), 1500);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+              showErrorToast('Resend Failed', 'Could not send scan. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save Dropbox tokens:', error);
@@ -332,15 +331,11 @@ const HistoryDetailScreen = () => {
                 dispatch,
               );
 
-              Alert.alert('Success', 'Scan has been resent successfully!', [
-                {
-                  text: 'OK',
-                  onPress: () => navigation.goBack(),
-                },
-              ]);
+              showSuccessToast('Scan Sent!', 'Successfully resent via OneDrive');
+              setTimeout(() => navigation.goBack(), 1500);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+              showErrorToast('Resend Failed', 'Could not send scan. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save OneDrive tokens:', error);
@@ -430,13 +425,20 @@ const HistoryDetailScreen = () => {
         <View style={styles.imagesContainer}>
           {history.files && history.files.length > 0 ? (
             history.files.map((file, index) => (
-              <View key={index} style={styles.imageContainer}>
-                <Image
-                  source={{ uri: getFullFilePath(file) }}
-                  style={styles.image}
-                  resizeMode="contain"
-                />
-              </View>
+              <TouchableOpacity 
+                key={index} 
+                style={styles.imageContainer}
+                onPress={() => setZoomImageUri(getFullFilePath(file))}
+                activeOpacity={0.9}
+              >
+                <View style={styles.imageWrapper}>
+                  <Image
+                    source={{ uri: getFullFilePath(file) }}
+                    style={styles.image}
+                    resizeMode="contain"
+                  />
+                </View>
+              </TouchableOpacity>
             ))
           ) : (
             <View style={styles.imageContainer}>
@@ -447,6 +449,45 @@ const HistoryDetailScreen = () => {
           )}
         </View>
       </ScrollView>
+
+      {/* Zoom Modal */}
+      <Modal
+        visible={!!zoomImageUri}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setZoomImageUri(null)}
+      >
+        <View style={styles.zoomModalContainer}>
+          <TouchableOpacity
+            style={styles.zoomCloseButton}
+            onPress={() => setZoomImageUri(null)}
+          >
+            <Text style={styles.zoomCloseText}>✕</Text>
+          </TouchableOpacity>
+          <ScrollView
+            style={styles.zoomScrollView}
+            contentContainerStyle={styles.zoomScrollContent}
+            maximumZoomScale={5}
+            minimumZoomScale={1}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            centerContent={true}
+            bouncesZoom={true}
+          >
+            {zoomImageUri && (
+              <Image
+                source={{ uri: zoomImageUri }}
+                style={{
+                  width: screenWidth,
+                  height: screenHeight * 0.8,
+                  borderRadius: 4,
+                }}
+                resizeMode="contain"
+              />
+            )}
+          </ScrollView>
+        </View>
+      </Modal>
       {/* Bottom Action Bar */}
       <View style={styles.actionBar}>
         {/* Delete Button */}
@@ -513,6 +554,16 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     marginBottom: 20,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    elevation: 16,
+  },
+  imageWrapper: {
+    borderRadius: 12,
+    overflow: 'hidden',
   },
   fileName: {
     fontSize: 14,
@@ -523,7 +574,7 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: 400,
-    borderRadius: 8,
+    borderRadius: 12,
   },
   noImageContainer: {
     justifyContent: 'center',
@@ -566,6 +617,39 @@ const styles = StyleSheet.create({
   resendIcon: {
     width: 24,
     height: 24,
+  },
+  // Zoom Modal Styles
+  zoomModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomCloseButton: {
+    position: 'absolute',
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomCloseText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: '300',
+  },
+  zoomScrollView: {
+    flex: 1,
+    width: '100%',
+  },
+  zoomScrollContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });
 

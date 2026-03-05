@@ -36,7 +36,7 @@ interface ScanDocumentResult {
   qrPosition?: 'left' | 'right' | null; // QR kód pozíciója
   brightnessInfo?: {
     avgBrightness: number;
-    lightCondition: 'Nappali' | 'Normál' | 'Éjjeli';
+    lightCondition: 'Daylight' | 'Normal' | 'Night';
     betaBoost: number;
   };
   selectedIcons?: number[];
@@ -90,7 +90,7 @@ export const scanDocument = (
     if (frameCorners.length !== 4 || processedCorners.length !== 4) {
       return {
         success: false,
-        error: 'Pontosan 4 sarok szükséges mindkét detektáláshoz',
+        error: 'Exactly 4 corners required for both detections',
       };
     }
 
@@ -281,10 +281,10 @@ export const scanDocument = (
       hasDebugImage: !!photoDetectionResult.debugImage,
     });
 
-    // === DEBUG KÉP 0.2 - Downscaled kép (720x1280) amit a detection használ ===
+    // === DEBUG IMAGE 0.2 - Downscaled image (720x1280) used for detection ===
     if (photoDetectionResult.debugImage) {
       stepImages.push({
-        label: '0.2. Downscaled kép (720x1280) - detection input',
+        label: '0.2. Downscaled image (720x1280) - detection input',
         image: photoDetectionResult.debugImage,
       });
       console.log('✅ Debug 0.3: Downscaled image saved');
@@ -360,7 +360,7 @@ export const scanDocument = (
       const debugResult = OpenCV.toJSValue(debugMat);
       if (debugResult?.base64) {
         stepImages.push({
-          label: '0.12. Photo edges (zöld=detected document)',
+          label: '0.12. Photo edges (green=detected document)',
           image: debugResult.base64,
         });
       }
@@ -401,12 +401,12 @@ export const scanDocument = (
       corners = photoDetectionResult.corners;
       cornerSource = 'photo';
     } else {
-      // Fotó detektálás sikertelen - VISSZADOBJUK A HIBÁT!
-      // NEM használhatjuk a frame sarokpontokat, mert a felhasználó mozoghatott közben!
+      // Photo detection failed - RETURNING ERROR!
+      // We cannot use frame corners because user might have moved during the shot!
       console.error('❌ Photo detection failed - ABORTING scan process');
       return {
         success: false,
-        error: 'Nem sikerült detektálni a dokumentumot a fotón. Próbáld újra!',
+        error: 'Failed to detect document in photo. Please try again!',
         stepImages: enableDebugImages ? stepImages : [],
       };
     }
@@ -518,7 +518,7 @@ export const scanDocument = (
     // Step 0: Original photo (no rotation)
     const step0Result = OpenCV.toJSValue(rotatedSrcMat);
     if (step0Result?.base64) {
-      stepImages.push({ label: '0.13. Eredeti fotó (eredeti orientáció)', image: step0Result.base64 });
+      stepImages.push({ label: '0.13. Original photo (original orientation)', image: step0Result.base64 });
     }
 
     // === BLUR DETECTION - Laplacian variance ===
@@ -580,7 +580,7 @@ export const scanDocument = (
     const step1Result = OpenCV.toJSValue(croppedMat);
     if (step1Result?.base64) {
       stepImages.push({ 
-        label: `1. Vágott kép`,
+        label: `1. Cropped image`,
         image: step1Result.base64 
       });
     }
@@ -646,7 +646,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', colorMaskDilated, colorMaskBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step1_5Result = OpenCV.toJSValue(colorMaskBGR);
     if (step1_5Result?.base64) {
-      stepImages.push({ label: '2. Színes maszk (saturation)', image: step1_5Result.base64 });
+      stepImages.push({ label: '2. Color mask (saturation)', image: step1_5Result.base64 });
     }
 
     // === GRAYSCALE CONVERSION ===
@@ -690,12 +690,12 @@ export const scanDocument = (
     const rawBeta = Math.pow(Math.max(0, 230 - avgBrightness), 1.2) * 0.2;
     const betaBoost = Math.round(Math.max(0, Math.min(80, rawBeta)));
 
-    const lightCondition: 'Nappali' | 'Normál' | 'Éjjeli' =
+    const lightCondition: 'Daylight' | 'Normal' | 'Night' =
       avgBrightness > 180
-        ? 'Nappali'
+        ? 'Daylight'
         : avgBrightness > 120
-        ? 'Normál'
-        : 'Éjjeli';
+        ? 'Normal'
+        : 'Night';
 
     console.log('💡 Brightness detection:', {
       avgBrightness: avgBrightness.toFixed(1),
@@ -784,7 +784,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', sharpenedGray, sharpenedGrayBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step3Result = OpenCV.toJSValue(sharpenedGrayBGR);
     if (step3Result?.base64) {
-      stepImages.push({ label: '4. Élesítés (sharpening)', image: step3Result.base64 });
+      stepImages.push({ label: '4. Sharpening', image: step3Result.base64 });
     }
 
     // === BLACK MASK (THRESHOLD) ===
@@ -883,7 +883,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', openedMat, openedMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step5Result = OpenCV.toJSValue(openedMatBGR);
     if (step5Result?.base64) {
-      stepImages.push({ label: '6. Zaj eltávolítás (opening)', image: step5Result.base64 });
+      stepImages.push({ label: '6. Noise removal (opening)', image: step5Result.base64 });
     }
 
     // === MORPHOLOGICAL CLOSING - Fill holes in text ===
@@ -929,7 +929,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', closedMat, closedMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step5_5Result = OpenCV.toJSValue(closedMatBGR);
     if (step5_5Result?.base64) {
-      stepImages.push({ label: '6.5. Lyukak betömése (closing)', image: step5_5Result.base64 });
+      stepImages.push({ label: '6.5. Hole filling (closing)', image: step5_5Result.base64 });
     }
 
     // === PENCIL THICKENING - Make text/writing thicker ===
@@ -979,7 +979,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', finalThickened, thickenedMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step6Result = OpenCV.toJSValue(thickenedMatBGR);
     if (step6Result?.base64) {
-      stepImages.push({ label: '7. Szöveg vastagítás (dilate)', image: step6Result.base64 });
+      stepImages.push({ label: '7. Text thickening (dilate)', image: step6Result.base64 });
     }
 
     // === MEDIAN BLUR - Remove dots/noise while preserving edges ===
@@ -1005,7 +1005,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', medianFiltered, medianMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step6_5Result = OpenCV.toJSValue(medianMatBGR);
     if (step6_5Result?.base64) {
-      stepImages.push({ label: '8. Median blur (pöttyök eltávolítás)', image: step6_5Result.base64 });
+      stepImages.push({ label: '8. Median blur (dot removal)', image: step6_5Result.base64 });
     }
 
     // === FINAL GAUSSIAN BLUR - DISABLED (median blur is enough) ===
@@ -1053,7 +1053,7 @@ export const scanDocument = (
     OpenCV.invoke('cvtColor', sharpenedFinal, sharpenedFinalBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step9Result = OpenCV.toJSValue(sharpenedFinalBGR);
     if (step9Result?.base64) {
-      stepImages.push({ label: '9. Élesítés (sharpen)', image: step9Result.base64 });
+      stepImages.push({ label: '9. Sharpening', image: step9Result.base64 });
     }
 
     // Use sharpened result as final
@@ -1312,7 +1312,7 @@ export const scanDocument = (
     if (enableDebugImages) {
       const step9_7Result = OpenCV.toJSValue(finalWithColor);
       if (step9_7Result?.base64) {
-        stepImages.push({ label: '9.7. Színek visszaállítva', image: step9_7Result.base64 });
+        stepImages.push({ label: '9.7. Colors restored', image: step9_7Result.base64 });
       }
     }
 
@@ -1378,7 +1378,7 @@ export const scanDocument = (
     // === ADD FINAL RESULT TO DEBUG IMAGES ===
     if (enableDebugImages && result.base64) {
       stepImages.push({ 
-        label: `10. Végeredmény${currentQrValue ? ` - QR: ${currentQrValue}` : ''}`, 
+        label: `10. Final Result${currentQrValue ? ` - QR: ${currentQrValue}` : ''}`, 
         image: result.base64 
       });
     }
@@ -1391,7 +1391,7 @@ export const scanDocument = (
       qrPosition: currentQrPosition, // QR kód pozíciója
       brightnessInfo: {
         avgBrightness: 128,
-        lightCondition: 'Normál',
+        lightCondition: 'Normal',
         betaBoost: 0,
       },
       selectedIcons: [],

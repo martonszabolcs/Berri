@@ -29,10 +29,10 @@ const DEBUG_IMAGE_INTERVAL = 1; // Debug kép generálási gyakoriság (ha DEBUG
 const MAX_PROCESS_DIMENSION = 4080; // Max feldolgozási felbontás (csökkentve a jobb teljesítményért)
 
 // === BLUR (HOMÁLYOSSÁG) DETEKTÁLÁS ===
-const BLUR_THRESHOLD = 1; // Laplacian variance küszöb (alacsonyabb = homályos) - 2 felett jónak számít (csökkentve gyengébb fényhez)
+const BLUR_THRESHOLD = 1.5; // Laplacian variance küszöb - 1.5 felett éles
 
 // === DOKUMENTUM MÉRET KORLÁTOK ===
-const MIN_AREA_RATIO = 0.08; // Min dokumentum terület a kép %-ában (8% - csökkentve)
+const MIN_AREA_RATIO = 0.15; // Min dokumentum terület a kép %-ában (15% - növelve, közelebb kell menni)
 const MAX_AREA_RATIO = 0.95; // Max dokumentum terület a kép %-ában (95%)
 const CROP_MARGIN_RATIO = 0.05; // Szélek margin aránya (5% - képszél elutasítás)
 
@@ -353,11 +353,11 @@ const validateDocumentPerspective = (
   const leftRightRatio = Math.max(leftSide, rightSide) / Math.min(leftSide, rightSide);
   
   if (topBottomRatio > 1.35) {
-    // Felső él >35%-kal rövidebb = túl ferde
-    perspectiveWarning = 'Vidd szembe a kamerát a lappal!';
+    // Top edge >35% shorter = too skewed
+    perspectiveWarning = 'Align your camera with the document!';
   } else if (leftRightRatio > 1.35) {
-    // Oldalak nagyon eltérőek = oldalról nézzük
-    perspectiveWarning = 'Vidd szembe a kamerát a lappal!';
+    // Sides very different = viewing from side
+    perspectiveWarning = 'Align your camera with the document!';
   }
 
   // SOKKAL ENGEDÉKENYEBB - perspective esetén a ratio nagyon eltérhet

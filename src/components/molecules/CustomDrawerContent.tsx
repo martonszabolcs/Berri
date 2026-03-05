@@ -6,6 +6,7 @@ import {
   Image,
   Linking,
 } from 'react-native';
+import { CommonActions } from '@react-navigation/native';
 import { Text, AvatarIcon } from '../';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { logoutUser } from '../../store/appSlice';
@@ -22,10 +23,13 @@ const CustomDrawerContent = ({ navigation }: CustomDrawerContentProps) => {
   const handleLogout = async () => {
     try {
       await dispatch(logoutUser());
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'LaunchScreen' }],
-      });
+      // Use CommonActions.reset to reset the root navigator
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'AuthScreen' }],
+        })
+      );
     } catch (error) {
       console.error('Logout error:', error);
     }

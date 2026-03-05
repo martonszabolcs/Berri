@@ -32,6 +32,7 @@ import {
 import { setHistory } from '../store/appSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
+import { showErrorToast, showSuccessToast, showInfoToast } from '../utils/toast';
 
 const HistorySelectScreen = () => {
   const navigation = useNavigation();
@@ -113,7 +114,7 @@ const HistorySelectScreen = () => {
       .filter(Boolean);
 
     if (getAllHistories.length === 0) {
-      Alert.alert('Error', 'No items selected for deletion');
+      showErrorToast('No Selection', 'Please select items to delete');
       return;
     }
 
@@ -146,21 +147,21 @@ const HistorySelectScreen = () => {
 
               // Show success message
               if (result.failureCount === 0) {
-                Alert.alert(
-                  'Success',
-                  `Successfully deleted ${result.successCount} item(s).`,
+                showSuccessToast(
+                  'Items Deleted',
+                  `Successfully removed ${result.successCount} item(s)`,
                 );
               } else {
-                Alert.alert(
-                  'Partial Success',
-                  `Deleted ${result.successCount} item(s). ${result.failureCount} item(s) failed to delete.`,
+                showErrorToast(
+                  'Partial Delete',
+                  `${result.successCount} deleted, ${result.failureCount} failed`,
                 );
               }
             } catch (error) {
               console.error('❌ Error during bulk deletion:', error);
-              Alert.alert(
-                'Error',
-                'Failed to delete some items. Please try again.',
+              showErrorToast(
+                'Delete Failed',
+                'Could not delete some items. Please try again.',
               );
             }
           },
@@ -184,12 +185,12 @@ const HistorySelectScreen = () => {
       .filter(Boolean);
 
     if (getAllHistories.length === 0) {
-      Alert.alert('Error', 'No items selected for merging');
+      showErrorToast('No Selection', 'Please select items to merge');
       return;
     }
 
     if (getAllHistories.length === 1) {
-      Alert.alert('Info', 'Please select 2 or more items to merge');
+      showInfoToast('Select More', 'Please select 2 or more items to merge');
       return;
     }
 
@@ -209,7 +210,7 @@ const HistorySelectScreen = () => {
       console.log(`📁 Collected ${allFiles.length} files for merging`);
 
       if (allFiles.length === 0) {
-        Alert.alert('Error', 'No files found to merge');
+        showErrorToast('No Files', 'No files found to merge');
         return;
       }
 
@@ -254,13 +255,13 @@ const HistorySelectScreen = () => {
 
       setSelectedCards([]);
 
-      Alert.alert(
+      showSuccessToast(
         'Merge Complete',
-        `Successfully merged ${getAllHistories.length} items into 1 history entry with ${allFiles.length} files.`,
+        `Merged ${getAllHistories.length} items into 1 entry`,
       );
     } catch (error) {
       console.error('❌ Error during merge operation:', error);
-      Alert.alert('Error', 'Failed to merge items. Please try again.');
+      showErrorToast('Merge Failed', 'Could not merge items. Please try again.');
     }
   };
 
@@ -279,7 +280,7 @@ const HistorySelectScreen = () => {
       .filter(Boolean);
 
     if (getAllHistories.length === 0) {
-      Alert.alert('Error', 'No items selected for sharing');
+      showErrorToast('No Selection', 'Please select items to share');
       return;
     }
 
@@ -305,7 +306,7 @@ const HistorySelectScreen = () => {
       );
 
       if (allFiles.length === 0) {
-        Alert.alert('Error', 'No files found to share');
+        showErrorToast('No Files', 'No files found to share');
         return;
       }
 
@@ -360,7 +361,7 @@ const HistorySelectScreen = () => {
       setSelectedCards([]);
     } catch (error) {
       console.error('❌ Error sharing files:', error);
-      Alert.alert('Error', 'Failed to share files. Please try again.');
+      showErrorToast('Share Failed', 'Could not share files. Please try again.');
     }
   };
 
@@ -479,7 +480,7 @@ const HistorySelectScreen = () => {
       if (getAllHistories.length === 0) {
         console.warn('⚠️ No valid history items to resend');
         setIsBulkResending(false);
-        Alert.alert('Error', 'No valid items selected for resend');
+        showErrorToast('No Selection', 'Please select valid items to resend');
         return;
       }
 
@@ -555,26 +556,17 @@ const HistorySelectScreen = () => {
       // All done successfully
       setIsBulkResending(false);
 
-      Alert.alert(
-        'Bulk Resend Complete',
-        `Successfully resent ${successCount} files.${
-          failureCount > 0 ? ` ${failureCount} failed.` : ''
-        }`,
-        [
-          {
-            text: 'OK',
-            onPress: () => {
-              setSelectedCards([]);
-            },
-          },
-        ],
+      showSuccessToast(
+        'Resend Complete',
+        `Sent ${successCount} files${failureCount > 0 ? `, ${failureCount} failed` : ''}`,
       );
+      setSelectedCards([]);
     } catch (error) {
       console.error('❌ Critical error during bulk resend:', error);
       setIsBulkResending(false);
-      Alert.alert(
-        'Error',
-        'Failed to complete bulk resend operation. Please try again.',
+      showErrorToast(
+        'Resend Failed',
+        'Could not complete resend. Please try again.',
       );
     }
   };
@@ -663,20 +655,11 @@ const HistorySelectScreen = () => {
               );
               await resumeBulkResendWithFreshTokens('dropbox', updatedSettings);
 
-              Alert.alert('Success', 'Files have been resent successfully!', [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    setSelectedCards([]);
-                  },
-                },
-              ]);
+              showSuccessToast('Files Resent', 'Files have been resent to Dropbox successfully!');
+              setSelectedCards([]);
             } catch (error) {
               console.error('❌ Error resuming bulk resend:', error);
-              Alert.alert(
-                'Error',
-                'Failed to resume sending files. Please try again.',
-              );
+              showErrorToast('Resend Failed', 'Failed to resume sending files. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save Dropbox tokens:', error);
@@ -747,20 +730,11 @@ const HistorySelectScreen = () => {
                 updatedSettings,
               );
 
-              Alert.alert('Success', 'Files have been resent successfully!', [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    setSelectedCards([]);
-                  },
-                },
-              ]);
+              showSuccessToast('Files Resent', 'Files have been resent to OneDrive successfully!');
+              setSelectedCards([]);
             } catch (error) {
               console.error('❌ Error resuming bulk resend:', error);
-              Alert.alert(
-                'Error',
-                'Failed to resume sending files. Please try again.',
-              );
+              showErrorToast('Resend Failed', 'Failed to resume sending files. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save OneDrive tokens:', error);

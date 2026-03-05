@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, ScrollView, TouchableOpacity, Alert, TextInput } from 'react-native';
+import { View, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { Layout, Button, Text } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { updateUserSettings } from '../store/api/userApiService';
 import { useNavigation } from '@react-navigation/native';
 import { refreshUser } from '../store/appSlice';
+import { showSuccessToast, showErrorToast } from '../utils/toast';
 
 type TemplateOption = {
   id: string;
@@ -186,30 +187,15 @@ const FileNamingScreen = () => {
         await dispatch(refreshUser());
         console.log('✅ User data refreshed after fileNaming save');
         
-        Alert.alert(
-          'Template Saved',
-'',          [
-            { 
-              text: 'OK', 
-              onPress: () => navigation.goBack() 
-            }
-          ]
-        );
+        showSuccessToast('Template Saved', 'Your file naming template has been saved');
+        navigation.goBack();
       } else {
         console.error('❌ Failed to save fileNaming template');
-        Alert.alert(
-          'Error',
-          'Failed to save template. Please try again.',
-          [{ text: 'OK' }]
-        );
+        showErrorToast('Save Failed', 'Failed to save template. Please try again.');
       }
     } catch (error) {
       console.error('❌ Error saving fileNaming template:', error);
-      Alert.alert(
-        'Error',
-        'An error occurred while saving the template.',
-        [{ text: 'OK' }]
-      );
+      showErrorToast('Save Failed', 'An error occurred while saving the template.');
     }
   };
 

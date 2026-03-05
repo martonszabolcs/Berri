@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, StyleSheet, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Layout, TextInput, Button, Text, LiText } from '../components';
 import { useAppDispatch } from '../store/hooks';
 import { updatePassword } from '../store/appSlice';
+import { showSuccessToast, showErrorToast } from '../utils/toast';
 
 const UpdatePasswordScreen = () => {
   const [newPassword, setNewPassword] = useState('');
@@ -14,12 +15,12 @@ const UpdatePasswordScreen = () => {
 
   const handleUpdatePassword = async () => {
     if (!newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields!');
+      showErrorToast('Missing Fields', 'Please fill in all fields');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match!');
+      showErrorToast('Password Mismatch', 'Passwords do not match');
       return;
     }
 
@@ -30,9 +31,9 @@ const UpdatePasswordScreen = () => {
       newPassword.search(/[0-9]/) === -1 ||
       newPassword.search(/[^A-Za-z0-9]/) === -1
     ) {
-      Alert.alert(
-        'Hiba',
-        'Password must contain at least 8 characters, one lowercase letter, one uppercase letter, one number, and one special character',
+      showErrorToast(
+        'Weak Password',
+        'Password must contain at least 8 characters, one lowercase, one uppercase, one number, and one special character',
       );
       return;
     }
@@ -45,21 +46,17 @@ const UpdatePasswordScreen = () => {
 
       if (updatePassword.fulfilled.match(result)) {
         console.log('✅ UpdatePasswordScreen: Update password successful');
-        Alert.alert('Success', 'Your password has been updated successfully!', [
-          {
-            text: 'OK',
-            onPress: () => navigation.goBack(),
-          },
-        ]);
+        showSuccessToast('Password Updated', 'Your password has been updated successfully!');
+        navigation.goBack();
       } else {
         console.error(
           '❌ UpdatePasswordScreen: Update password failed',
           result.error,
         );
-        Alert.alert(
-          'Error',
+        showErrorToast(
+          'Update Failed',
           result.error.message ||
-            'Something went wrong while updating your password!',
+            'Something went wrong while updating your password',
         );
       }
     } catch (error) {
@@ -67,9 +64,9 @@ const UpdatePasswordScreen = () => {
         '❌ UpdatePasswordScreen: Update password exception',
         error,
       );
-      Alert.alert(
-        'Error',
-        'Something went wrong while updating your password!',
+      showErrorToast(
+        'Update Failed',
+        'Something went wrong while updating your password',
       );
     } finally {
       setIsLoading(false);

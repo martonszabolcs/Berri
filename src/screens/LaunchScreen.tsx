@@ -20,16 +20,16 @@ type LaunchScreenNavigationProp = StackNavigationProp<
 const LaunchScreen = () => {
   const navigation = useNavigation<LaunchScreenNavigationProp>();
   const dispatch = useAppDispatch();
-  const { isAuthenticated, token } = useAppSelector((state) => state.app);
 
   const initializeApp = useCallback(async () => {
     try {
       // Initialize auth state from AsyncStorage using Redux thunk
-      await dispatch(initializeAuth());
+      const result = await dispatch(initializeAuth()).unwrap();
       
       // Add a small delay for better UX, then check authentication
       setTimeout(() => {
-        if (isAuthenticated && token) {
+        // Check the actual result from initializeAuth, not stale state
+        if (result && result.token) {
           navigation.replace('MainTabs');
         } else {
           navigation.replace('AuthScreen');
@@ -42,7 +42,7 @@ const LaunchScreen = () => {
         navigation.replace('AuthScreen');
       }, 1500);
     }
-  }, [navigation, dispatch, isAuthenticated, token]);
+  }, [navigation, dispatch]);
 
   useEffect(() => {
     initializeApp();

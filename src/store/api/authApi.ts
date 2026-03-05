@@ -1,5 +1,5 @@
 import axios, { AxiosResponse } from 'axios';
-import { store } from '../index';
+import { getStore } from '../storeRef';
 import { logoutUser, setError } from '../appSlice';
 import { API_CONFIG } from '../../config';
 
@@ -100,7 +100,7 @@ apiClient.interceptors.request.use(
   async (config) => {
     // Only add token from store if Authorization header is not already set
     if (!config.headers.Authorization) {
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (token) {
         config.headers.Authorization = `Bearer ${token}`;
@@ -136,7 +136,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('❌ authApi: login error', error);
-      store.dispatch(setError('Login failed'));
+      getStore().dispatch(setError('Login failed'));
       throw error;
     }
   },
@@ -146,9 +146,11 @@ export const authApi = {
     try {
       const response: AxiosResponse<RegisterResponse> = await apiClient.post('/auth/register', userData);
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Register error:', error);
-      store.dispatch(setError('Registration failed'));
+      console.error('Register error response:', error.response?.data);
+      const errorMessage = error.response?.data?.message || 'Registration failed';
+      getStore().dispatch(setError(errorMessage));
       throw error;
     }
   },
@@ -160,7 +162,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Forgot password error:', error);
-      store.dispatch(setError('Password reset request failed'));
+      getStore().dispatch(setError('Password reset request failed'));
       throw error;
     }
   },
@@ -172,7 +174,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Reset password error:', error);
-      store.dispatch(setError('Password reset failed'));
+      getStore().dispatch(setError('Password reset failed'));
       throw error;
     }
   },
@@ -184,7 +186,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Verify email error:', error);
-      store.dispatch(setError('Email verification failed'));
+      getStore().dispatch(setError('Email verification failed'));
       throw error;
     }
   },
@@ -196,7 +198,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Google login error:', error);
-      store.dispatch(setError('Google login failed'));
+      getStore().dispatch(setError('Google login failed'));
       throw error;
     }
   },
@@ -207,7 +209,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Facebook login error:', error);
-      store.dispatch(setError('Facebook login failed'));
+      getStore().dispatch(setError('Facebook login failed'));
       throw error;
     }
   },
@@ -218,7 +220,7 @@ export const authApi = {
       return response.data;
     } catch (error) {
       console.error('Apple login error:', error);
-      store.dispatch(setError('Apple login failed'));
+      getStore().dispatch(setError('Apple login failed'));
       throw error;
     }
   },
@@ -254,7 +256,7 @@ export const authApi = {
   logout: async (): Promise<void> => {
     try {
       // Use Redux thunk to handle logout
-      await store.dispatch(logoutUser());
+      await getStore().dispatch(logoutUser());
     } catch (error) {
       console.error('Logout error:', error);
       throw error;

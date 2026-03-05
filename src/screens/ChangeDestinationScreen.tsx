@@ -5,11 +5,11 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  Alert,
   AppState,
   Linking,
   Platform,
 } from 'react-native';
+import { showErrorToast } from '../utils/toast';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { Layout, Button, Text } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
@@ -380,7 +380,7 @@ const ChangeDestinationScreen = () => {
       GoogleSignin.configure({
         scopes: ['https://www.googleapis.com/auth/drive.file'],
         iosClientId:
-          '571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko.apps.googleusercontent.com',
+          '827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76.apps.googleusercontent.com',
       });
       const userInfo = await GoogleSignin.signIn();
       const tokens = await GoogleSignin.getTokens();
@@ -409,13 +409,12 @@ const ChangeDestinationScreen = () => {
           saveTokens(tokens.accessToken, tokens.refreshToken || '');
 
         } catch (error) {
-                Alert.alert('Error', 'Failed to get tokens' + JSON.stringify(error));
-
+          showErrorToast('Token Error', 'Failed to get Google Drive tokens. Please try again.');
           console.log('GOOOOOGLE error', error);
         }
       } catch (error) {
         console.log('GOOOOOGLE error', JSON.stringify(error));
-              Alert.alert('Error', 'Failed to Signin.' + JSON.stringify(error));
+        showErrorToast('Sign In Failed', 'Failed to sign in with Google. Please try again.');
 
       }
 
@@ -468,7 +467,7 @@ const ChangeDestinationScreen = () => {
       console.log('after configure');
     } catch (error) {
       console.error('GOOGLE SIGNIN CONFIGURE ERROR', error);
-      Alert.alert('Error', 'Failed to configure Google Signin.' + JSON.stringify(error));
+      showErrorToast('Configuration Error', 'Failed to configure Google Sign-in. Please restart the app.');
     }
   }, []);
 

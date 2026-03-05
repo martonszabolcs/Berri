@@ -1,13 +1,13 @@
 import axios from 'axios';
 import { API_CONFIG } from '../../config';
-import { store } from '../index';
+import { getStore } from '../storeRef';
 
 // Helper service for user-related API calls
 class UserApiService {
   // Get current user ID
   async getCurrentUserId(): Promise<number | null> {
     try {
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');
@@ -37,7 +37,7 @@ class UserApiService {
         throw new Error('Could not get current user ID');
       }
 
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');
@@ -92,7 +92,7 @@ class UserApiService {
   // Update user settings using the dedicated /settings endpoint
   async updateUserSettings(updateData: any): Promise<boolean> {
     try {
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');
@@ -146,7 +146,7 @@ class UserApiService {
         throw new Error('Could not get current user ID');
       }
 
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');
@@ -198,7 +198,7 @@ class UserApiService {
     }
   ): Promise<boolean> {
     try {
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');
@@ -270,7 +270,7 @@ class UserApiService {
         throw new Error('Could not get current user ID');
       }
 
-      const state = store.getState();
+      const state = getStore().getState();
       const token = state.app.token;
       if (!token) {
         throw new Error('No auth token found in Redux store');

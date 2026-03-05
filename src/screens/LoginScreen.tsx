@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
 import { useAppDispatch } from '../store/hooks';
 import { loginUser } from '../store/appSlice';
+import { showErrorToast, showSuccessToast } from '../utils/toast';
 import React from 'react';
 
 type RootStackParamList = {
@@ -31,7 +32,7 @@ const LoginScreen = () => {
     console.log('🚀 LoginScreen: handleLogin started', { email });
     
     if (!email || !password) {
-      Alert.alert('Hiba', 'Kérlek töltsd ki az összes mezőt!');
+      showErrorToast('Missing Fields', 'Please fill in all fields');
       return;
     }
 
@@ -46,15 +47,16 @@ const LoginScreen = () => {
 
       if (loginUser.fulfilled.match(result)) {
         console.log('✅ LoginScreen: Login successful, navigating to MainTabs');
+        showSuccessToast('Welcome back!', 'Login successful');
         // Navigate to main tabs on success
         navigation.replace('MainTabs');
       } else {
         console.error('❌ LoginScreen: Login failed', result.error);
-        Alert.alert('Error', result.error.message || 'Login error');
+        showErrorToast('Login Failed', result.error.message || 'Invalid email or password');
       }
     } catch (error: any) {
       console.error('❌ LoginScreen: Login exception', error);
-      Alert.alert('Error', 'Login error');
+      showErrorToast('Login Failed', 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }

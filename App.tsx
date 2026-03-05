@@ -4,7 +4,8 @@ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { Provider } from 'react-redux';
 import { store } from './src/store';
 import Navigation from './src/navigation';
-// import { generateTestImage, generateColorfulTestImage, generateTestPDF, getGeneratedFileHistory } from './src/utils/testImageGenerator';
+import Toast from 'react-native-toast-message';
+import { toastConfig } from './src/utils/toast';
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark';
@@ -78,6 +79,7 @@ function App() {
           <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
           <Navigation />
         </SafeAreaView>
+        <Toast config={toastConfig} />
       </SafeAreaProvider>
     </Provider>
   );

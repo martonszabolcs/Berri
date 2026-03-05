@@ -26,6 +26,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Vibration,
 } from 'react-native';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
@@ -39,61 +40,61 @@ interface DocumentCorner {
 }
 
 // === DETECTION THRESHOLDS ===
-const MIN_CONFIDENCE_THRESHOLD = 0.9; // Minimum confidence for auto-capture and "detected" state
+const MIN_CONFIDENCE_THRESHOLD = 0.95; // Minimum confidence for auto-capture and "detected" state (növelve)
 
-// === UI SZÖVEGEK - KÖZPONTI KONFIGURÁCIÓ ===
-// Minden felhasználónak megjelenő szöveget itt definiálunk egy helyen
-// Ez megkönnyíti a későbbi szövegmódosításokat és fordítást
+// === UI TEXTS - CENTRALIZED CONFIGURATION ===
+// All user-facing text is defined here in one place
+// This makes future text changes and translations easier
 const UI_MESSAGES = {
-  // Keresés / Nincs detektálás
-  SEARCHING: 'Keresd a BERRĪ keretét',
+  // Searching / No detection
+  SEARCHING: 'Look for the BERRĪ frame',
   SEARCHING_INSTRUCTION:
-    'Tedd a füzetet jól látható helyre, jó megvilágításban',
+    'Place the notebook in a well-lit, visible area',
 
-  // Részben látható (alacsony confidence)
-  PARTIALLY_VISIBLE: (_confidence: number) => `BERRĪ részben látható`,
-  PARTIALLY_INSTRUCTION: 'Próbáld beállítani a szöget',
+  // Partially visible (low confidence)
+  PARTIALLY_VISIBLE: (_confidence: number) => `BERRĪ partially visible`,
+  PARTIALLY_INSTRUCTION: 'Try adjusting the angle',
 
-  // Keresés folyamatban
-  SEARCHING_PROGRESS: (_confidence: number) => `Keresés...`,
-  SEARCHING_PROGRESS_INSTRUCTION: 'Mozgasd a kamerát a BERRĪ fölé',
+  // Search in progress
+  SEARCHING_PROGRESS: (_confidence: number) => `Searching...`,
+  SEARCHING_PROGRESS_INSTRUCTION: 'Move the camera over BERRĪ',
 
-  // Menj közelebb
-  MOVE_CLOSER: (_confidence: number) => `Menj közelebb`,
-  MOVE_CLOSER_INSTRUCTION: 'Menj közelebb a BERRĪ-hez',
+  // Move closer
+  MOVE_CLOSER: (_confidence: number) => `Move closer`,
+  MOVE_CLOSER_INSTRUCTION: 'Move closer to BERRĪ',
 
-  // Észlelve - QR kód nélkül
-  DETECTED: (_confidence: number) => `BERRĪ észlelve!`,
-  DETECTED_INSTRUCTION: 'Vidd közelebb a BERRĪ-hez',
+  // Detected - without QR code
+  DETECTED: (_confidence: number) => `BERRĪ detected!`,
+  DETECTED_INSTRUCTION: 'Move closer to BERRĪ',
 
-  // Észlelve - QR kóddal (automatikus fotózás)
-  DETECTED_WITH_QR: (_confidence: number) => `BERRĪ észlelve!`,
-  DETECTED_WITH_QR_INSTRUCTION: 'Tartsd stabilan - Automatikus fotózás...',
+  // Detected - with QR code (auto capture)
+  DETECTED_WITH_QR: (_confidence: number) => `BERRĪ detected!`,
+  DETECTED_WITH_QR_INSTRUCTION: 'Hold steady - Auto capturing...',
 
-  // Figyelmeztetés - téglalap alakja rossz
-  RECTANGLE_WARNING: '  Tartsd szemben a füzettel!',
+  // Warning - rectangle shape is bad
+  RECTANGLE_WARNING: '  Keep the camera straight!',
 
-  // Figyelmeztetés - homályos kép
-  BLUR_WARNING: '  Homályos a kép!',
+  // Warning - blurry image
+  BLUR_WARNING: '  Image is blurry!',
 
-  // Figyelmeztetés - túl ferde szög (perspektíva)
-  PERSPECTIVE_WARNING: '  Vidd szembe a kamerát!',
+  // Warning - too steep angle (perspective)
+  PERSPECTIVE_WARNING: '  Face the camera straight!',
 
-  // Kamera engedély
+  // Camera permission
   PERMISSION_NEEDED:
-    'Kamera engedély szükséges a folytatáshoz. Kérlek, engedélyezd a kamerát a beállításokban.',
-  PERMISSION_BUTTON: 'Kamera engedély kérése',
+    'Camera permission is required to continue. Please enable camera access in settings.',
+  PERMISSION_BUTTON: 'Request Camera Permission',
 
-  // Gombok
-  BUTTON_DEBUG_IMAGE: 'Debug mód',
-  BUTTON_LIVE_VIEW: 'Élő kép',
-  BUTTON_CAPTURE: 'Fotó',
-  BUTTON_SHARE: 'Megosztás',
-  BUTTON_CLOSE: '✕ Bezár',
+  // Buttons
+  BUTTON_DEBUG_IMAGE: 'Debug mode',
+  BUTTON_LIVE_VIEW: 'Live view',
+  BUTTON_CAPTURE: 'Capture',
+  BUTTON_SHARE: 'Share',
+  BUTTON_CLOSE: '✕ Close',
 
   // Debug info
   DEBUG_BRIGHTNESS: (brightness: number | null, seekerInfo: string | null) =>
-    `Fényerő: ${brightness !== null ? Math.round(brightness) : '?'} | ${
+    `Brightness: ${brightness !== null ? Math.round(brightness) : '?'} | ${
       seekerInfo || 'Loading...'
     }`,
 } as const;
@@ -143,12 +144,12 @@ export default function App() {
     }, [navigation])
   );
 
-  // Default DetectionResult - inicializálás lag elkerülésére
+  // Default DetectionResult - initialization to avoid lag
   const defaultDetectionResult: DetectionResult = {
     corners: [],
     confidence: 0,
     brightness: 0,
-    seekerInfo: 'Kezdés...',
+    seekerInfo: 'Starting...',
     qrInfo: undefined,
     qrPosition: null,
     qrBounds: null,
@@ -222,7 +223,7 @@ export default function App() {
   const [torchEnabled, setTorchEnabled] = useState(false);
   const [isCapturing, setIsCapturing] = useState(false);
   const [captureStatusMessage, setCaptureStatusMessage] = useState(
-    'Tarts mozdulatlanul',
+    'Hold still',
   );
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
   const [capturedQrValue, setCapturedQrValue] = useState<string | null>(null); // QR kód érték a végeredményhez
@@ -367,7 +368,7 @@ export default function App() {
   const checkRectangleShape = useCallback(
     (corners: DocumentCorner[]): { isGood: boolean; message: string } => {
       if (corners.length !== 4) {
-        return { isGood: false, message: 'Shape:⚠️ Nincs 4 sarok' };
+        return { isGood: false, message: 'Shape:⚠️ Not 4 corners' };
       }
 
       const dist = (p1: DocumentCorner, p2: DocumentCorner) =>
@@ -400,7 +401,7 @@ export default function App() {
       if (minCornerDistance < minAllowedDistance) {
         return {
           isGood: false,
-          message: `Shape:⚠️ Sarok behajtva vagy túl közel`,
+          message: `Shape:⚠️ Corner folded or too close`,
         };
       }
 
@@ -410,7 +411,7 @@ export default function App() {
       if (diagonalRatio > 1.3) {
         return {
           isGood: false,
-          message: `Shape:⚠️ Átlók aránya rossz (${diagonalRatio.toFixed(2)})`,
+          message: `Shape:⚠️ Bad diagonal ratio (${diagonalRatio.toFixed(2)})`,
         };
       }
 
@@ -427,19 +428,19 @@ export default function App() {
       if (sidesGood && isUpright) {
         return {
           isGood: true,
-          message: `Shape:✓ Álló téglalap (${aspectRatio.toFixed(2)})`,
+          message: `Shape:✓ Upright rectangle (${aspectRatio.toFixed(2)})`,
         };
       } else if (sidesGood) {
         return {
           isGood: false,
-          message: `Shape:⚠️ Téglalap de nem jó szög (${aspectRatio.toFixed(
+          message: `Shape:⚠️ Rectangle but wrong angle (${aspectRatio.toFixed(
             2,
           )})`,
         };
       }
       return {
         isGood: false,
-        message: `Shape:⚠️ Nem téglalap (H:${horizontalRatio.toFixed(
+        message: `Shape:⚠️ Not a rectangle (H:${horizontalRatio.toFixed(
           1,
         )}, V:${verticalRatio.toFixed(1)})`,
       };
@@ -715,12 +716,12 @@ export default function App() {
       setIsCapturing(true);
       setIsCaptureAnimating(true);
       setIsFrameProcessorActive(false);
-      setCaptureStatusMessage('Tarts mozdulatlanul');
+      setCaptureStatusMessage('Hold still');
 
       // === TÖBBSZÖRI FOTÓZÁS BLUR ÉS DETECTION MIATT ===
-      // Maximum 3 fotót próbálunk, amíg nem lesz éles ÉS sikeres corner detection
-      const MAX_PHOTO_ATTEMPTS = 3;
-      const BLUR_THRESHOLD = 2; // Laplacian variance küszöb - 2 felett éles
+      // Maximum 5 fotót próbálunk, amíg nem lesz éles ÉS sikeres corner detection
+      const MAX_PHOTO_ATTEMPTS = 5;
+      const BLUR_THRESHOLD = 1; // Laplacian variance küszöb - 2.5 felett éles
 
       let photoBase64 = '';
       let photoSize = { width: 0, height: 0 };
@@ -735,7 +736,7 @@ export default function App() {
         console.log(
           `📸 Photo attempt ${photoAttempt}/${MAX_PHOTO_ATTEMPTS}...`,
         );
-        setCaptureStatusMessage('Tarts mozdulatlanul');
+        setCaptureStatusMessage('Hold still');
 
         // Fotó készítése
         const photo = await camera.current.takePhoto({
@@ -748,156 +749,13 @@ export default function App() {
         photoSize = { width: photo.width, height: photo.height };
         // Fotó méretének lekérdezése
 
-        // === BLUR ELLENŐRZÉS ===
-        console.log('🔍 Checking photo blur...');
-        setCaptureStatusMessage('Élesség ellenőrzése...');
+        // === ELŐSZÖR KIVÁGÁS, AZTÁN BLUR ELLENŐRZÉS ===
+        // A blur-t a kivágott dokumentumon ellenőrizzük, nem az eredeti fotón
+        console.log('🔍 Attempting corner detection and crop...');
+        setCaptureStatusMessage('Cropping document...');
 
         // Várunk egy kicsit hogy látható legyen az üzenet
-        await new Promise<void>(resolve => setTimeout(resolve, 300));
-
-        let checkMat = OpenCV.base64ToMat(photoBase64);
-
-        // PORTRAIT MODE ENFORCEMENT - Ha landscape, forgassuk el a blur check előtt is!
-        let blurCheckWidth = photoSize.width || 0;
-        let blurCheckHeight = photoSize.height || 0;
-
-        if (blurCheckWidth > blurCheckHeight) {
-          console.log(
-            `🔄 Photo is LANDSCAPE (${blurCheckWidth}x${blurCheckHeight}) - rotating for blur check`,
-          );
-          const tempRotated = OpenCV.createObject(
-            ObjectType.Mat,
-            blurCheckWidth,
-            blurCheckHeight,
-            DataTypes.CV_8UC3,
-          );
-          OpenCV.invoke('rotate', checkMat, tempRotated, 0); // 0 = ROTATE_90_CLOCKWISE
-          checkMat = OpenCV.invoke('clone', tempRotated);
-
-          // Swap dimensions after rotation
-          const temp = blurCheckWidth;
-          blurCheckWidth = blurCheckHeight;
-          blurCheckHeight = temp;
-
-          console.log(
-            `✅ After rotation for blur check: ${blurCheckWidth}x${blurCheckHeight}`,
-          );
-        }
-
-        console.log(
-          `📸 Photo dimensions for blur check: ${blurCheckWidth}x${blurCheckHeight}`,
-        );
-
-        const grayCheckMat = OpenCV.createObject(
-          ObjectType.Mat,
-          blurCheckHeight,
-          blurCheckWidth,
-          DataTypes.CV_8UC1,
-        );
-        OpenCV.invoke('cvtColor', checkMat, grayCheckMat, 6, 0);
-
-        // Crop to center 60% to focus on document area (avoid edges)
-        const centerCropX = Math.round(blurCheckWidth * 0.2);
-        const centerCropY = Math.round(blurCheckHeight * 0.2);
-        const centerCropWidth = Math.round(blurCheckWidth * 0.6);
-        const centerCropHeight = Math.round(blurCheckHeight * 0.6);
-
-        console.log(
-          `📐 Blur check region: x=${centerCropX}, y=${centerCropY}, w=${centerCropWidth}, h=${centerCropHeight}`,
-        );
-
-        const centerRect = OpenCV.createObject(
-          ObjectType.Rect,
-          centerCropX,
-          centerCropY,
-          centerCropWidth,
-          centerCropHeight,
-        );
-
-        const centerMat = OpenCV.createObject(
-          ObjectType.Mat,
-          centerCropHeight,
-          centerCropWidth,
-          DataTypes.CV_8UC1,
-        );
-        OpenCV.invoke('crop', grayCheckMat, centerMat, centerRect);
-
-        const laplacianMat = OpenCV.createObject(
-          ObjectType.Mat,
-          centerCropHeight,
-          centerCropWidth,
-          DataTypes.CV_64F,
-        );
-        OpenCV.invoke(
-          'Laplacian',
-          centerMat,
-          laplacianMat,
-          DataTypes.CV_64F,
-          1,
-          1,
-          0,
-          4,
-        );
-
-        const absLaplacian = OpenCV.createObject(
-          ObjectType.Mat,
-          centerCropHeight,
-          centerCropWidth,
-          DataTypes.CV_8UC1,
-        );
-        OpenCV.invoke('convertScaleAbs', laplacianMat, absLaplacian, 1, 0);
-
-        const varianceScalar = OpenCV.invoke('mean', absLaplacian);
-        const varianceData = OpenCV.toJSValue(varianceScalar);
-        finalBlurScore = varianceData.a || 0;
-
-        console.log(
-          `📊 Photo ${photoAttempt} blur (center 60%):`,
-          finalBlurScore.toFixed(2),
-        );
-        setCaptureStatusMessage(`Élesség: ${finalBlurScore.toFixed(1)}`);
-
-        // Várunk egy kicsit hogy látható legyen az üzenet
-        await new Promise<void>(resolve => setTimeout(resolve, 300));
-
-        // ELŐSZÖR ellenőrizzük a blur-t - ha homályos, NE indítsuk el a scan-t!
-        const isBlurry = finalBlurScore < BLUR_THRESHOLD;
-
-        if (isBlurry) {
-          console.log(
-            `⚠️ Photo ${photoAttempt} too blurry (${finalBlurScore.toFixed(
-              2,
-            )}). Retrying...`,
-          );
-          // Ha ez az utolsó próbálkozás, feladjuk
-          if (photoAttempt === MAX_PHOTO_ATTEMPTS) {
-            console.warn(
-              `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts (all blurry). Restarting detection...`,
-            );
-
-            // Reset auto-capture és újraindítás
-            autoCaptureTriggeredRef.current = false;
-            autoCaptureTimerRef.current = null;
-
-            setIsCapturing(false);
-            setIsCaptureAnimating(false);
-            overlayScale.setValue(1);
-            overlayTranslateY.setValue(0);
-            overlayOpacity.setValue(1);
-            setIsFrameProcessorActive(true);
-            console.log('▶️ Resuming frame processor - restarting detection');
-            return;
-          }
-          // Folytatjuk a következő próbálkozással (skip scan)
-          continue;
-        }
-
-        // Ha NEM homályos, AKKOR futtatjuk a corner detection-t
-        console.log('🔍 Attempting corner detection...');
-        setCaptureStatusMessage('Sarkok keresése...');
-
-        // Várunk egy kicsit hogy látható legyen az üzenet
-        await new Promise<void>(resolve => setTimeout(resolve, 300));
+        await new Promise<void>(resolve => setTimeout(resolve, 200));
 
         console.log('🔍 QR data being passed to scanDocument:', {
           captureQrValue,
@@ -920,54 +778,162 @@ export default function App() {
           enableDebugImages: debugImagesEnabled,
         });
 
+        // Ha NEM sikerült a kivágás, újra próbálkozunk
+        if (!scanResult.success || !scanResult.imageBase64) {
+          console.log(
+            `⚠️ Photo ${photoAttempt} corner detection failed. Retrying...`,
+          );
+          
+          if (photoAttempt === MAX_PHOTO_ATTEMPTS) {
+            console.warn(
+              `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts (detection failed). Restarting...`,
+            );
+            autoCaptureTriggeredRef.current = false;
+            autoCaptureTimerRef.current = null;
+            setIsCapturing(false);
+            setIsCaptureAnimating(false);
+            overlayScale.setValue(1);
+            overlayTranslateY.setValue(0);
+            overlayOpacity.setValue(1);
+            setIsFrameProcessorActive(true);
+            console.log('▶️ Resuming frame processor - restarting detection');
+            return;
+          }
+          continue;
+        }
+
+        // === BLUR ELLENŐRZÉS A KIVÁGOTT KÉPEN ===
+        console.log('🔍 Checking CROPPED image blur...');
+        setCaptureStatusMessage('Checking sharpness...');
+
+        await new Promise<void>(resolve => setTimeout(resolve, 200));
+
+        // A kivágott képet használjuk a blur ellenőrzéshez
+        const croppedMat = OpenCV.base64ToMat(scanResult.imageBase64);
+        const croppedMatInfo = OpenCV.toJSValue(croppedMat);
+        const croppedWidth = croppedMatInfo.cols || 0;
+        const croppedHeight = croppedMatInfo.rows || 0;
+
+        console.log(`📸 Cropped image dimensions: ${croppedWidth}x${croppedHeight}`);
+
+        const grayCheckMat = OpenCV.createObject(
+          ObjectType.Mat,
+          croppedHeight,
+          croppedWidth,
+          DataTypes.CV_8UC1,
+        );
+        OpenCV.invoke('cvtColor', croppedMat, grayCheckMat, 6, 0);
+
+        // A teljes kivágott képen ellenőrizzük (már csak a dokumentum van)
+        const laplacianMat = OpenCV.createObject(
+          ObjectType.Mat,
+          croppedHeight,
+          croppedWidth,
+          DataTypes.CV_64F,
+        );
+        OpenCV.invoke(
+          'Laplacian',
+          grayCheckMat,
+          laplacianMat,
+          DataTypes.CV_64F,
+          1,
+          1,
+          0,
+          4,
+        );
+
+        const absLaplacian = OpenCV.createObject(
+          ObjectType.Mat,
+          croppedHeight,
+          croppedWidth,
+          DataTypes.CV_8UC1,
+        );
+        OpenCV.invoke('convertScaleAbs', laplacianMat, absLaplacian, 1, 0);
+
+        const varianceScalar = OpenCV.invoke('mean', absLaplacian);
+        const varianceData = OpenCV.toJSValue(varianceScalar);
+        finalBlurScore = varianceData.a || 0;
+
+        console.log(
+          `📊 Photo ${photoAttempt} CROPPED blur score:`,
+          finalBlurScore.toFixed(2),
+        );
+        setCaptureStatusMessage(`Sharpness: ${finalBlurScore.toFixed(1)}`);
+
+        // Várunk egy kicsit hogy látható legyen az üzenet
+        await new Promise<void>(resolve => setTimeout(resolve, 200));
+
+        // Blur ellenőrzés
+        const isBlurry = finalBlurScore < BLUR_THRESHOLD;
+
         console.log(`📊 Attempt ${photoAttempt} results:`, {
           blur: finalBlurScore.toFixed(2),
-          isBlurry: false,
+          isBlurry: isBlurry,
           detectionSuccess: scanResult.success,
         });
 
-        // Ha sikeres detection, kész vagyunk!
-        if (scanResult.success) {
+        if (isBlurry) {
           console.log(
-            `✅ Photo ${photoAttempt} is good! Blur: ${finalBlurScore.toFixed(
+            `⚠️ Photo ${photoAttempt} CROPPED image too blurry (${finalBlurScore.toFixed(
               2,
-            )}, Detection: OK`,
+            )}). Retrying...`,
           );
-          setCaptureStatusMessage('Feldolgozás...');
-          break;
+          
+          // Vibráció jelzés hogy homályos a kép
+          Vibration.vibrate([0, 100, 50, 100]); // Két rövid vibráció
+          setCaptureStatusMessage('Blurry image - hold steady!');
+          await new Promise<void>(resolve => setTimeout(resolve, 800));
+          
+          // Ha ez az utolsó próbálkozás, feladjuk
+          if (photoAttempt === MAX_PHOTO_ATTEMPTS) {
+            console.warn(
+              `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts (all blurry). Restarting detection...`,
+            );
+            
+            // Erős vibráció jelzés hogy sikertelen
+            Vibration.vibrate([0, 200, 100, 200, 100, 200]); // Három hosszabb vibráció
+            setCaptureStatusMessage('❌ Too blurry - try again!');
+            await new Promise<void>(resolve => setTimeout(resolve, 1500));
+
+            // Reset auto-capture és újraindítás
+            autoCaptureTriggeredRef.current = false;
+            autoCaptureTimerRef.current = null;
+
+            setIsCapturing(false);
+            setIsCaptureAnimating(false);
+            overlayScale.setValue(1);
+            overlayTranslateY.setValue(0);
+            overlayOpacity.setValue(1);
+            setIsFrameProcessorActive(true);
+            console.log('▶️ Resuming frame processor - restarting detection');
+            return;
+          }
+          // Folytatjuk a következő próbálkozással
+          continue;
         }
 
-        // Ha ez az utolsó próbálkozás és a detection nem sikerült, feladjuk
-        if (photoAttempt === MAX_PHOTO_ATTEMPTS) {
-          console.warn(
-            `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts. Restarting detection...`,
-          );
-
-          // Reset auto-capture és újraindítás
-          autoCaptureTriggeredRef.current = false;
-          autoCaptureTimerRef.current = null;
-
-          setIsCapturing(false);
-          setIsCaptureAnimating(false);
-          overlayScale.setValue(1);
-          overlayTranslateY.setValue(0);
-          overlayOpacity.setValue(1);
-          setIsFrameProcessorActive(true);
-          console.log('▶️ Resuming frame processor - restarting detection');
-          return;
-        }
-
-        // Különben újra próbálkozunk
+        // Ha sikeres detection ÉS éles a kép, kész vagyunk!
         console.log(
-          `⚠️ Photo ${photoAttempt} corner detection failed. Retrying...`,
+          `✅ Photo ${photoAttempt} is good! Blur: ${finalBlurScore.toFixed(
+            2,
+          )}, Detection: OK`,
         );
+        setCaptureStatusMessage('Processing...');
+        break;
       }
 
-      console.log(
-        `✅ Final result - Blur: ${finalBlurScore.toFixed(2)}, Success: ${
-          scanResult?.success
-        }`,
-      );
+      console.log('🔍 QR data being passed to scanDocument:', {
+        captureQrValue,
+        captureQrPosition,
+        captureQrBounds,
+      });
+
+      // scanResult már megvan a loop-ból
+
+      console.log(`📊 Final results:`, {
+        blur: finalBlurScore.toFixed(2),
+        detectionSuccess: scanResult?.success,
+      });
 
       // Ha végül sem sikerült a detection - CSENDESEN ÚJRAKEZDJÜK
       if (!scanResult || !scanResult.success) {
@@ -1866,7 +1832,7 @@ export default function App() {
                 }}
               >
                 <Text style={styles.continueButtonText}>
-                  Tovább ({capturedImages.length})
+                  Next ({capturedImages.length})
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1935,7 +1901,7 @@ export default function App() {
           >
             {/* Final result FIRST (top) with border and top margin */}
             <View style={styles.finalResultContainer}>
-              <Text style={styles.finalResultLabel}>Végeredmény</Text>
+              <Text style={styles.finalResultLabel}>Final Result</Text>
               {capturedQrValue && (
                 <Text style={styles.qrValueLabel}>QR: {capturedQrValue}</Text>
               )}
@@ -1948,16 +1914,16 @@ export default function App() {
               </View>
             </View>
 
-            {/* Arrow and "Folyamat" label */}
+            {/* Arrow and "Process" label */}
             <View style={styles.processArrowContainer}>
               <Text style={styles.processArrow}>↓</Text>
-              <Text style={styles.processLabel}>Folyamat</Text>
+              <Text style={styles.processLabel}>Process</Text>
             </View>
 
             {/* Original photo without border */}
             {originalPhotoUri && (
               <View style={styles.stepImageContainer}>
-                <Text style={styles.stepLabel}>0. Eredeti fotó</Text>
+                <Text style={styles.stepLabel}>0. Original Photo</Text>
                 <Image
                   source={{ uri: `data:image/jpeg;base64,${originalPhotoUri}` }}
                   style={styles.stepImage}
@@ -2014,7 +1980,7 @@ export default function App() {
               // === 2. CAPTURE STATES ===
               setIsCapturing(false);
               setIsCaptureAnimating(false);
-              setCaptureStatusMessage('Tarts mozdulatlanul');
+              setCaptureStatusMessage('Hold still');
               
               // === 3. FRAME PROCESSOR ===
               setIsFrameProcessorActive(true);
@@ -2123,7 +2089,7 @@ export default function App() {
                     }
                   }}
                 >
-                  <Text style={styles.galleryDeleteText}>Törlés</Text>
+                  <Text style={styles.galleryDeleteText}>Delete</Text>
                 </TouchableOpacity>
               </View>
             )}

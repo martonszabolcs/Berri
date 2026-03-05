@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   StyleSheet,
   TouchableOpacity,
   Image,
   Animated,
-  ScrollView,
-  Alert,
+  FlatList,
 } from 'react-native';
 import { useNavigation, DrawerActions } from '@react-navigation/native';
 import {
@@ -24,6 +23,7 @@ import { useAppDispatch } from '../store/hooks';
 import {
   deleteMultipleHistoryEntries,
 } from '../utils/historyUtils';
+import { showErrorToast, showSuccessToast, showInfoToast } from '../utils/toast';
 
 const HistoryScreen = () => {
   const navigation = useNavigation();
@@ -36,10 +36,8 @@ const HistoryScreen = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const history = useSelector((state: any) => state.app.history);
   const dispatch = useAppDispatch();
-  const [historyData, setHistoryData] = useState(history);
 
-  useEffect(() => {
-    // Filter history based on search text
+  const sortedData = useMemo(() => {
     const filtered = history.filter((item: any) =>
       searchText !== ''
         ? item.files?.find((file: any) =>
@@ -47,8 +45,21 @@ const HistoryScreen = () => {
           )
         : true,
     );
-    setHistoryData(filtered);
-  }, [history, searchText]);
+    return [...filtered].sort((a: any, b: any) => {
+      switch (selectedSort) {
+        case 'Newest scan':
+          return b.timestamp - a.timestamp;
+        case 'Oldest scan':
+          return a.timestamp - b.timestamp;
+        case 'Alphabetical order':
+          const filenameA = a.files?.[0]?.filename?.toLowerCase() || '';
+          const filenameB = b.files?.[0]?.filename?.toLowerCase() || '';
+          return filenameA.localeCompare(filenameB);
+        default:
+          return b.timestamp - a.timestamp;
+      }
+    });
+  }, [history, searchText, selectedSort]);
 
   const sortOptions = ['Newest scan', 'Oldest scan', 'Alphabetical order'];
 
@@ -79,7 +90,7 @@ const HistoryScreen = () => {
       );
 
       if (history.length === 0) {
-        Alert.alert('Info', 'No history items to delete');
+        showInfoToast('No Items', 'History is already empty');
         return;
       }
 
@@ -92,21 +103,21 @@ const HistoryScreen = () => {
 
       // Show success message
       if (result.failureCount === 0) {
-        Alert.alert(
-          'Success',
-          `Successfully deleted all ${result.successCount} history items and their files.`,
+        showSuccessToast(
+          'History Cleared',
+          `Deleted ${result.successCount} items successfully`,
         );
       } else {
-        Alert.alert(
-          'Partial Success',
-          `Deleted ${result.successCount} history items successfully. ${result.failureCount} items failed to delete.`,
+        showErrorToast(
+          'Partial Delete',
+          `${result.successCount} deleted, ${result.failureCount} failed`,
         );
       }
     } catch (error) {
       console.error('❌ Critical error during delete all operation:', error);
-      Alert.alert(
-        'Error',
-        'Failed to delete all history items. Please try again.',
+      showErrorToast(
+        'Delete Failed',
+        'Could not delete history. Please try again.',
       );
     }
   };
@@ -133,23 +144,7 @@ const HistoryScreen = () => {
         <View style={styles.container}>
           <SearchInput
             value={searchText}
-            onChangeText={text => {
-              setSearchText(text);
-              if (text !== '') {
-                console.log('ITEM HISTORY FILTERED', history);
-                setHistoryData(
-                  history.filter((item: any) =>
-                    item.files.find((file: any) =>
-                      file.filename
-                        .toLowerCase()
-                        .includes(searchText.toLowerCase()),
-                    ),
-                  ),
-                );
-              } else {
-                setHistoryData(history);
-              }
-            }}
+            onChangeText={setSearchText}
           />
 
           <HistorySelectAndReorder
@@ -170,73 +165,50 @@ const HistoryScreen = () => {
             />
 
             <View style={styles.content}>
-              {historyData.length === 0 ? (
+              {sortedData.length === 0 ? (
                 <View style={styles.emptyContainer}>
                   <Text style={styles.emptyText}>No scan history yet</Text>
                 </View>
-              ) : (
-                <ScrollView
+              ) : isGridView ? (
+                <FlatList
+                  data={sortedData}
+                  keyExtractor={(item: any) => String(item.id || item.timestamp)}
+                  renderItem={({ item }: { item: any }) => (
+                    <HistoryCard
+                      history={item}
+                      isGridView={true}
+                      isSelectionMode={false}
+                      isSelected={false}
+                    />
+                  )}
+                  numColumns={2}
+                  key="grid"
+                  columnWrapperStyle={styles.gridContainer}
                   style={styles.historyList}
                   showsVerticalScrollIndicator={false}
-                >
-                  {isGridView ? (
-                    <View style={styles.gridContainer}>
-                      {[...historyData]
-                        ?.sort((a: any, b: any) => {
-                          switch (selectedSort) {
-                            case 'Newest scan':
-                              return b.timestamp - a.timestamp; // Newest first
-                            case 'Oldest scan':
-                              return a.timestamp - b.timestamp; // Oldest first
-                            case 'Alphabetical order':
-                              const filenameA =
-                                a.files?.[0]?.filename?.toLowerCase() || '';
-                              const filenameB =
-                                b.files?.[0]?.filename?.toLowerCase() || '';
-                              return filenameA.localeCompare(filenameB);
-                            default:
-                              return b.timestamp - a.timestamp; // Default to newest
-                          }
-                        })
-                        .map((historyItem: any) => (
-                          <HistoryCard
-                            key={historyItem.id || historyItem.timestamp}
-                            history={historyItem}
-                            isGridView={isGridView}
-                            isSelectionMode={false}
-                            isSelected={false}
-                          />
-                        ))}
-                    </View>
-                  ) : (
-                    [...historyData]
-                      ?.sort((a: any, b: any) => {
-                        switch (selectedSort) {
-                          case 'Newest scan':
-                            return b.timestamp - a.timestamp; // Newest first
-                          case 'Oldest scan':
-                            return a.timestamp - b.timestamp; // Oldest first
-                          case 'Alphabetical order':
-                            const filenameA =
-                              a.files?.[0]?.filename?.toLowerCase() || '';
-                            const filenameB =
-                              b.files?.[0]?.filename?.toLowerCase() || '';
-                            return filenameA.localeCompare(filenameB);
-                          default:
-                            return b.timestamp - a.timestamp; // Default to newest
-                        }
-                      })
-                      .map((historyItem: any) => (
-                        <HistoryCard
-                          key={historyItem.id || historyItem.timestamp}
-                          history={historyItem}
-                          isGridView={isGridView}
-                          isSelectionMode={false}
-                          isSelected={false}
-                        />
-                      ))
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  removeClippedSubviews={true}
+                />
+              ) : (
+                <FlatList
+                  data={sortedData}
+                  keyExtractor={(item: any) => String(item.id || item.timestamp)}
+                  renderItem={({ item }: { item: any }) => (
+                    <HistoryCard
+                      history={item}
+                      isGridView={false}
+                      isSelectionMode={false}
+                      isSelected={false}
+                    />
                   )}
-                </ScrollView>
+                  key="list"
+                  style={styles.historyList}
+                  showsVerticalScrollIndicator={false}
+                  initialNumToRender={15}
+                  maxToRenderPerBatch={10}
+                  removeClippedSubviews={true}
+                />
               )}
             </View>
           </View>

@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   Image,
   Linking,
-  Alert,
   AppState,
 } from 'react-native';
+import { showSuccessToast, showErrorToast } from '../utils/toast';
 import { Layout, Text, DestinationIcon, Button } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import { useNavigation, useRoute, CommonActions } from '@react-navigation/native';
@@ -249,8 +249,10 @@ const DestinationSelectScreen = () => {
       }
 
       console.log('✅ All destinations processed successfully');
+      showSuccessToast('Sent', 'Files have been sent successfully!');
     } catch (error) {
       console.error('❌ Error in sendFileToDestination:', error);
+      showErrorToast('Send Failed', 'Failed to send files. Please try again.');
     } finally {
       setIsSending(false);
     }
@@ -316,7 +318,7 @@ const DestinationSelectScreen = () => {
               await sendFileToDestination("dropbox", updatedSettings);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+              showErrorToast('Resend Failed', 'Failed to resend scan to Dropbox. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save Dropbox tokens:', error);
@@ -370,10 +372,10 @@ const DestinationSelectScreen = () => {
 
             try {
               await sendFileToDestination("onedrive", updatedSettings);
-              Alert.alert('Success', 'Scan has been resent successfully!');
+              showSuccessToast('Resent', 'Scan has been resent to OneDrive successfully!');
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              Alert.alert('Error', 'Failed to resend scan. Please try again.');
+              showErrorToast('Resend Failed', 'Failed to resend scan to OneDrive. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save OneDrive tokens:', error);

@@ -52,9 +52,6 @@ const Layout = ({
   // For dark type, we still use the background image but overlay it
   const isDarkType = type === 'dark';
 
-  // Suppress unused variable warning for color (will be used for future blue variant)
-  console.debug('Color prop:', color);
-
   return (
     <ImageBackground
       source={getBackgroundImage()}

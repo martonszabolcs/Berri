@@ -28,18 +28,18 @@
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>berri</string>
-				<string>com.googleusercontent.apps.571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko</string>
+				<string>com.googleusercontent.apps.827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76</string>
 			</array>
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>GIDClientID</key>
-	<string>571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko.apps.googleusercontent.com</string>
+	<string>827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76.apps.googleusercontent.com</string>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>
 		<string>google</string>
-		<string>com.googleusercontent.apps.571222670623-kbv4pc8s7064tuffeua5s924uu81d4ko</string>
+		<string>com.googleusercontent.apps.827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76</string>
 	</array>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>

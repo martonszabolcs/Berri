@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, Image, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Image, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, Text } from '../components';
 import { useAppDispatch } from '../store/hooks';
 import { forgotPassword } from '../store/appSlice';
+import { showErrorToast, showSuccessToast } from '../utils/toast';
 import React from 'react';
 
 type RootStackParamList = {
@@ -26,7 +27,7 @@ const ForgottenScreen = () => {
 
   const handleForgotPassword = async () => {
     if (!email) {
-      Alert.alert('Hiba', 'Kérlek add meg az email címedet!');
+      showErrorToast('Missing Email', 'Please enter your email address');
       return;
     }
 
@@ -38,23 +39,15 @@ const ForgottenScreen = () => {
       
       if (forgotPassword.fulfilled.match(result)) {
         console.log('✅ ForgottenScreen: Forgot password successful');
-        Alert.alert(
-          'Sikeres kérés',
-          'Elküldtük a visszaállítási kódot az email címedre.',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('ResetPasswordScreen'),
-            },
-          ]
-        );
+        showSuccessToast('Code Sent!', 'Check your email for the reset code');
+        setTimeout(() => navigation.navigate('ResetPasswordScreen'), 1500);
       } else {
         console.error('❌ ForgottenScreen: Forgot password failed', result.error);
-        Alert.alert('Hiba', result.error.message || 'Hiba történt a visszaállítási kérés során!');
+        showErrorToast('Request Failed', result.error.message || 'Could not send reset email');
       }
     } catch (error) {
       console.error('❌ ForgottenScreen: Forgot password exception', error);
-      Alert.alert('Hiba', 'Hiba történt a visszaállítási kérés során!');
+      showErrorToast('Request Failed', 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
@@ -70,7 +63,7 @@ const ForgottenScreen = () => {
         />
         <View style={styles.form}>
           <Text style={styles.description}>
-            Add meg az email címedet és küldünk egy kódot a jelszó visszaállításához
+            Enter your email address and we'll send you a code to reset your password
           </Text>
           <TextInput
             placeholder="email"
@@ -83,12 +76,12 @@ const ForgottenScreen = () => {
 
           <TouchableOpacity onPress={() => navigation.navigate('LoginScreen')}>
             <Text style={styles.backLink}>
-              Vissza a bejelentkezéshez?
+              Back to login?
             </Text>
           </TouchableOpacity>
 
           <Button
-            title={isLoading ? 'Küldés...' : 'Kód küldése'}
+            title={isLoading ? 'Sending...' : 'Send Code'}
             onPress={handleForgotPassword}
             disabled={isLoading}
             size="large"

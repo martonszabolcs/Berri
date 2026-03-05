@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: 8A0cwdvfHHkWsEFcQhBJ
+      POSTGRES_DB: berri
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - berri_network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '3000:3000'
+    env_file:
+      - .env
+    depends_on:
+      - db
+    networks:
+      - berri_network
+
+networks:
+  berri_network:
+    driver: bridge
+    external: false
+    
+
+volumes:
+  pgdata:

@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { View, StyleSheet, Alert, Image } from 'react-native';
+import { View, StyleSheet, Image } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, LiText } from '../components';
 import { useAppDispatch } from '../store/hooks';
 import { registerUser } from '../store/appSlice';
+import { showErrorToast, showSuccessToast } from '../utils/toast';
 import React from 'react';
 
 type RootStackParamList = {
@@ -35,15 +36,15 @@ const RegisterScreen = () => {
       password.search(/[0-9]/) === -1 ||
       password.search(/[^A-Za-z0-9]/) === -1
     ) {
-      Alert.alert(
-        'Hiba',
-        'Password must contain at least 8 characters, one lowercase letter, one uppercase letter, one number, and one special character',
+      showErrorToast(
+        'Weak Password',
+        'Password must have 8+ chars, uppercase, lowercase, number & special character',
       );
       return;
     }
 
     if (!name || !email || !password) {
-      Alert.alert('Error', 'Please fill in all fields');
+      showErrorToast('Missing Fields', 'Please fill in all fields');
       return;
     }
 
@@ -55,27 +56,19 @@ const RegisterScreen = () => {
 
       if (registerUser.fulfilled.match(result)) {
         console.log('✅ RegisterScreen: Registration successful');
-        
-        Alert.alert(
-          'Success',
-          'Please check your email to verify your account.',
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('LoginScreen'),
-            },
-          ],
-        );
+        showSuccessToast('Account Created!', 'Please check your email to verify your account');
+        setTimeout(() => navigation.navigate('LoginScreen'), 1500);
       } else {
         console.error('❌ RegisterScreen: Registration failed', result.error);
-        Alert.alert(
-          'Hiba',
-          result.error.message || 'Something went wrong during registration.',
-        );
+        const errorMessage = (result.payload as string)
+          || result.error?.message 
+          || 'Something went wrong during registration.';
+        showErrorToast('Registration Failed', errorMessage);
       }
     } catch (error: any) {
       console.error('❌ RegisterScreen: Registration exception', error);
-      Alert.alert('Error', 'Something went wrong during registration.');
+      const errorMessage = error.response?.data?.message || 'Something went wrong during registration.';
+      showErrorToast('Registration Failed', errorMessage);
     } finally {
       setIsLoading(false);
     }

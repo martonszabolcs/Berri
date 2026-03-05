@@ -77,14 +77,32 @@ const hideHeader = {
 const screenOptions = {
   headerShown: false,
   presentation: 'transparentModal',
-  cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid, // Fade animáció a fehér sáv elkerülésére
+  cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
 };
+
+const tabScreenOptions = {
+  ...screenOptions,
+  tabBarStyle: {
+    backgroundColor: 'rgba(37, 37, 68, 1)',
+    borderTopWidth: 0,
+    height: 70,
+    paddingTop: 10,
+  },
+  tabBarActiveTintColor: 'rgba(255, 231, 255, 1)',
+  tabBarInactiveTintColor: 'rgba(255, 231, 255, 0.5)',
+  lazy: true,
+};
+
+const hiddenTabStyle = { tabBarItemStyle: { display: 'none' as const } };
 
 // New Scan Stack Navigator
 const NewScanStack = () => {
   return (
     <Stack.Navigator 
-      screenOptions={screenOptions}>
+      screenOptions={{
+        ...screenOptions,
+        detachPreviousScreen: false, // Keep CameraScreen mounted when navigating away
+      }}>
       <Stack.Screen
         name="CameraScreen"
         component={CameraScreen}
@@ -169,8 +187,8 @@ const SettingsStack = () => {
 };
 
 // History stack (only contains the main HistoryScreen)
+const HistoryStackNavigator = createStackNavigator<HistoryStackParamList>();
 const HistoryStack = () => {
-  const HistoryStackNavigator = createStackNavigator<HistoryStackParamList>();
   return (
     <HistoryStackNavigator.Navigator 
       screenOptions={screenOptions}>
@@ -187,17 +205,7 @@ const HistoryStack = () => {
 const MainTabs = () => {
   return (
     <Tab.Navigator
-      screenOptions={{
-        ...screenOptions,
-        tabBarStyle: {
-          backgroundColor: 'rgba(37, 37, 68, 1)',
-          borderTopWidth: 0,
-          height: 70,
-          paddingTop: 10,
-        },
-        tabBarActiveTintColor: 'rgba(255, 231, 255, 1)',
-        tabBarInactiveTintColor: 'rgba(255, 231, 255, 0.5)',
-      }}
+      screenOptions={tabScreenOptions}
     >
       <Tab.Screen
         name="History"
@@ -231,23 +239,17 @@ const MainTabs = () => {
       <Tab.Screen
         name="ProfileScreen"
         component={ProfileScreen}
-        options={{
-          tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
-        }}
+        options={hiddenTabStyle}
       />
       <Tab.Screen
         name="HowToScreen"
         component={HowToScreen}
-        options={{
-          tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
-        }}
+        options={hiddenTabStyle}
       />
       <Tab.Screen
         name="SettingsStack"
         component={SettingsStack}
-        options={{
-          tabBarItemStyle: { display: 'none' }, // Completely hide from tab bar
-        }}
+        options={hiddenTabStyle}
       />
     </Tab.Navigator>
   );

@@ -224,4 +224,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default HistoryCard;
+export default React.memo(HistoryCard);

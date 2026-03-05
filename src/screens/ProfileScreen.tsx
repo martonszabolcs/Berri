@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView, Alert } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
-import { StackNavigationProp } from '@react-navigation/stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useNavigation, CommonActions } from '@react-navigation/native';
+import { StackNavigationProp } from '@react-navigation/stack';
 import Svg, { Rect, LinearGradient, Stop, Defs } from 'react-native-svg';
 import { Layout, Header, Button, Text, AvatarIcon } from '../components';
-import { useAppSelector } from '../store/hooks';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import { logoutUser } from '../store/appSlice';
 import { deleteUser } from '../store/api/userApiService';
+import { showErrorToast, showSuccessToast } from '../utils/toast';
 import {format} from 'date-fns';
 
 type ProfileStackParamList = {
@@ -19,6 +21,7 @@ type ProfileScreenNavigationProp = StackNavigationProp<ProfileStackParamList>;
 
 const ProfileScreen = () => {
   const navigation = useNavigation<ProfileScreenNavigationProp>();
+  const dispatch = useAppDispatch();
   const user = useAppSelector((state) => state.app.user);
   const userEmail = user?.email || '';
   const userName = user?.name || '';
@@ -26,13 +29,16 @@ const ProfileScreen = () => {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem('authToken');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'AuthScreen' }],
-      });
+      await dispatch(logoutUser());
+      showSuccessToast('Logged Out', 'See you next time!');
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'AuthScreen' }],
+        })
+      );
     } catch (error) {
-      Alert.alert('Error', 'Failed to logout');
+      showErrorToast('Logout Failed', 'Could not log out. Please try again.');
     }
   };
 
@@ -62,33 +68,25 @@ const ProfileScreen = () => {
                 await AsyncStorage.removeItem('history');
                 await AsyncStorage.removeItem('settings');
                 
-                Alert.alert(
-                  'Account Deleted',
-                  'Your account has been successfully deleted.',
-                  [
-                    {
-                      text: 'OK',
-                      onPress: () => {
-                        navigation.reset({
-                          index: 0,
-                          routes: [{ name: 'AuthScreen' }],
-                        });
-                      }
-                    }
-                  ]
-                );
+                showSuccessToast('Account Deleted', 'Your account has been removed');
+                setTimeout(() => {
+                  navigation.reset({
+                    index: 0,
+                    routes: [{ name: 'AuthScreen' }],
+                  });
+                }, 1500);
               } else {
                 console.error('❌ Failed to delete account');
-                Alert.alert(
-                  'Error', 
-                  'Failed to delete your account. Please try again or contact support.'
+                showErrorToast(
+                  'Delete Failed', 
+                  'Could not delete your account. Please try again.'
                 );
               }
             } catch (error) {
               console.error('❌ Error during account deletion:', error);
-              Alert.alert(
-                'Error', 
-                'An unexpected error occurred while deleting your account. Please try again.'
+              showErrorToast(
+                'Delete Failed', 
+                'An unexpected error occurred. Please try again.'
               );
             }
           }

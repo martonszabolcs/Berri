@@ -193,15 +193,16 @@ export const forgotPassword = createAsyncThunk(
 
 export const registerUser = createAsyncThunk(
   'app/registerUser',
-  async (userData: { name?: string; email: string; password: string; googleDriveLink?: string; oneDriveLink?: string; dropboxLink?: string; newsletter?: boolean }) => {
+  async (userData: { name?: string; email: string; password: string; googleDriveLink?: string; oneDriveLink?: string; dropboxLink?: string; newsletter?: boolean }, { rejectWithValue }) => {
     try {
       console.log('🚀 appSlice: registerUser thunk started', userData);
       const response = await authApi.register(userData);
       console.log('✅ appSlice: registerUser successful', response);
       return response;
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ appSlice: registerUser failed', error);
-      throw error;
+      const message = error.response?.data?.message || error.message || 'Registration failed';
+      return rejectWithValue(message);
     }
   }
 );
@@ -336,6 +337,11 @@ const appSlice = createSlice({
             createdAt: action.payload.user.createdAt,
           };
           state.isAuthenticated = true;
+        } else {
+          // No token found, ensure user is logged out
+          state.token = null;
+          state.isAuthenticated = false;
+          state.user = initialState.user;
         }
       })
       .addCase(initializeAuth.rejected, (state) => {

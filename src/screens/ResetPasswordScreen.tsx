@@ -1,10 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { View, StyleSheet, ScrollView, Alert, TextInput as RNTextInput } from 'react-native';
+import { View, StyleSheet, ScrollView, TextInput as RNTextInput } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Layout, TextInput, Button, Text } from '../components';
 import { useAppDispatch } from '../store/hooks';
 import { resetPassword } from '../store/appSlice';
+import { showErrorToast, showSuccessToast } from '../utils/toast';
 
 type RootStackParamList = {
   LoginScreen: undefined;
@@ -50,22 +51,22 @@ const ResetPasswordScreen = () => {
     const codeString = code.join('');
     
     if (codeString.length !== 6) {
-      Alert.alert('Error', 'Please enter the 6-character code sent to your email!');
+      showErrorToast('Invalid Code', 'Please enter the 6-character code from your email');
       return;
     }
 
     if (!newPassword || !confirmPassword) {
-      Alert.alert('Error', 'Please fill in all fields!');
+      showErrorToast('Missing Fields', 'Please fill in all password fields');
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      Alert.alert('Error', 'Passwords do not match!');
+      showErrorToast('Password Mismatch', 'Passwords do not match');
       return;
     }
 
     if (newPassword.length < 6) {
-      Alert.alert('Error', 'Password must be at least 6 characters long!');
+      showErrorToast('Weak Password', 'Password must be at least 6 characters');
       return;
     }
 
@@ -77,24 +78,15 @@ const ResetPasswordScreen = () => {
       
       if (resetPassword.fulfilled.match(result)) {
         console.log('✅ ResetPasswordScreen: Reset password successful');
-        Alert.alert(
-                  'Success',
-                  'Your password has been updated successfully!',
-               
-          [
-            {
-              text: 'OK',
-              onPress: () => navigation.navigate('LoginScreen'),
-            },
-          ]
-        );
+        showSuccessToast('Password Updated!', 'You can now log in with your new password');
+        setTimeout(() => navigation.navigate('LoginScreen'), 1500);
       } else {
         console.error('❌ ResetPasswordScreen: Reset password failed', result.error);
-        Alert.alert('Error', result.error.message || 'Something went wrong while resetting your password!');
+        showErrorToast('Reset Failed', result.error.message || 'Could not reset password');
       }
     } catch (error) {
       console.error('❌ ResetPasswordScreen: Reset password exception', error);
-      Alert.alert('Error', 'Something went wrong while resetting your password!');
+      showErrorToast('Reset Failed', 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }
