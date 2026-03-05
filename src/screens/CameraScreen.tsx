@@ -10,7 +10,7 @@ import {
   DetectionResult,
 } from '../utils/scan/useInferenceLogic';
 import { scanDocument } from '../utils/scan/scanDocument';
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -1016,7 +1016,12 @@ export default function App() {
           qrPosition: captureQrPosition || null,
           timestamp: Date.now(),
         };
-        setCapturedImages(prev => [...prev, newImage]);
+        setCapturedImages(prev => {
+          const updated = [...prev, newImage];
+          // Limit to 20 images to prevent memory issues
+          if (updated.length > 20) updated.shift();
+          return updated;
+        });
         
         // Reset for next capture - NO MODAL
         setCapturedImageUri(null);
@@ -1281,7 +1286,7 @@ export default function App() {
 
   // === STATUS CALCULATION ===
   // Determines current UI state based on detection confidence and shape
-  const getCurrentStatus = () => {
+  const getCurrentStatus = useMemo(() => {
     // Use smoothed results instead of raw results for stability
     if (smoothedResults.length === 0) {
       return {
@@ -1404,9 +1409,10 @@ export default function App() {
         blurWarning +
         perspectiveWarning,
     };
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [smoothedResults, stableDetectionStatus, stableIsBlurry]);
 
-  const currentStatus = getCurrentStatus();
+  const currentStatus = getCurrentStatus;
 
   // Infobox animáció - csúszik le amikor detektálva van
   useEffect(() => {

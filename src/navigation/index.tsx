@@ -220,6 +220,7 @@ const MainTabs = () => {
         options={{
           tabBarLabel: 'New Scan',
           tabBarIcon: renderNewScanTabBarIcon,
+          lazy: false, // Pre-load camera to avoid lag on first tap
         }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {

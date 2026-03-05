@@ -22,7 +22,7 @@ import { useEffect } from 'react';
 
 // === TELJESÍTMÉNY ÉS DEBUG ===
 const DEBUG_ON = false; // Debug képek generálása (false = jobb teljesítmény!)
-const FRAME_SKIP_INTERVAL = 1; // Minden N. frame feldolgozása (1=minden, 2=minden második)
+const FRAME_SKIP_INTERVAL = 3; // Minden N. frame feldolgozása (1=minden, 2=minden második, 3=minden harmadik)
 const DEBUG_IMAGE_INTERVAL = 1; // Debug kép generálási gyakoriság (ha DEBUG_ON=true)
 
 // === KÉPFELDOLGOZÁS ===
@@ -447,6 +447,18 @@ export const useInferenceLogic = (
   useEffect(() => {
     isProcessingEnabledShared.value = isProcessingEnabled;
   }, [isProcessingEnabled, isProcessingEnabledShared]);
+
+  // Reset brightnessCalibration on unmount to prevent stale data on re-mount
+  useEffect(() => {
+    return () => {
+      brightnessCalibration = {
+        minSeen: 255,
+        maxSeen: 0,
+        frameCount: 0,
+        history: [],
+      };
+    };
+  }, []);
 
   // BRIGHTNESS SEEKER STATE - component scope-ban, hogy perzisztens legyen!
   const seekerState = {

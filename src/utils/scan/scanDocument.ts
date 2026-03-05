@@ -83,7 +83,7 @@ export const scanDocument = (
     frameWidth: providedFrameWidth,
     frameHeight: providedFrameHeight,
     frameBrightness = 128, // Default if not provided
-    enableDebugImages = true, // Default: debug images enabled
+    enableDebugImages = false, // Default: debug images disabled for performance
   } = params;
 
   try {
