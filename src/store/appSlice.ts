@@ -135,9 +135,12 @@ export const loginUser = createAsyncThunk(
 
       console.log('✅ appSlice: loginUser thunk completed successfully');
       return { user, token: response.access_token };
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ appSlice: loginUser thunk failed', error);
-      throw error;
+      if (error?.response?.status === 401 || error?.status === 401) {
+        throw new Error('Wrong email or password');
+      }
+      throw new Error('Something went wrong. Please try again.');
     }
   }
 );

@@ -403,7 +403,7 @@ export const scanDocument = (
     } else {
       // Photo detection failed - RETURNING ERROR!
       // We cannot use frame corners because user might have moved during the shot!
-      console.error('❌ Photo detection failed - ABORTING scan process');
+      console.warn('❌ Photo detection failed - ABORTING scan process');
       return {
         success: false,
         error: 'Failed to detect document in photo. Please try again!',
@@ -702,7 +702,25 @@ export const scanDocument = (
       betaBoost,
       lightCondition,
     });
-    
+
+    // === OVEREXPOSURE DETECTION ===
+    // Ha a kép túl világos (túlexponált), a vonalak eltűnnek → retry
+    if (avgBrightness > 230) {
+      console.warn(`⚠️ Overexposed image detected (brightness: ${avgBrightness.toFixed(1)}) - requesting retry`);
+      return {
+        success: false,
+        error: 'Overexposed photo - retrying',
+        imageBase64: '',
+        stepImages: [],
+        qrValue: currentQrValue,
+        qrPosition: currentQrPosition,
+        brightnessInfo: { avgBrightness, lightCondition, betaBoost },
+        selectedIcons: [],
+        selectedIconNames: [],
+        iconAnalysis: [],
+      };
+    }
+
     // Determine enhancement parameters based on brightness
     let alpha: number;
     let beta: number;
@@ -713,15 +731,15 @@ export const scanDocument = (
       beta = betaBoost;
       console.log('🌑 Dark image detected - strong enhancement');
     } else if (avgBrightness > 150 && avgBrightness <= 200) {
-      // Bright image - gentle enhancement
-      alpha = 1;
-      beta = 1;
-      console.log('☀️ Bright image detected - gentle enhancement');
+      // Bright image - boost contrast to preserve faint lines
+      alpha = 1.2;
+      beta = -10;
+      console.log('☀️ Bright image detected - boosting contrast');
     } else {
-      // Normal image - moderate enhancement
-      alpha = 0.8;
-      beta = Math.min(15, betaBoost);
-      console.log('🌤️ Normal brightness - moderate enhancement');
+      // Very bright image (200-230) - stronger contrast boost
+      alpha = 1.4;
+      beta = -20;
+      console.log('🌞 Very bright image - strong contrast boost');
     }
 
     // === ADAPTIVE CONTRAST & BRIGHTNESS ENHANCEMENT ===
@@ -1068,6 +1086,57 @@ export const scanDocument = (
     );
     OpenCV.invoke('cvtColor', blurredFinal, finalMat, 8, 0); // COLOR_GRAY2BGR = 8
 
+    // === TEST: Bottom 5% with 7 column dividers + icon detection ===
+    // Teljes szélesség: 12.5 cm, bal margó: 2 cm, jobb margó: 2 cm → hasznos: 8.5 cm
+    const bottom5Height = Math.round(cropHeight * 0.05);
+    const bottom5StartY = cropHeight - bottom5Height;
+    const marginLeft = Math.round(cropWidth * (2 / 12.5));   // 16%
+    const marginRight = Math.round(cropWidth * (2 / 12.5));  // 16%
+    const usableWidth = cropWidth - marginLeft - marginRight; // 68%
+    const sliceWidth = Math.round(usableWidth / 7);
+    
+    // Kivágás: alsó 5% sáv (grayscale-ből az elemzéshez)
+    const bottom5GrayRect = OpenCV.createObject(ObjectType.Rect, 0, bottom5StartY, cropWidth, bottom5Height);
+    const bottom5Gray = OpenCV.createObject(ObjectType.Mat, bottom5Height, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('crop', grayMat, bottom5Gray, bottom5GrayRect);
+    
+    // 7 szelet elemzése: hány % sötét pixel van benne
+    const DARK_THRESHOLD = 1; // 3% felett = aktív (X van benne)
+    const PIXEL_DARK_VALUE = 100; // 100 alatti pixel = sötét (csak az igazi fekete X vonalak)
+    const iconNames = ['Nyíl', 'Gyémánt', 'Alma', 'Csengő', 'Lóhere', 'Csillag', 'Patkó'];
+    const iconActive: boolean[] = [];
+    
+    for (let i = 0; i < 7; i++) {
+      const sliceX = marginLeft + i * sliceWidth;
+      const sliceW = Math.min(sliceWidth, cropWidth - sliceX);
+      
+      // Szelet kivágása
+      const sliceRect = OpenCV.createObject(ObjectType.Rect, sliceX, 0, sliceW, bottom5Height);
+      const sliceMat = OpenCV.createObject(ObjectType.Mat, bottom5Height, sliceW, DataTypes.CV_8UC1);
+      OpenCV.invoke('crop', bottom5Gray, sliceMat, sliceRect);
+      
+      // Threshold: pixel < 128 → fehér (sötét pixelek), többi → fekete  
+      const threshMat = OpenCV.createObject(ObjectType.Mat, bottom5Height, sliceW, DataTypes.CV_8UC1);
+      OpenCV.invoke('threshold', sliceMat, threshMat, PIXEL_DARK_VALUE, 255, 1); // THRESH_BINARY_INV
+      
+      // mean() a threshold képen: 0 = nincs sötét pixel, 255 = minden sötét
+      // mean/255*100 = sötét pixelek %-a
+      const meanScalar = OpenCV.invoke('mean', threshMat);
+      const meanData = OpenCV.toJSValue(meanScalar);
+      const meanVal = meanData?.a ?? meanData?.[0] ?? 0;
+      const darkPercent = (meanVal / 255) * 100;
+      
+      const isActive = darkPercent > DARK_THRESHOLD;
+      iconActive.push(isActive);
+      
+      console.log(`Slot ${i + 1}: ${darkPercent.toFixed(1)}% dark → ${isActive ? 'ACTIVE' : 'inactive'}`);
+    }
+    
+    console.log('Icon results:', iconActive.map((a, i) => `${iconNames[i]}${a ? 'ON' : 'off'}`).join(' '));
+    
+    const detectedIcons = iconActive.map((a, i) => a ? i : -1).filter(i => i >= 0);
+    const detectedIconNames = iconActive.reduce<string[]>((acc, a, i) => { if (a) acc.push(iconNames[i]); return acc; }, []);
+
     // === SMART CROP BOTTOM - Find square QR code at bottom ===
     console.log('✂️ Smart cropping bottom - searching for square QR code');
     
@@ -1179,17 +1248,14 @@ export const scanDocument = (
           `Érték: ${currentQrValue || 'nincs'}\nY=${qrEndY}, size=${bestQrContour.width}x${bestQrContour.height}`
         ); */
       } else {
-        // Fallback: 93% ha nem találtunk QR kódot
-        qrEndY = Math.round(cropHeight * 0.93);
-        console.log('⚠️ No square QR code found, using fallback 93%');
-        
-        // Debug alert when QR not found
-        //Alert.alert('QR NEM találva', `QR érték: ${currentQrValue || 'nincs'}\nFallback: 93%`);
+        // QR kontúr nem találta → fallback: 90% (alsó 10% = ikonsor + QR)
+        qrEndY = Math.round(cropHeight * 0.90);
+        console.log('⚠️ QR contour not found, using fallback 90%');
       }
       
     } catch (qrError) {
       console.warn('⚠️ QR detection error:', qrError);
-      qrEndY = Math.round(cropHeight * 0.93);
+      qrEndY = Math.round(cropHeight * 0.90);
     }
     
     // Add margin above QR top - biztonsági margó a QR kód fölött
@@ -1207,8 +1273,8 @@ export const scanDocument = (
       finalHeight = Math.min(finalHeight, Math.round(cropHeight * 0.97));
       console.log(`📐 QR top at Y=${qrEndY}, margin=${margin}, finalHeight=${finalHeight} (${((finalHeight/cropHeight)*100).toFixed(1)}%)`);
     } else {
-      // Fallback: 93% marad
-      finalHeight = Math.round(cropHeight * 0.93);
+      // Fallback 90%
+      finalHeight = Math.round(cropHeight * 0.90);
     }
     
     console.log(`📐 Cropping to height: ${finalHeight} (was ${cropHeight}, QR detected: ${qrDetected})`);
@@ -1239,8 +1305,7 @@ export const scanDocument = (
     }
 
     // === EDGE CROP - Remove 0.5% border to avoid black edges ===
-    // Edge crop disabled - no border removal
-    const edgeCropPercent = 0;
+    const edgeCropPercent = 0.005;
     const edgeCropLeft = Math.round(cropWidth * edgeCropPercent);
     const edgeCropTop = Math.round(finalHeight * edgeCropPercent);
     const edgeCropWidth = cropWidth - 2 * edgeCropLeft;
@@ -1394,9 +1459,9 @@ export const scanDocument = (
         lightCondition: 'Normal',
         betaBoost: 0,
       },
-      selectedIcons: [],
-      selectedIconNames: [],
-      iconAnalysis: [],
+      selectedIcons: detectedIcons,
+      selectedIconNames: detectedIconNames,
+      iconAnalysis: iconActive.map((a, i) => ({ slot: i + 1, icon: iconNames[i], active: a })),
     };
   } catch (error) {
     console.error('Scan error:', error);

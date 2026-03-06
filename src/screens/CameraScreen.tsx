@@ -27,12 +27,14 @@ import {
   Alert,
   FlatList,
   Vibration,
+  Linking,
 } from 'react-native';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
 import { saveScannedDocument } from '../utils/saveImage';
 import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import { useAppSelector } from '../store/hooks';
+import { DestinationIcon } from '../components';
 
 interface DocumentCorner {
   x: number;
@@ -81,9 +83,11 @@ const UI_MESSAGES = {
   PERSPECTIVE_WARNING: '  Face the camera straight!',
 
   // Camera permission
+  PERMISSION_TITLE: 'Camera Access Needed',
   PERMISSION_NEEDED:
-    'Camera permission is required to continue. Please enable camera access in settings.',
-  PERMISSION_BUTTON: 'Request Camera Permission',
+    'To scan your documents, Berri needs access to your camera. Your photos are processed on-device and never leave your phone.',
+  PERMISSION_BUTTON: 'Allow Camera Access',
+  PERMISSION_SETTINGS: 'Open Settings',
 
   // Buttons
   BUTTON_DEBUG_IMAGE: 'Debug mode',
@@ -236,6 +240,7 @@ export default function App() {
     qrValue: string | null;
     qrPosition: 'left' | 'right' | null;
     timestamp: number;
+    selectedIcons: number[];
   }
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
@@ -721,7 +726,7 @@ export default function App() {
       // === TÖBBSZÖRI FOTÓZÁS BLUR ÉS DETECTION MIATT ===
       // Maximum 5 fotót próbálunk, amíg nem lesz éles ÉS sikeres corner detection
       const MAX_PHOTO_ATTEMPTS = 5;
-      const BLUR_THRESHOLD = 1; // Laplacian variance küszöb - 2.5 felett éles
+      const BLUR_THRESHOLD = 2.5; // Laplacian stddev küszöb - 2.5 alatt homályos
 
       let photoBase64 = '';
       let photoSize = { width: 0, height: 0 };
@@ -802,117 +807,18 @@ export default function App() {
           continue;
         }
 
-        // === BLUR ELLENŐRZÉS A KIVÁGOTT KÉPEN ===
-        console.log('🔍 Checking CROPPED image blur...');
-        setCaptureStatusMessage('Checking sharpness...');
-
-        await new Promise<void>(resolve => setTimeout(resolve, 200));
-
-        // A kivágott képet használjuk a blur ellenőrzéshez
-        const croppedMat = OpenCV.base64ToMat(scanResult.imageBase64);
-        const croppedMatInfo = OpenCV.toJSValue(croppedMat);
-        const croppedWidth = croppedMatInfo.cols || 0;
-        const croppedHeight = croppedMatInfo.rows || 0;
-
-        console.log(`📸 Cropped image dimensions: ${croppedWidth}x${croppedHeight}`);
-
-        const grayCheckMat = OpenCV.createObject(
-          ObjectType.Mat,
-          croppedHeight,
-          croppedWidth,
-          DataTypes.CV_8UC1,
-        );
-        OpenCV.invoke('cvtColor', croppedMat, grayCheckMat, 6, 0);
-
-        // A teljes kivágott képen ellenőrizzük (már csak a dokumentum van)
-        const laplacianMat = OpenCV.createObject(
-          ObjectType.Mat,
-          croppedHeight,
-          croppedWidth,
-          DataTypes.CV_64F,
-        );
-        OpenCV.invoke(
-          'Laplacian',
-          grayCheckMat,
-          laplacianMat,
-          DataTypes.CV_64F,
-          1,
-          1,
-          0,
-          4,
-        );
-
-        const absLaplacian = OpenCV.createObject(
-          ObjectType.Mat,
-          croppedHeight,
-          croppedWidth,
-          DataTypes.CV_8UC1,
-        );
-        OpenCV.invoke('convertScaleAbs', laplacianMat, absLaplacian, 1, 0);
-
-        const varianceScalar = OpenCV.invoke('mean', absLaplacian);
-        const varianceData = OpenCV.toJSValue(varianceScalar);
-        finalBlurScore = varianceData.a || 0;
-
-        console.log(
-          `📊 Photo ${photoAttempt} CROPPED blur score:`,
-          finalBlurScore.toFixed(2),
-        );
-        setCaptureStatusMessage(`Sharpness: ${finalBlurScore.toFixed(1)}`);
-
-        // Várunk egy kicsit hogy látható legyen az üzenet
-        await new Promise<void>(resolve => setTimeout(resolve, 200));
-
-        // Blur ellenőrzés
-        const isBlurry = finalBlurScore < BLUR_THRESHOLD;
+        // === BLUR ELLENŐRZÉS KIKAPCSOLVA ===
+        // A kamera autofokusszal és exposure={-0.5} gyors záridővel dolgozik.
+        // mean(|Laplacian|) nem működik fehér/kevés tartalmú lapokon (mindig alacsony).
+        // Ha a fotó homályos, a user látja az előnézeten és újra fotóz.
+        finalBlurScore = 99; // Always pass
+        const isBlurry = false;
 
         console.log(`📊 Attempt ${photoAttempt} results:`, {
-          blur: finalBlurScore.toFixed(2),
-          isBlurry: isBlurry,
           detectionSuccess: scanResult.success,
         });
 
-        if (isBlurry) {
-          console.log(
-            `⚠️ Photo ${photoAttempt} CROPPED image too blurry (${finalBlurScore.toFixed(
-              2,
-            )}). Retrying...`,
-          );
-          
-          // Vibráció jelzés hogy homályos a kép
-          Vibration.vibrate([0, 100, 50, 100]); // Két rövid vibráció
-          setCaptureStatusMessage('Blurry image - hold steady!');
-          await new Promise<void>(resolve => setTimeout(resolve, 800));
-          
-          // Ha ez az utolsó próbálkozás, feladjuk
-          if (photoAttempt === MAX_PHOTO_ATTEMPTS) {
-            console.warn(
-              `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts (all blurry). Restarting detection...`,
-            );
-            
-            // Erős vibráció jelzés hogy sikertelen
-            Vibration.vibrate([0, 200, 100, 200, 100, 200]); // Három hosszabb vibráció
-            setCaptureStatusMessage('❌ Too blurry - try again!');
-            await new Promise<void>(resolve => setTimeout(resolve, 1500));
-
-            // Reset auto-capture és újraindítás
-            autoCaptureTriggeredRef.current = false;
-            autoCaptureTimerRef.current = null;
-
-            setIsCapturing(false);
-            setIsCaptureAnimating(false);
-            overlayScale.setValue(1);
-            overlayTranslateY.setValue(0);
-            overlayOpacity.setValue(1);
-            setIsFrameProcessorActive(true);
-            console.log('▶️ Resuming frame processor - restarting detection');
-            return;
-          }
-          // Folytatjuk a következő próbálkozással
-          continue;
-        }
-
-        // Ha sikeres detection ÉS éles a kép, kész vagyunk!
+        // Ha sikeres detection, kész vagyunk!
         console.log(
           `✅ Photo ${photoAttempt} is good! Blur: ${finalBlurScore.toFixed(
             2,
@@ -1015,6 +921,7 @@ export default function App() {
           qrValue: scanResult.qrValue || null,
           qrPosition: captureQrPosition || null,
           timestamp: Date.now(),
+          selectedIcons: scanResult.selectedIcons || [],
         };
         setCapturedImages(prev => {
           const updated = [...prev, newImage];
@@ -1088,9 +995,10 @@ export default function App() {
       console.log('✅ Document saved permanently:', savedPath);
 
       // Navigate to DestinationSelectScreen with the saved file path
+      const detectedIcons = selectedIcons.map(i => i + 1);
       (navigation as any).navigate('DestinationSelectScreen', {
         savedFilePath: savedPath,
-        destinationType: 1,
+        destinationType: detectedIcons.length > 0 ? detectedIcons : [1],
       });
     }
 
@@ -1499,30 +1407,55 @@ export default function App() {
 
   if (!hasPermission) {
     return (
-      <View
-        style={[
-          styles.container,
-          { justifyContent: 'center', alignItems: 'center' },
-        ]}
-      >
-        <Text
-          style={{
-            color: 'black',
-            fontSize: 16,
-            textAlign: 'center',
-            paddingHorizontal: 20,
-          }}
-        >
-          {UI_MESSAGES.PERMISSION_NEEDED}
-        </Text>
-        <TouchableOpacity
-          style={[styles.switchButton, { marginTop: 20 }]}
-          onPress={requestPermission}
-        >
-          <Text style={styles.switchButtonText}>
-            {UI_MESSAGES.PERMISSION_BUTTON}
+      <View style={styles.permissionContainer}>
+        <View style={styles.permissionContent}>
+          <Image
+            source={require('../assets/logo.png')}
+            style={styles.permissionLogo}
+            resizeMode="contain"
+          />
+
+          <View style={styles.permissionIconCircle}>
+            <Image
+              source={require('../assets/new_scan.png')}
+              style={styles.permissionIcon}
+              resizeMode="contain"
+            />
+          </View>
+
+          <Text style={styles.permissionTitle}>
+            {UI_MESSAGES.PERMISSION_TITLE}
           </Text>
-        </TouchableOpacity>
+          <Text style={styles.permissionDescription}>
+            {UI_MESSAGES.PERMISSION_NEEDED}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.permissionButton}
+            onPress={requestPermission}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.permissionButtonText}>
+              {UI_MESSAGES.PERMISSION_BUTTON}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.permissionSettingsButton}
+            onPress={() => {
+              if (Platform.OS === 'ios') {
+                Linking.openURL('app-settings:');
+              } else {
+                Linking.openSettings();
+              }
+            }}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.permissionSettingsText}>
+              {UI_MESSAGES.PERMISSION_SETTINGS}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -1542,6 +1475,7 @@ export default function App() {
                 enableFpsGraph={false}
                 torch={torchEnabled ? 'on' : 'off'}
                 isActive={isFocused && !showCapturedImage}
+                exposure={-0.5}
                 frameProcessor={frameProcessor}
                 resizeMode="cover"
                 onLayout={event => {
@@ -1826,10 +1760,15 @@ export default function App() {
                       // Clear captured images
                       setCapturedImages([]);
                       
+                      // Merge all detected icons from all images, convert 0-indexed to 1-indexed
+                      const allDetectedIcons = [...new Set(
+                        capturedImages.flatMap(img => img.selectedIcons.map(i => i + 1))
+                      )];
+                      
                       // Navigate to destination select with ALL file paths
                       (navigation as any).navigate('DestinationSelectScreen', {
                         savedFilePaths: savedPaths,
-                        destinationType: 1,
+                        destinationType: allDetectedIcons.length > 0 ? allDetectedIcons : [1],
                       });
                     }
                   } catch (error) {
@@ -2035,9 +1974,7 @@ export default function App() {
         <View style={styles.galleryModalContainer}>
           {/* Header */}
           <View style={styles.galleryHeader}>
-            <Text style={styles.galleryTitle}>
-              ({capturedImages.length}). kép
-            </Text>
+           
             <TouchableOpacity
               style={styles.galleryCloseButton}
               onPress={() => setShowGalleryModal(false)}
@@ -2083,6 +2020,21 @@ export default function App() {
                     {index + 1} / {capturedImages.length}
                   </Text>
                 </View>
+                {/* Selected Icons */}
+                <View style={styles.galleryIconRow}>
+                  {['Nyíl', 'Gyémánt', 'Alma', 'Csengő', 'Lóhere', 'Csillag', 'Patkó'].map((name, i) => (
+                    <View key={i} style={[
+                      styles.galleryIconItem,
+                      item.selectedIcons?.includes(i) && styles.galleryIconItemActive,
+                    ]}>
+                      <DestinationIcon
+                        type={(i + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7}
+                        variant={item.selectedIcons?.includes(i) ? 'history-active' : 'history'}
+                        size={28}
+                      />
+                    </View>
+                  ))}
+                </View>
                 {/* Delete button for this image */}
                 <TouchableOpacity
                   style={styles.galleryDeleteButton}
@@ -2095,6 +2047,11 @@ export default function App() {
                     }
                   }}
                 >
+                  <Image
+                    resizeMode="contain"
+                    source={require('../assets/trash.png')}
+                    style={styles.galleryDeleteIcon}
+                  />
                   <Text style={styles.galleryDeleteText}>Delete</Text>
                 </TouchableOpacity>
               </View>
@@ -2660,7 +2617,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
     zIndex: 1000,
   },
   galleryHeader: {
@@ -2700,30 +2657,125 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   galleryImage: {
-    borderRadius: 12,
   },
   galleryDeleteButton: {
+    marginTop: 16,
     marginBottom: 30,
-    backgroundColor: 'rgba(255, 82, 82, 0.9)',
-    paddingHorizontal: 32,
-    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 28,
+    paddingVertical: 12,
     borderRadius: 25,
+    borderWidth: 1,
+    borderColor: 'rgba(152, 83, 166, 0.4)',
+  },
+  galleryDeleteIcon: {
+    width: 16,
+    height: 16,
+    tintColor: '#9853A6',
   },
   galleryDeleteText: {
-    color: 'white',
-    fontSize: 16,
+    color: '#9853A6',
+    fontSize: 15,
     fontWeight: '600',
   },
   galleryPageIndicator: {
-    marginTop: 20,
+    marginTop: 16,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    paddingVertical: 8,
     borderRadius: 20,
   },
   galleryPageText: {
     color: 'white',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  galleryIconRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 16,
+    gap: 10,
+  },
+  galleryIconItem: {
+    opacity: 0.4,
+  },
+  galleryIconItemActive: {
+    opacity: 1,
+  },
+  // === Permission Screen Styles ===
+  permissionContainer: {
+    flex: 1,
+    backgroundColor: '#2D1B4E',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 32,
+  },
+  permissionContent: {
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 340,
+  },
+  permissionLogo: {
+    width: 120,
+    height: 120,
+    marginBottom: 32,
+  },
+  permissionIconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(155, 109, 208, 0.25)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  permissionIcon: {
+    width: 36,
+    height: 36,
+    tintColor: '#C4A8FF',
+  },
+  permissionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  permissionDescription: {
+    fontSize: 15,
+    color: '#B8A5D6',
+    textAlign: 'center',
+    lineHeight: 22,
+    marginBottom: 36,
+  },
+  permissionButton: {
+    width: '100%',
+    backgroundColor: '#9B6DD0',
+    paddingVertical: 16,
+    borderRadius: 14,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
+    marginBottom: 16,
+  },
+  permissionButtonText: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  permissionSettingsButton: {
+    paddingVertical: 12,
+  },
+  permissionSettingsText: {
+    color: '#C4A8FF',
+    fontSize: 15,
     fontWeight: '600',
   },
 });

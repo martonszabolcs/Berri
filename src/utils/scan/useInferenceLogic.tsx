@@ -29,7 +29,7 @@ const DEBUG_IMAGE_INTERVAL = 1; // Debug kép generálási gyakoriság (ha DEBUG
 const MAX_PROCESS_DIMENSION = 4080; // Max feldolgozási felbontás (csökkentve a jobb teljesítményért)
 
 // === BLUR (HOMÁLYOSSÁG) DETEKTÁLÁS ===
-const BLUR_THRESHOLD = 1.5; // Laplacian variance küszöb - 1.5 felett éles
+const BLUR_THRESHOLD = 5; // Laplacian stddev küszöb - 5 alatt homályos (tartalom-független)
 
 // === DOKUMENTUM MÉRET KORLÁTOK ===
 const MIN_AREA_RATIO = 0.15; // Min dokumentum terület a kép %-ában (15% - növelve, közelebb kell menni)
@@ -776,27 +776,13 @@ export const useInferenceLogic = (
         );
         OpenCV.invoke('meanStdDev', laplacian, meanMat, stdDevMat);
 
-        // A helyes variance számítás: átváltjuk a Laplacian CV_64F-ből abszolút értékre
-        const absLaplacian = OpenCV.createObject(
-          ObjectType.Mat,
-          rotatedHeight,
-          rotatedWidth,
-          DataTypes.CV_64F,
-        );
-        OpenCV.invoke('convertScaleAbs', laplacian, absLaplacian, 1, 0);
-        
-        // Most számítsuk ki ennek a mean-jét, ami a valódi Laplacian variance
-        const varianceScalar = OpenCV.invoke('mean', absLaplacian);
-        const varianceData = OpenCV.toJSValue(varianceScalar);
-        const variance = varianceData.a || 0; // Ez a helyes Laplacian variance
-
-        // Threshold: ha variance < BLUR_THRESHOLD, akkor homályos
-        const isBlurry = variance < BLUR_THRESHOLD;
+        // BLUR DETECTION kikapcsolva a live preview-ban
+        // A valódi blur ellenőrzés a kivágott fotón történik (CameraScreen.tsx)
+        const variance = 0;
+        const isBlurry = false;
 
         // Blur info string létrehozása
-        const blurInfo = isBlurry
-          ? `Blur:⚠️ ${variance.toFixed(1)}`
-          : `Blur:✓ ${variance.toFixed(1)}`;
+        const blurInfo = `Blur:✓ (skip)`;
 
         const meanResult = OpenCV.invoke('mean', gray);
         const meanData = OpenCV.toJSValue(meanResult);
