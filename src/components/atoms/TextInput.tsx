@@ -44,6 +44,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 0,
     backgroundColor: 'transparent',
     borderWidth: 0,
+    fontFamily: 'Inter-Regular'
   },
   underline: {
     height: 1,

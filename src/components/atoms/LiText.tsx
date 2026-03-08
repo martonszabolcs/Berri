@@ -21,13 +21,13 @@ const styles = StyleSheet.create({
   liContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
   },
   bullet: {
     marginRight: 8,
-    width: 10,
-    height: 10,
+    width: 6,
+    height: 6,
     borderRadius: 20,
+    marginTop: 2,
     backgroundColor: 'white',
   },
 });

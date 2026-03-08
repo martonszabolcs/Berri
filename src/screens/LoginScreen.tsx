@@ -7,7 +7,10 @@ import { useAppDispatch } from '../store/hooks';
 import { loginUser } from '../store/appSlice';
 import { showErrorToast, showSuccessToast } from '../utils/toast';
 import React from 'react';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { Dimensions } from 'react-native';
 
+const screenHeight = Dimensions.get('window').height;
 type RootStackParamList = {
   LaunchScreen: undefined;
   MainTabs: undefined;
@@ -30,7 +33,7 @@ const LoginScreen = () => {
 
   const handleLogin = async () => {
     console.log('🚀 LoginScreen: handleLogin started', { email });
-    
+
     if (!email || !password) {
       showErrorToast('Missing Fields', 'Please fill in all fields');
       return;
@@ -52,7 +55,10 @@ const LoginScreen = () => {
         navigation.replace('MainTabs');
       } else {
         console.error('❌ LoginScreen: Login failed', result.error);
-        showErrorToast('Login Failed', result.error.message || 'Invalid email or password');
+        showErrorToast(
+          'Login Failed',
+          result.error.message || 'Invalid email or password',
+        );
       }
     } catch (error: any) {
       console.error('❌ LoginScreen: Login exception', error);
@@ -64,47 +70,47 @@ const LoginScreen = () => {
 
   return (
     <Layout type="auth">
-      <View style={styles.content}>
-        <Image
-          resizeMode="contain"
-          source={require('../assets/logo.png')}
-          style={styles.logo}
-        />
-        <View style={styles.form}>
-          <TextInput
-            placeholder="email"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={styles.input}
+      <KeyboardAwareScrollView enableOnAndroid>
+        <View style={[styles.content, { minHeight: screenHeight }]}>
+          <Image
+            resizeMode="contain"
+            source={require('../assets/logo.png')}
+            style={styles.logo}
           />
+          <View style={styles.form}>
+            <TextInput
+              placeholder="email"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={styles.input}
+            />
 
-          <TextInput
-            placeholder="password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            style={styles.input}
-          />
+            <TextInput
+              placeholder="password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              style={styles.input}
+            />
 
-          <TouchableOpacity
-            onPress={() => navigation.navigate('ForgottenScreen')}
-          >
-            <Text style={styles.forgotPassword}>
-              Forgotten password?
-            </Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ForgottenScreen')}
+            >
+              <Text style={styles.forgotPassword}>Forgotten password?</Text>
+            </TouchableOpacity>
 
-          <Button
-            title={isLoading ? 'Loading...' : 'Log in'}
-            onPress={handleLogin}
-            disabled={isLoading}
-            size="large"
-            buttonStyle={styles.loginButton}
-          />
+            <Button
+              title={isLoading ? 'Loading...' : 'LOG IN'}
+              onPress={handleLogin}
+              disabled={isLoading}
+              size="large"
+              buttonStyle={styles.loginButton}
+            />
+          </View>
         </View>
-      </View>
+      </KeyboardAwareScrollView>
     </Layout>
   );
 };
@@ -136,6 +142,7 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
     maxWidth: 400,
+    paddingBottom: 40,
   },
   input: {
     marginBottom: 24,

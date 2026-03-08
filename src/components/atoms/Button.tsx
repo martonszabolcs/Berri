@@ -147,6 +147,7 @@ const styles = StyleSheet.create({
   text: {
     fontWeight: '400',
     textAlign: 'center',
+    fontFamily: 'Inter-Regular',
   },
   smallText: {
     fontSize: 14,

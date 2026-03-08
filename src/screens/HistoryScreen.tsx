@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     marginTop: 'auto',
   },
   dotsIcon: {
-    width: 24,
+    width: 36,
     height: 24,
     tintColor: 'white',
   },

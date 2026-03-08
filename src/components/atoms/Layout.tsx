@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import BackgroundOverlay from './BackgroundOverlay';
 import Header from './Header';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Import the background images
 const bgPurple = require('../../assets/bg_purple.png');
@@ -19,6 +20,7 @@ interface LayoutProps {
   type?: 'auth' | 'default' | 'dark';
   color?: 'purple' | 'blue';
   style?: ViewStyle;
+  paddingBottom?: boolean;
   headerTitle?: string;
   showLogout?: boolean;
   showBackButton?: boolean;
@@ -32,6 +34,7 @@ const Layout = ({
   type = 'default',
   color = 'purple',
   style,
+  paddingBottom = false,
   headerTitle,
   showLogout = false,
   showBackButton = true,
@@ -39,6 +42,10 @@ const Layout = ({
   onMenuPress,
   rightComponent,
 }: LayoutProps) => {
+
+  const insets = useSafeAreaInsets();
+
+
   // Determine which background image to use
   const getBackgroundImage = () => {
     // For now, using purple images for both purple and blue
@@ -55,7 +62,8 @@ const Layout = ({
   return (
     <ImageBackground
       source={getBackgroundImage()}
-      style={[styles.container, style]}
+      style={[styles.container, style, paddingBottom && {
+          paddingBottom: insets.bottom},]}
       resizeMode="cover"
       loadingIndicatorSource={getBackgroundImage()} // Gyorsabb betöltés
     >
@@ -63,6 +71,7 @@ const Layout = ({
       {isDarkType && <BackgroundOverlay />}
 
       <View style={styles.content}>
+
         {headerTitle && (
           <Header
             title={headerTitle}
@@ -75,7 +84,9 @@ const Layout = ({
           />
         )}
         <View style={styles.childrenContainer}>{children}</View>
+
       </View>
+
     </ImageBackground>
   );
 };

@@ -4,7 +4,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createDrawerNavigator } from '@react-navigation/drawer';
 import { CustomDrawerContent, HistoryTabBarIcon, NewScanTabBarIcon, DestinationsTabBarIcon } from '../components';
 import { CardStyleInterpolators } from '@react-navigation/stack';
-
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 // Import screens
 import CameraScreen from '../screens/CameraScreen';
 import DestinationSelectScreen from '../screens/DestinationsSelectScreen';
@@ -203,9 +203,19 @@ const HistoryStack = () => {
 
 // Main Tab Navigator
 const MainTabs = () => {
+  const insets = useSafeAreaInsets();
   return (
     <Tab.Navigator
-      screenOptions={tabScreenOptions}
+       screenOptions={{
+        ...tabScreenOptions,
+        tabBarStyle: {
+          backgroundColor: 'rgba(37, 37, 68, 1)',
+          borderTopWidth: 0,
+          height: 60 + insets.bottom,
+          paddingTop: 10,
+          paddingBottom: insets.bottom,
+        },
+      }}
     >
       <Tab.Screen
         name="History"

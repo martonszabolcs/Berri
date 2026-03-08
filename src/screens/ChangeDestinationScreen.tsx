@@ -473,6 +473,7 @@ const ChangeDestinationScreen = () => {
 
   return (
     <Layout
+      paddingBottom
       type="dark"
       headerTitle={`Change ${getDestinationName(destination)} Destination`}
     >

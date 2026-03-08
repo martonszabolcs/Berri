@@ -29,13 +29,13 @@ const AuthScreen = () => {
         />
         <View style={styles.form}>
           <Button
-            title={'Sign up'}
+            title={'SIGN UP'}
             onPress={() => navigation.navigate('RegisterScreen')}
             size="large"
             buttonStyle={styles.loginButton}
           />
           <Button
-            title={'Log in'}
+            title={'LOG IN'}
             onPress={() => navigation.navigate('LoginScreen')}
             size="large"
             buttonStyle={styles.loginButton}

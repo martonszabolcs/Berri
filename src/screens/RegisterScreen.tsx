@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import { View, StyleSheet, Image, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { TextInput, Button, Layout, LiText } from '../components';
@@ -7,7 +7,10 @@ import { useAppDispatch } from '../store/hooks';
 import { registerUser } from '../store/appSlice';
 import { showErrorToast, showSuccessToast } from '../utils/toast';
 import React from 'react';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
+import { Dimensions } from 'react-native';
 
+const screenHeight = Dimensions.get('window').height;
 type RootStackParamList = {
   LaunchScreen: undefined;
   MainTabs: undefined;
@@ -56,18 +59,24 @@ const RegisterScreen = () => {
 
       if (registerUser.fulfilled.match(result)) {
         console.log('✅ RegisterScreen: Registration successful');
-        showSuccessToast('Account Created!', 'Please check your email to verify your account');
+        showSuccessToast(
+          'Account Created!',
+          'Please check your email to verify your account',
+        );
         setTimeout(() => navigation.navigate('LoginScreen'), 1500);
       } else {
         console.error('❌ RegisterScreen: Registration failed', result.error);
-        const errorMessage = (result.payload as string)
-          || result.error?.message 
-          || 'Something went wrong during registration.';
+        const errorMessage =
+          (result.payload as string) ||
+          result.error?.message ||
+          'Something went wrong during registration.';
         showErrorToast('Registration Failed', errorMessage);
       }
     } catch (error: any) {
       console.error('❌ RegisterScreen: Registration exception', error);
-      const errorMessage = error.response?.data?.message || 'Something went wrong during registration.';
+      const errorMessage =
+        error.response?.data?.message ||
+        'Something went wrong during registration.';
       showErrorToast('Registration Failed', errorMessage);
     } finally {
       setIsLoading(false);
@@ -76,52 +85,54 @@ const RegisterScreen = () => {
 
   return (
     <Layout type="auth">
-      <View style={styles.content}>
-        <Image
-          resizeMode="contain"
-          source={require('../assets/logo.png')}
-          style={styles.logo}
-        />
-        <View style={styles.form}>
-          <TextInput
-            placeholder="name"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="none"
-            style={styles.input}
+      <KeyboardAwareScrollView enableOnAndroid>
+        <View style={[styles.content, { minHeight: screenHeight }]}>
+          <Image
+            resizeMode="contain"
+            source={require('../assets/logo.png')}
+            style={styles.logo}
           />
-          <TextInput
-            placeholder="e-mail"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            style={styles.input}
-          />
+          <View style={styles.form}>
+            <TextInput
+              placeholder="name"
+              value={name}
+              onChangeText={setName}
+              autoCapitalize="none"
+              style={styles.input}
+            />
+            <TextInput
+              placeholder="e-mail"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              style={styles.input}
+            />
 
-          <TextInput
-            placeholder="password"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            style={styles.input}
-          />
+            <TextInput
+              placeholder="password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry
+              style={styles.input}
+            />
 
-          <LiText text="minimum 8 characters" />
-          <LiText text="one lowercase letter" />
-          <LiText text="one uppercase letter" />
-          <LiText text="one number" />
-          <LiText text="one special character" />
+            <LiText text="minimum 8 characters" />
+            <LiText text="one lowercase letter" />
+            <LiText text="one uppercase letter" />
+            <LiText text="one number" />
+            <LiText text="one special character" />
 
-          <Button
-            title={isLoading ? 'Loading...' : 'Sign up'}
-            onPress={handleRegister}
-            disabled={isLoading}
-            size="large"
-            buttonStyle={styles.loginButton}
-          />
+            <Button
+              title={isLoading ? 'Loading...' : 'SIGN UP'}
+              onPress={handleRegister}
+              disabled={isLoading}
+              size="large"
+              buttonStyle={styles.loginButton}
+            />
+          </View>
         </View>
-      </View>
+      </KeyboardAwareScrollView>
     </Layout>
   );
 };
@@ -153,6 +164,8 @@ const styles = StyleSheet.create({
   form: {
     width: '100%',
     maxWidth: 400,
+    marginTop: 50,
+    paddingBottom: 120,
   },
   input: {
     marginBottom: 24,

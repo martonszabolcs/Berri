@@ -828,7 +828,7 @@ const HistorySelectScreen = () => {
         </View>
       )}
 
-      <Layout>
+      <Layout paddingBottom>
         <View style={styles.selectionHeader}>
           <Button onPress={cancelSelection} 
           variant="text-white"

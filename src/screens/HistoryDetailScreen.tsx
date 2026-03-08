@@ -413,7 +413,7 @@ const HistoryDetailScreen = () => {
   }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
 
   return (
-    <Layout type="default" headerTitle={'Detail'} showBackButton={true}>
+    <Layout paddingBottom type="default" headerTitle={'Detail'} showBackButton={true}>
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Title and Date */}
         <View style={styles.headerInfo}>
@@ -554,12 +554,12 @@ const styles = StyleSheet.create({
   },
   imageContainer: {
     marginBottom: 20,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    elevation: 16,
+    // borderRadius: 12,
+    // shadowColor: '#000',
+    // shadowOffset: { width: 0, height: 8 },
+    // shadowOpacity: 0.3,
+    // shadowRadius: 16,
+    // elevation: 16,
   },
   imageWrapper: {
     borderRadius: 12,

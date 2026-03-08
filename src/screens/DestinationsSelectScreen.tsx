@@ -97,7 +97,27 @@ const DestinationSelectScreen = () => {
   const sendFileToDestination = async (filterDestinationType?: string, newSettings?: any) => {
     if (!selectedDestinations || selectedDestinations.length === 0) {
       console.warn('No destinations selected');
-      return;
+
+      //save to local
+await saveFilesToAsyncstorage({
+          files: allFilePaths,
+          destinations: selectedDestinations,
+        });
+
+      // Navigate to History tab AND reset the NewScanStack back to CameraScreen (init state)
+    const parentNavigation = navigation.getParent();
+    if (parentNavigation) {
+      // First reset the NewScanStack so CameraScreen starts fresh
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'CameraScreen' }],
+        })
+      );
+      // Then switch to History tab
+      parentNavigation.navigate('History');
+    }
+    return;
     }
 
     if (isSending) {
@@ -434,7 +454,7 @@ const DestinationSelectScreen = () => {
 
 
   return (
-    <Layout type="dark" headerTitle="Where should we send your scans?">
+    <Layout paddingBottom type="dark" headerTitle="Where should we send your scans?">
       <ScrollView>
         <View style={styles.content}>
           {allDestinations.map((destination: any) => (
@@ -476,12 +496,12 @@ const DestinationSelectScreen = () => {
           ))}
         </View>
         <Button
-          title={isSending ? 'Sending...' : 'Send'}
+          title={selectedDestinations.length === 0 ? 'Next' : isSending ? 'Sending...' : 'Send'}
           onPress={() => sendFileToDestination()}
           variant="normal"
           size="large"
           buttonStyle={styles.sendButton}
-          disabled={selectedDestinations.length === 0 || isSending}
+          disabled={isSending}
         />
       </ScrollView>
     </Layout>
