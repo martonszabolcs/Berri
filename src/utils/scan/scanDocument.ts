@@ -649,6 +649,43 @@ export const scanDocument = (
       stepImages.push({ label: '2. Color mask (saturation)', image: step1_5Result.base64 });
     }
 
+    // === DARK INK MASK - Fekete tinta megőrzése (sima vonalak a threshold szaggatás helyett) ===
+    console.log('🖊️ Detecting dark ink regions for smooth preservation');
+    
+    // Grayscale a dark ink detektáláshoz (maxChannel már megvan a color mask-ból)
+    // Dark ink: maxChannel < 80 (nagyon sötét pixel) ÉS alacsony szaturáció (< 40, nem színes tinta)
+    const darkInkBrightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', maxChannel, darkInkBrightMask, 80, 255, 1); // THRESH_BINARY_INV = 1, max < 80 → sötét pixel
+    
+    const lowSatMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', saturation, lowSatMask, 40, 255, 1); // THRESH_BINARY_INV = 1, sat < 40 → nem színes
+    
+    // Combine: sötét ÉS nem színes = fekete tinta
+    const darkInkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_and', darkInkBrightMask, lowSatMask, darkInkMask);
+    
+    // Exclude pixels that are already in the color mask (ne legyen dupla maszkolás)
+    const notColorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_not', colorMaskDilated, notColorMask);
+    OpenCV.invoke('bitwise_and', darkInkMask, notColorMask, darkInkMask);
+    
+    // Dilate slightly to cover ink edges (3x3 ellipse)
+    const darkInkDilateKernel = OpenCV.invoke('getStructuringElement', 2, createSize(3, 3)); // MORPH_ELLIPSE = 2
+    const darkInkMaskDilated = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('morphologyEx', darkInkMask, darkInkMaskDilated, 1, darkInkDilateKernel); // MORPH_DILATE = 1
+    
+    console.log('✅ Dark ink mask created - brightness<80, saturation<40');
+
+    // Step 1.6: Dark ink mask visualization
+    if (enableDebugImages) {
+      const darkInkMaskBGR = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', darkInkMaskDilated, darkInkMaskBGR, 8, 0); // COLOR_GRAY2BGR = 8
+      const step1_6Result = OpenCV.toJSValue(darkInkMaskBGR);
+      if (step1_6Result?.base64) {
+        stepImages.push({ label: '2.5. Dark ink mask', image: step1_6Result.base64 });
+      }
+    }
+
     // === GRAYSCALE CONVERSION ===
     console.log('🎨 Converting to grayscale');
     const grayMat = OpenCV.createObject(
@@ -659,32 +696,14 @@ export const scanDocument = (
     );
     OpenCV.invoke('cvtColor', croppedMat, grayMat, 6, 0); // COLOR_BGR2GRAY = 6
 
-    // === BRIGHTNESS DETECTION using minMaxLoc ===
-    console.log('💡 Detecting image brightness with minMaxLoc');
-    const minMaxResult = OpenCV.invoke('minMaxLoc', grayMat) as any;
-    const minVal = minMaxResult?.minVal ?? 0;
-    const maxVal = minMaxResult?.maxVal ?? 255;
-    const range = maxVal - minVal;
-
-    const avgBrightness = Math.round(
-      range > 150
-        ? minVal * 0.2 + maxVal * 0.8
-        : range > 100
-        ? minVal * 0.3 + maxVal * 0.7
-        : (minVal + maxVal) / 2,
-    );
+    // === BRIGHTNESS DETECTION using mean ===
+    console.log('💡 Detecting image brightness with mean');
+    const meanResult = OpenCV.invoke('mean', grayMat);
+    const meanData = OpenCV.toJSValue(meanResult);
+    const avgBrightness = Math.round(meanData.a);
 
     console.log('📊 Brightness analysis:', {
-      minVal,
-      maxVal,
-      range,
       avgBrightness,
-      method:
-        range > 150
-          ? 'high-contrast'
-          : range > 100
-          ? 'medium-contrast'
-          : 'low-contrast',
     });
 
     const rawBeta = Math.pow(Math.max(0, 230 - avgBrightness), 1.2) * 0.2;
@@ -1337,8 +1356,8 @@ export const scanDocument = (
       }
     }
 
-    // === RESTORE COLORED REGIONS - Visszamaszkolás ===
-    console.log('🎨 Restoring colored regions over processed B&W image');
+    // === RESTORE COLORED REGIONS + DARK INK - Visszamaszkolás ===
+    console.log('🎨 Restoring colored regions and dark ink over processed B&W image');
     
     // Crop the color mask and colored regions to match final dimensions
     const colorMaskCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
@@ -1359,19 +1378,39 @@ export const scanDocument = (
     const coloredRegionsCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
     OpenCV.invoke('crop', coloredRegions, coloredRegionsCropped, finalCombinedRect);
     
-    // Invert mask for B&W areas
-    const bwMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('bitwise_not', colorMaskCropped, bwMask);
+    // Crop dark ink mask to match final dimensions
+    const darkInkMaskCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('crop', darkInkMaskDilated, darkInkMaskCropped, finalCombinedRect);
     
-    // Apply masks
+    // Create combined mask (color OR dark ink)
+    const combinedPreserveMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_or', colorMaskCropped, darkInkMaskCropped, combinedPreserveMask);
+    
+    // Invert combined mask for B&W processed areas
+    const bwMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_not', combinedPreserveMask, bwMask);
+    
+    // Apply masks - B&W processed part (ahol nincs se szín, se fekete tinta)
     const bwPart = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
     OpenCV.invoke('bitwise_and', finalCleanMat, finalCleanMat, bwPart, bwMask);
     
-    // Combine B&W and colored regions
+    // Dark ink part - tiszta fekete (0,0,0) ahol sötét tinta van
+    // Nem az eredeti szürkés pixelt használjuk, hanem tiszta feketét!
+    const pureBlack = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    // pureBlack is already all zeros (black) by default from createObject
+    const darkInkPart = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_and', pureBlack, pureBlack, darkInkPart, darkInkMaskCropped);
+    // darkInkPart is all black where mask is active - which is what we want!
+    // We just need to make sure the B&W part doesn't overlap with dark ink areas
+    
+    // Combine: B&W processed + colored regions + dark ink (pure black)
+    // Step 1: B&W + colored regions
     const finalWithColor = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
     OpenCV.invoke('add', bwPart, coloredRegionsCropped, finalWithColor);
+    // Step 2: add dark ink (pure black) - since dark ink pixels are (0,0,0) and bwPart is already zeroed there,
+    // the result is already correct! The bwMask excludes dark ink areas → those pixels are (0,0,0) = pure black
     
-    console.log('✅ Colored regions restored!');
+    console.log('✅ Colored regions + dark ink restored!');
 
     // Step 9.7: After color restoration
     if (enableDebugImages) {

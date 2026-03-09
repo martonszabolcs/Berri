@@ -22,7 +22,7 @@ import { useEffect } from 'react';
 
 // === TELJESÍTMÉNY ÉS DEBUG ===
 const DEBUG_ON = false; // Debug képek generálása (false = jobb teljesítmény!)
-const FRAME_SKIP_INTERVAL = 3; // Minden N. frame feldolgozása (1=minden, 2=minden második, 3=minden harmadik)
+const FRAME_SKIP_INTERVAL = 1; // Minden N. frame feldolgozása (1=minden, 2=minden második, 3=minden harmadik)
 const DEBUG_IMAGE_INTERVAL = 1; // Debug kép generálási gyakoriság (ha DEBUG_ON=true)
 
 // === KÉPFELDOLGOZÁS ===
@@ -32,7 +32,7 @@ const MAX_PROCESS_DIMENSION = 4080; // Max feldolgozási felbontás (csökkentve
 const BLUR_THRESHOLD = 5; // Laplacian stddev küszöb - 5 alatt homályos (tartalom-független)
 
 // === DOKUMENTUM MÉRET KORLÁTOK ===
-const MIN_AREA_RATIO = 0.15; // Min dokumentum terület a kép %-ában (15% - növelve, közelebb kell menni)
+const MIN_AREA_RATIO = 0.08; // Min dokumentum terület a kép %-ában (15% - növelve, közelebb kell menni)
 const MAX_AREA_RATIO = 0.95; // Max dokumentum terület a kép %-ában (95%)
 const CROP_MARGIN_RATIO = 0.05; // Szélek margin aránya (5% - képszél elutasítás)
 
