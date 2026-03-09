@@ -468,12 +468,11 @@ export default function App() {
       const result = newResults[0];
 
       // Update states only if changed (performance)
-      if (result.brightness !== currentBrightness)
-        setCurrentBrightness(result.brightness!);
-      if (result.seekerInfo && result.seekerInfo !== currentSeekerInfo)
-        setCurrentSeekerInfo(result.seekerInfo);
-      if (result.blurInfo && result.blurInfo !== currentBlurInfo)
-        setCurrentBlurInfo(result.blurInfo);
+      setCurrentBrightness(prev => result.brightness !== prev ? result.brightness! : prev);
+      if (result.seekerInfo)
+        setCurrentSeekerInfo(prev => result.seekerInfo !== prev ? result.seekerInfo! : prev);
+      if (result.blurInfo)
+        setCurrentBlurInfo(prev => result.blurInfo !== prev ? result.blurInfo! : prev);
       if (result.calibrationInfo) setCalibrationInfo(result.calibrationInfo);
 
       // QR info with stability (anti-jitter)
@@ -656,9 +655,6 @@ export default function App() {
     },
     [
       DEBUG_ON,
-      currentBrightness,
-      currentSeekerInfo,
-      currentBlurInfo,
       checkRectangleShape,
     ],
   );

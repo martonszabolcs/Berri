@@ -650,17 +650,21 @@ export const scanDocument = (
     }
 
     // === DARK INK MASK - Fekete tinta megőrzése (sima vonalak a threshold szaggatás helyett) ===
-    console.log('🖊️ Detecting dark ink regions for smooth preservation');
+    console.log('�️ Detecting dark ink regions for smooth preservation');
     
-    // Grayscale a dark ink detektáláshoz (maxChannel már megvan a color mask-ból)
-    // Dark ink: maxChannel < 80 (nagyon sötét pixel) ÉS alacsony szaturáció (< 40, nem színes tinta)
+    // Adaptive threshold a maxChannel-en: lokálisan nézi mi sötét → flash hotspot, árnyék nem zavar
+    const darkInkTotalPixels = cropWidth * cropHeight;
+    const darkInkHighRes = darkInkTotalPixels > 3_000_000;
+    const darkInkBlockSize = darkInkHighRes ? 51 : 31;
+    const darkInkC = darkInkHighRes ? 20 : 15; // alacsonyabb C mint a fő threshold → érzékenyebb a tintára
     const darkInkBrightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', maxChannel, darkInkBrightMask, 80, 255, 1); // THRESH_BINARY_INV = 1, max < 80 → sötét pixel
+    // ADAPTIVE_THRESH_GAUSSIAN_C = 1, THRESH_BINARY_INV = 1 (sötétebb mint környezete → white)
+    OpenCV.invoke('adaptiveThreshold', maxChannel, darkInkBrightMask, 140, 1, 1, darkInkBlockSize, darkInkC);
     
     const lowSatMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('threshold', saturation, lowSatMask, 40, 255, 1); // THRESH_BINARY_INV = 1, sat < 40 → nem színes
     
-    // Combine: sötét ÉS nem színes = fekete tinta
+    // Combine: lokálisan sötét ÉS nem színes = fekete tinta
     const darkInkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('bitwise_and', darkInkBrightMask, lowSatMask, darkInkMask);
     
@@ -674,7 +678,7 @@ export const scanDocument = (
     const darkInkMaskDilated = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('morphologyEx', darkInkMask, darkInkMaskDilated, 1, darkInkDilateKernel); // MORPH_DILATE = 1
     
-    console.log('✅ Dark ink mask created - brightness<80, saturation<40');
+    console.log('✅ Dark ink mask created - adaptive blockSize:', darkInkBlockSize, 'C:', darkInkC);
 
     // Step 1.6: Dark ink mask visualization
     if (enableDebugImages) {
@@ -706,8 +710,7 @@ export const scanDocument = (
       avgBrightness,
     });
 
-    const rawBeta = Math.pow(Math.max(0, 230 - avgBrightness), 1.2) * 0.2;
-    const betaBoost = Math.round(Math.max(0, Math.min(80, rawBeta)));
+    const betaBoost = 0;
 
     const lightCondition: 'Daylight' | 'Normal' | 'Night' =
       avgBrightness > 180
@@ -718,7 +721,6 @@ export const scanDocument = (
 
     console.log('💡 Brightness detection:', {
       avgBrightness: avgBrightness.toFixed(1),
-      betaBoost,
       lightCondition,
     });
 
@@ -740,149 +742,72 @@ export const scanDocument = (
       };
     }
 
-    // Determine enhancement parameters based on brightness
-    let alpha: number;
-    let beta: number;
-    
-    if (avgBrightness < 150) {
-      // Dark image - need stronger boost
-      alpha = 1.8;
-      beta = betaBoost;
-      console.log('🌑 Dark image detected - strong enhancement');
-    } else if (avgBrightness > 150 && avgBrightness <= 200) {
-      // Bright image - boost contrast to preserve faint lines
-      alpha = 1.2;
-      beta = -10;
-      console.log('☀️ Bright image detected - boosting contrast');
-    } else {
-      // Very bright image (200-230) - stronger contrast boost
-      alpha = 1.4;
-      beta = -20;
-      console.log('🌞 Very bright image - strong contrast boost');
-    }
+    // Adaptive threshold handles flash hotspots locally - no global brightness adjustment needed
+    console.log('📝 Using adaptiveThreshold for local binarization (flash-safe)');
 
-    // === ADAPTIVE CONTRAST & BRIGHTNESS ENHANCEMENT ===
-    console.log(`🔆 Applying contrast: ${alpha}x, brightness: +${beta}`);
-    const processedGray = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC1,
-    );
-    OpenCV.invoke('convertScaleAbs', grayMat, processedGray, alpha, beta);
-
-    // Step 2: Enhanced grayscale
+    // Step 2: Grayscale
     const grayMatBGR = OpenCV.createObject(
       ObjectType.Mat,
       cropHeight,
       cropWidth,
       DataTypes.CV_8UC3,
     );
-    OpenCV.invoke('cvtColor', processedGray, grayMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
+    OpenCV.invoke('cvtColor', grayMat, grayMatBGR, 8, 0); // COLOR_GRAY2BGR = 8
     const step2Result = OpenCV.toJSValue(grayMatBGR);
     if (step2Result?.base64) {
       stepImages.push({ 
-        label: `3. Grayscale + Kontraszt (${alpha}x, +${beta})`, 
+        label: '3. Grayscale (raw)', 
         image: step2Result.base64 
       });
     }
 
-    // === SHARPENING - Before threshold for better edge detection ===
-    console.log('🔪 Applying aggressive sharpening before threshold');
-    
-    // Gaussian blur for unsharp mask
-    const blurredSharp = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC1,
-    );
-    const sharpenKsize = OpenCV.createObject(ObjectType.Size, 0, 0);
-    OpenCV.invoke('GaussianBlur', processedGray, blurredSharp, sharpenKsize, 3, 3, 4);
-    
-    // Unsharp mask: result = original * 2 - blurred * 1 (sum = 1 for proper balance)
-    // FONTOS: α - β = 1 kell legyen! (2-1=1)
-    const sharpenedGray = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC1,
-    );
-    OpenCV.invoke('addWeighted', processedGray, 6, blurredSharp, -5, 0, sharpenedGray);
-    console.log('✅ Aggressive sharpening completed');
+    // Use raw grayscale for threshold
+    const sharpenedGray = grayMat;
 
-    // Step 3: Sharpened grayscale
-    const sharpenedGrayBGR = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC3,
-    );
-    OpenCV.invoke('cvtColor', sharpenedGray, sharpenedGrayBGR, 8, 0); // COLOR_GRAY2BGR = 8
-    const step3Result = OpenCV.toJSValue(sharpenedGrayBGR);
-    if (step3Result?.base64) {
-      stepImages.push({ label: '4. Sharpening', image: step3Result.base64 });
-    }
-
-    // === BLACK MASK (THRESHOLD) ===
-    console.log('🎭 Creating adaptive black mask based on resolution');
+    // === BLACK MASK (ADAPTIVE THRESHOLD) ===
+    // adaptiveThreshold works LOCALLY - each pixel's threshold is computed from its neighborhood
+    // This naturally handles flash hotspots: bright center still has bright neighbors → stays white
+    // While text is always darker than its local neighborhood → becomes black
+    console.log('🎭 Creating adaptive threshold mask (flash-safe, local)');
     
-    // First, calculate optimal threshold using Otsu's method
-    const tempMaskMat = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC1,
-    );
-    const otsuResult = OpenCV.invoke('threshold', sharpenedGray, tempMaskMat, 0, 255, 8); // THRESH_OTSU = 8
-    const otsuThreshold = typeof otsuResult === 'number' ? otsuResult : 128;
-    console.log('📊 Otsu calculated threshold:', otsuThreshold);
-    
-    // === RESOLUTION + BRIGHTNESS ADAPTIVE THRESHOLD ===
-    // iPhone 15 (48 MP): 0.25 → mindig agresszív (elég detail)
-    // iPhone 12 (12 MP) + lámpafény (sötét): 0.75 → enyhébb (ne nyúljon bele a szövegbe)
-    // iPhone 12 (12 MP) + nappali fény (világos): 0.45 → köztes (zajok ne jöjjenek be)
+    // Block size should scale with image resolution
     const totalPixels = cropWidth * cropHeight;
-    //const isHighRes = false; // TESZT: mindig 12MP-ként kezel (iPhone 12 szimuláció)
-    const isHighRes = totalPixels > 3_000_000; // > 3 megapixel threshold (48MP vs 12MP)
-    const isDark = avgBrightness < 120; // Lámpafény (sötét környezet)
-    // Felbontás + fényerő alapú threshold multiplier
-    let thresholdMultiplier: number;
-    let reasoning: string;
+    const isHighRes = totalPixels > 3_000_000;
+    // Larger block = more robust to noise, smaller block = more detail
+    // Must be odd number
+    const blockSize = isHighRes ? 51 : 31;
+    // C constant: pixel must be C levels DARKER than local mean to be black
+    // Dotted grid lines are ~10-20 levels darker than paper → C=25 filters them out
+    // Real ink/text is ~50-150 levels darker → easily passes C=25
+    const adaptiveC = isHighRes ? 40 : 40;
     
-    if (isHighRes) {
-      // Nagy felbontás (iPhone 15) - mindig agresszív
-      thresholdMultiplier = 0.25;
-      reasoning = 'iPhone 15 (48MP) - agresszív threshold';
-    } else if (isDark) {
-      // Kis felbontás + lámpafény - enyhébb (ne törölje a szöveget)
-      thresholdMultiplier = 0.75;
-      reasoning = 'iPhone 12 (12MP) + lámpafény - enyhébb threshold';
-    } else {
-      // Kis felbontás + nappali fény - köztes (zajok ne jöjjenek)
-      thresholdMultiplier = 0.45;
-      reasoning = 'iPhone 12 (12MP) + nappali fény - köztes threshold';
-    }
-    
-    console.log('📐 Resolution + Brightness threshold:', {
+    console.log('📐 Adaptive threshold params:', {
       totalPixels,
-      avgBrightness,
       isHighRes,
-      isDark,
-      multiplier: thresholdMultiplier,
-      reasoning,
+      blockSize,
+      adaptiveC,
+      avgBrightness,
     });
     
-    // Apply adaptive threshold
+    // Apply Gaussian adaptive threshold (better than mean for uneven lighting)
     const maskMat = OpenCV.createObject(
       ObjectType.Mat,
       cropHeight,
       cropWidth,
       DataTypes.CV_8UC1,
     );
-    const adjustedThreshold = Math.max(25, otsuThreshold * thresholdMultiplier);
-    OpenCV.invoke('threshold', sharpenedGray, maskMat, adjustedThreshold, 255, 0); // THRESH_BINARY = 0
-    console.log('✅ Adaptive black mask created with adjusted threshold:', adjustedThreshold);
+    // ADAPTIVE_THRESH_GAUSSIAN_C = 1, THRESH_BINARY = 0
+    OpenCV.invoke('adaptiveThreshold', sharpenedGray, maskMat, 255, 1, 0, blockSize, adaptiveC);
+    
+    // === MIX: Burn dark ink mask into the threshold result ===
+    // maskMat: white=background, black=text (from adaptiveThreshold)
+    // darkInkMaskDilated: white=dark ink, black=everything else
+    // Where dark ink is detected → force pixel to BLACK in maskMat (combine both detections)
+    const invertedDarkInk = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_not', darkInkMaskDilated, invertedDarkInk); // dark ink areas become 0 (black)
+    OpenCV.invoke('bitwise_and', maskMat, invertedDarkInk, maskMat); // force those pixels black in maskMat
+    
+    console.log('✅ Adaptive threshold + dark ink mask combined');
 
     // Step 4: Black mask (threshold)
     const maskMatBGR = OpenCV.createObject(
@@ -1029,7 +954,7 @@ export const scanDocument = (
     );
     // Median blur with 7x7 kernel - stronger noise removal
     // while preserving edges better than Gaussian blur
-    OpenCV.invoke('medianBlur', finalThickened, medianFiltered, 5);
+    OpenCV.invoke('medianBlur', finalThickened, medianFiltered, 13);
     console.log('✅ Stronger median blur completed - dots removed');
 
     // Step 6.5: After median blur
@@ -1057,44 +982,32 @@ export const scanDocument = (
     // OpenCV.invoke('GaussianBlur', medianFiltered, blurredFinal, blurKsize, 1, 1, 4);
     // console.log('✅ Final Gaussian blur completed');
 
-    // === FINAL SHARPENING - Restore crispness after median blur ===
-    console.log('✨ Applying aggressive final sharpening for crisp text');
-    
-    // Gaussian blur for unsharp mask
-    const blurredFinalSharp = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC1,
-    );
-    const finalSharpenKsize = OpenCV.createObject(ObjectType.Size, 0, 0);
-    OpenCV.invoke('GaussianBlur', medianFiltered, blurredFinalSharp, finalSharpenKsize, 3, 3, 4);
-    
-    // Unsharp mask with VERY aggressive sharpening: original * 4 - blurred * 3
-    const sharpenedFinal = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC1,
-    );
-    OpenCV.invoke('addWeighted', medianFiltered, 2, blurredFinalSharp, -1, 0, sharpenedFinal);
-    console.log('✅ Aggressive final sharpening completed');
+    // === FINAL SHARPENING - DISABLED (causes text thickening) ===
+    // Sharpening + binarization combo pumped up edges → thicker text
+    // Median blur output is clean enough, just binarize directly
 
-    // Step 9: Final sharpening
-    const sharpenedFinalBGR = OpenCV.createObject(
-      ObjectType.Mat,
-      cropHeight,
-      cropWidth,
-      DataTypes.CV_8UC3,
-    );
-    OpenCV.invoke('cvtColor', sharpenedFinal, sharpenedFinalBGR, 8, 0); // COLOR_GRAY2BGR = 8
-    const step9Result = OpenCV.toJSValue(sharpenedFinalBGR);
-    if (step9Result?.base64) {
-      stepImages.push({ label: '9. Sharpening', image: step9Result.base64 });
+    // === FORCE PURE BLACK & WHITE - szürke → full fekete, világos → full fehér ===
+    const binarizedFinal = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', medianFiltered, binarizedFinal, 128, 255, 0); // THRESH_BINARY: >128 → white, else black
+    
+    // === ERODE - Keskenyítés: fekete vonalak vékonyabbá válnak ===
+    const erodeKernel = OpenCV.invoke('getStructuringElement', 2, createSize(3, 3)); // MORPH_ELLIPSE = 2
+    const erodedFinal = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('morphologyEx', binarizedFinal, erodedFinal, 3, erodeKernel); // MORPH_OPEN = 3 (erode then dilate - removes thin noise)
+    // B&W képen erode = fehér terjed → fekete vonalak vékonyodnak
+    // Invertált logika: threshold output white=paper, black=ink → erode fehéríti a széleket
+    console.log('✅ Pure B&W + erode (thinner text)');
+
+    if (enableDebugImages) {
+      const binBGR = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', erodedFinal, binBGR, 8, 0);
+      const binResult = OpenCV.toJSValue(binBGR);
+      if (binResult?.base64) {
+        stepImages.push({ label: '9. Pure B&W + erode', image: binResult.base64 });
+      }
     }
 
-    // Use sharpened result as final
-    const blurredFinal = sharpenedFinal;
+    const blurredFinal = erodedFinal;
 
     // Convert back to BGR for consistency with rest of code
     const finalMat = OpenCV.createObject(

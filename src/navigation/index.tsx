@@ -26,6 +26,7 @@ import HowToScreen from '../screens/HowToScreen';
 import FileNamingScreen from '../screens/FileNamingScreen';
 import ResetPasswordScreen from '../screens/ResetPasswordScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ScanTestScreen from '../screens/ScanTestScreen';
 import React from 'react';
 
 type RootStackParamList = {
@@ -59,6 +60,7 @@ type RootStackParamList = {
       imageUri: string;
     }
   };
+  ScanTestScreen: undefined;
 };
 
 type HistoryStackParamList = {
@@ -356,6 +358,11 @@ const Navigation = () => {
         <Stack.Screen
           name="UpdatePasswordScreen"
           component={UpdatePasswordScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="ScanTestScreen"
+          component={ScanTestScreen}
           options={hideHeader}
         />
       </Stack.Navigator>

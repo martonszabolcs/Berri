@@ -47,6 +47,10 @@ const SettingsScreen = () => {
     navigation.navigate('Destinations');
   };
 
+  const handleScanTest = () => {
+    (navigation as any).navigate('ScanTestScreen');
+  };
+
   return (
     <Layout type="dark" headerTitle="Settings">
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -98,6 +102,11 @@ const SettingsScreen = () => {
             title="Destination setup"
             subtitle="Configure scan destinations"
             onPress={handleDestinationSetup}
+          />
+          <MenuListItem
+            title="🧪 Scan Pipeline Test"
+            subtitle="Test scan with a static image"
+            onPress={handleScanTest}
           />
         </View>
       </ScrollView>
