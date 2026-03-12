@@ -53,7 +53,7 @@ interface ScanDocumentResult {
 }
 
 const SCALE_FACTOR = 1.0;
-const CROP_PERCENT = 0.007; // Disabled - no initial crop
+const CROP_PERCENT = 0; // Disabled - no crop
 
 // Target output resolution - A4-like at 300 DPI equivalent
 // 5:3 aspect ratio (BERRĪ notebook), high resolution output
@@ -664,9 +664,15 @@ export const scanDocument = (
     const lowSatMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('threshold', saturation, lowSatMask, 40, 255, 1); // THRESH_BINARY_INV = 1, sat < 40 → nem színes
     
-    // Combine: lokálisan sötét ÉS nem színes = fekete tinta
+    // Abszolút fényerő szűrő: csak igazán sötét pixelek (maxChannel < 120)
+    // Ez kiszűri a világosszürke pöttyöket (notebook dots ~150-180 brightness)
+    const absoluteDarkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('threshold', maxChannel, absoluteDarkMask, 120, 255, 1); // THRESH_BINARY_INV = 1, dark < 120
+
+    // Combine: lokálisan sötét ÉS abszolút sötét ÉS nem színes = fekete tinta
     const darkInkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('bitwise_and', darkInkBrightMask, lowSatMask, darkInkMask);
+    OpenCV.invoke('bitwise_and', darkInkMask, absoluteDarkMask, darkInkMask);
     
     // Exclude pixels that are already in the color mask (ne legyen dupla maszkolás)
     const notColorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -777,9 +783,9 @@ export const scanDocument = (
     // Must be odd number
     const blockSize = isHighRes ? 51 : 31;
     // C constant: pixel must be C levels DARKER than local mean to be black
-    // Dotted grid lines are ~10-20 levels darker than paper → C=25 filters them out
-    // Real ink/text is ~50-150 levels darker → easily passes C=25
-    const adaptiveC = isHighRes ? 40 : 40;
+    // Notebook dots are ~20-40 levels darker than paper → C=50 filters them out
+    // Real ink/text is ~80-150 levels darker → easily passes C=50
+    const adaptiveC = isHighRes ? 50 : 50;
     
     console.log('📐 Adaptive threshold params:', {
       totalPixels,
@@ -824,7 +830,7 @@ export const scanDocument = (
 
     // === MORPHOLOGICAL OPENING - Remove noise (erosion then dilation) ===
     console.log('🧹 Removing noise with morphological opening');
-    const kernel = OpenCV.invoke('getStructuringElement', 0, createSize(2, 2)); // MORPH_RECT = 0, 2x2 kernel
+    const kernel = OpenCV.invoke('getStructuringElement', 0, createSize(3, 3)); // MORPH_RECT = 0, 3x3 kernel (removes small dots)
     const openedMat = OpenCV.createObject(
       ObjectType.Mat,
       cropHeight,
@@ -952,10 +958,10 @@ export const scanDocument = (
       cropWidth,
       DataTypes.CV_8UC1,
     );
-    // Median blur with 7x7 kernel - stronger noise removal
-    // while preserving edges better than Gaussian blur
-    OpenCV.invoke('medianBlur', finalThickened, medianFiltered, 13);
-    console.log('✅ Stronger median blur completed - dots removed');
+    // Median blur with 5x5 kernel - dots already handled by threshold + opening
+    // Smaller kernel preserves text edge sharpness better
+    OpenCV.invoke('medianBlur', finalThickened, medianFiltered, 1);
+    console.log('✅ Median blur completed');
 
     // Step 6.5: After median blur
     const medianMatBGR = OpenCV.createObject(
@@ -1295,7 +1301,13 @@ export const scanDocument = (
     const darkInkMaskCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('crop', darkInkMaskDilated, darkInkMaskCropped, finalCombinedRect);
     
-    // Create combined mask (color OR dark ink)
+    // COLOR HAS PRIORITY over dark ink — remove dark ink where color mask exists
+    // (dilate can bleed dark ink into color areas)
+    const notColorCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_not', colorMaskCropped, notColorCropped);
+    OpenCV.invoke('bitwise_and', darkInkMaskCropped, notColorCropped, darkInkMaskCropped);
+    
+    // Create combined mask (color OR dark ink — no overlap now)
     const combinedPreserveMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('bitwise_or', colorMaskCropped, darkInkMaskCropped, combinedPreserveMask);
     

@@ -15,7 +15,7 @@ import {
 const ENABLE_DEBUG_IMAGES = false; // Set to true to enable debug image generation (slow!)
 const MIN_AREA_RATIO = 0.001; // 0.1% - fotó downscale után nagyon kicsik a contourok
 const MAX_AREA_RATIO = 0.95;
-const CROP_MARGIN_RATIO = 0.005; // 0.5% = ~3-4px - nagyon kicsi margin hogy ne zárja ki a dokumentum szélét
+const CROP_MARGIN_RATIO = 0; // Disabled - ne zárjon ki szél közeli kontúrokat
 const MIN_PORTRAIT_ASPECT_RATIO = 0.9;
 const TARGET_ASPECT_RATIO = 5.0 / 3.0;
 const MAX_ASPECT_RATIO_DIFF = 1.5;

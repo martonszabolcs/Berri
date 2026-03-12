@@ -737,7 +737,7 @@ export default function App() {
         console.log(
           `📸 Photo attempt ${photoAttempt}/${MAX_PHOTO_ATTEMPTS}...`,
         );
-        setCaptureStatusMessage('Hold still');
+        setCaptureStatusMessage(photoAttempt === 1 ? 'Hold still' : 'Retrying...');
 
         // Fotó készítése
         const photo = await camera.current.takePhoto({

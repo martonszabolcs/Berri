@@ -456,12 +456,9 @@ const ChangeDestinationScreen = () => {
       GoogleSignin.configure({
         scopes: ['https://www.googleapis.com/auth/drive.file'],
         webClientId:
-        //  '827173339361-bl3r96gj06s2kofp94fufmlc13vnhvuf.apps.googleusercontent.com',
-        '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
+          '827173339361-j4l1hclopp7ja4oi38l858r0e58ctotc.apps.googleusercontent.com',
         offlineAccess: true,
         forceCodeForRefreshToken: true,
-        hostedDomain: '', // ne legyen kitöltve
-        loginHint: '', // ne legyen kitöltve
       });
 
       console.log('after configure');

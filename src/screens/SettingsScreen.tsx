@@ -103,11 +103,11 @@ const SettingsScreen = () => {
             subtitle="Configure scan destinations"
             onPress={handleDestinationSetup}
           />
-          <MenuListItem
+           <MenuListItem
             title="🧪 Scan Pipeline Test"
             subtitle="Test scan with a static image"
             onPress={handleScanTest}
-          />
+          /> 
         </View>
       </ScrollView>
     </Layout>
