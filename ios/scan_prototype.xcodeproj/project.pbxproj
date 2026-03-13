@@ -20,6 +20,12 @@
 		EE7C50DE2F61DC90002A11EF /* ez.JPG in Resources */ = {isa = PBXBuildFile; fileRef = EE7C50DD2F61DC90002A11EF /* ez.JPG */; };
 		EEBFD0CF2EDFB9A000DB59B9 /* intro lesz (1).png in Resources */ = {isa = PBXBuildFile; fileRef = EEBFD0CE2EDFB9A000DB59B9 /* intro lesz (1).png */; };
 		EEC303092F5F232F009CC398 /* IMG_2897-1.JPG in Resources */ = {isa = PBXBuildFile; fileRef = EEC303082F5F232F009CC398 /* IMG_2897-1.JPG */; };
+		EEED38D02F631A9A00A152D8 /* 1000006566.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38CF2F631A9A00A152D8 /* 1000006566.jpg */; };
+		EEED38D22F631C8B00A152D8 /* Group 5.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D12F631C8B00A152D8 /* Group 5.jpg */; };
+		EEED38D42F631E5000A152D8 /* Group 5 (1).jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D32F631E5000A152D8 /* Group 5 (1).jpg */; };
+		EEED38D62F631F1700A152D8 /* Group 5 (2).jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D52F631F1700A152D8 /* Group 5 (2).jpg */; };
+		EEED38D82F631FAA00A152D8 /* Group 5 (3).jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D72F631FAA00A152D8 /* Group 5 (3).jpg */; };
+		EEED38DA2F641B4D00A152D8 /* IMG_2901.JPG in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D92F641B4D00A152D8 /* IMG_2901.JPG */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +46,12 @@
 		EE7C50DD2F61DC90002A11EF /* ez.JPG */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = ez.JPG; sourceTree = "<group>"; };
 		EEBFD0CE2EDFB9A000DB59B9 /* intro lesz (1).png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "intro lesz (1).png"; sourceTree = "<group>"; };
 		EEC303082F5F232F009CC398 /* IMG_2897-1.JPG */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "IMG_2897-1.JPG"; sourceTree = "<group>"; };
+		EEED38CF2F631A9A00A152D8 /* 1000006566.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = 1000006566.jpg; sourceTree = "<group>"; };
+		EEED38D12F631C8B00A152D8 /* Group 5.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 5.jpg"; sourceTree = "<group>"; };
+		EEED38D32F631E5000A152D8 /* Group 5 (1).jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 5 (1).jpg"; sourceTree = "<group>"; };
+		EEED38D52F631F1700A152D8 /* Group 5 (2).jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 5 (2).jpg"; sourceTree = "<group>"; };
+		EEED38D72F631FAA00A152D8 /* Group 5 (3).jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 5 (3).jpg"; sourceTree = "<group>"; };
+		EEED38D92F641B4D00A152D8 /* IMG_2901.JPG */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = IMG_2901.JPG; sourceTree = "<group>"; };
 		FA25957288EB1D5ED784D908 /* libPods-scan_prototype.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-scan_prototype.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -62,7 +74,13 @@
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
 				EE544AD12F57034F006A8ECC /* GoogleService-Info.plist */,
 				EEBFD0CE2EDFB9A000DB59B9 /* intro lesz (1).png */,
+				EEED38D92F641B4D00A152D8 /* IMG_2901.JPG */,
 				EEC303082F5F232F009CC398 /* IMG_2897-1.JPG */,
+				EEED38D72F631FAA00A152D8 /* Group 5 (3).jpg */,
+				EEED38D52F631F1700A152D8 /* Group 5 (2).jpg */,
+				EEED38D32F631E5000A152D8 /* Group 5 (1).jpg */,
+				EEED38D12F631C8B00A152D8 /* Group 5.jpg */,
+				EEED38CF2F631A9A00A152D8 /* 1000006566.jpg */,
 				EE7C50DD2F61DC90002A11EF /* ez.JPG */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
@@ -192,11 +210,17 @@
 			buildActionMask = 2147483647;
 			files = (
 				EEBFD0CF2EDFB9A000DB59B9 /* intro lesz (1).png in Resources */,
+				EEED38D02F631A9A00A152D8 /* 1000006566.jpg in Resources */,
 				EEC303092F5F232F009CC398 /* IMG_2897-1.JPG in Resources */,
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
+				EEED38D82F631FAA00A152D8 /* Group 5 (3).jpg in Resources */,
+				EEED38D42F631E5000A152D8 /* Group 5 (1).jpg in Resources */,
 				EE544AD22F57034F006A8ECC /* GoogleService-Info.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+				EEED38DA2F641B4D00A152D8 /* IMG_2901.JPG in Resources */,
+				EEED38D62F631F1700A152D8 /* Group 5 (2).jpg in Resources */,
 				EE7C50DE2F61DC90002A11EF /* ez.JPG in Resources */,
+				EEED38D22F631C8B00A152D8 /* Group 5.jpg in Resources */,
 				1DF15519676EBB8047371FEE /* PrivacyInfo.xcprivacy in Resources */,
 				3C57285B14A8414BA4DE6D8E /* Inter-Medium.ttf in Resources */,
 				D9685564A4B8496193175D6D /* Inter-Bold.ttf in Resources */,

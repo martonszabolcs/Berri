@@ -42,8 +42,10 @@ interface ScanDocumentResult {
   selectedIcons?: number[];
   selectedIconNames?: string[];
   iconAnalysis?: {
-    segment: number;
-    darkPixelRatio: number;
+    slot: number;
+    icon: string;
+    active: boolean;
+    darkPercent: number;
   }[];
   debugCorners?: {
     index: number;
@@ -612,10 +614,10 @@ export const scanDocument = (
     const saturation = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('subtract', maxChannel, minChannel, saturation);
     
-    // VERY STRICT threshold: csak NAGYON élénk színek (saturation > 90)
-    // Flash esetén a háttér is színesnek tűnhet, ezért kell a szigorúbb threshold
+    // Color threshold: capture vibrant + moderately saturated colors
+    // Lower threshold catches pastel/light colors too
     const colorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', saturation, colorMask, 70, 255, 0); // THRESH_BINARY = 0, threshold=90 (was 60)
+    OpenCV.invoke('threshold', saturation, colorMask, 50, 255, 0); // THRESH_BINARY = 0, threshold=50 (was 70)
     
     // Minimum brightness filter - túl sötét pixelek nem számítanak (árnyékok)
     const brightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -623,15 +625,15 @@ export const scanDocument = (
     
     // Maximum brightness filter - túl világos pixelek (fehér papír, flash tükröződés) nem számítanak
     const notTooWhiteMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', maxChannel, notTooWhiteMask, 240, 255, 1); // THRESH_BINARY_INV = 1, max < 240
+    OpenCV.invoke('threshold', maxChannel, notTooWhiteMask, 250, 255, 1); // THRESH_BINARY_INV = 1, max < 250
     
     // Combine saturation + brightness + not-too-white filters
     const colorMaskFiltered = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('bitwise_and', colorMask, brightMask, colorMaskFiltered);
     OpenCV.invoke('bitwise_and', colorMaskFiltered, notTooWhiteMask, colorMaskFiltered);
     
-    // Dilate mask slightly to include edges
-    const dilateKernel = OpenCV.invoke('getStructuringElement', 2, createSize(5, 5)); // MORPH_ELLIPSE = 2
+    // Dilate mask to include color edges without thickening text
+    const dilateKernel = OpenCV.invoke('getStructuringElement', 2, createSize(1, 1)); // MORPH_ELLIPSE = 2
     const colorMaskDilated = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('morphologyEx', colorMaskFiltered, colorMaskDilated, 1, dilateKernel); // MORPH_DILATE = 1
     
@@ -639,7 +641,7 @@ export const scanDocument = (
     const coloredRegions = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
     OpenCV.invoke('bitwise_and', croppedMat, croppedMat, coloredRegions, colorMaskDilated);
     
-    console.log('✅ Strict color mask created - saturation>90, brightness 60-240 only');
+    console.log('✅ Color mask created - saturation>50, brightness 60-250, dilate 9x9');
 
     // Step 1.5: Color mask visualization
     const colorMaskBGR = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
@@ -1039,10 +1041,13 @@ export const scanDocument = (
     OpenCV.invoke('crop', grayMat, bottom5Gray, bottom5GrayRect);
     
     // 7 szelet elemzése: hány % sötét pixel van benne
-    const DARK_THRESHOLD = 1; // 3% felett = aktív (X van benne)
+    // Az ikonok körvonalai + rajzai ~2-5% sötét pixelt adnak önmagukban,
+    // ha be van jelölve (X/satírozás), az 10%+ sötét pixelt jelent
+    const DARK_THRESHOLD = 2; // 8% felett = aktív (bejelölve)
     const PIXEL_DARK_VALUE = 100; // 100 alatti pixel = sötét (csak az igazi fekete X vonalak)
     const iconNames = ['Nyíl', 'Gyémánt', 'Alma', 'Csengő', 'Lóhere', 'Csillag', 'Patkó'];
     const iconActive: boolean[] = [];
+    const iconDarkPercents: number[] = [];
     
     for (let i = 0; i < 7; i++) {
       const sliceX = marginLeft + i * sliceWidth;
@@ -1066,6 +1071,7 @@ export const scanDocument = (
       
       const isActive = darkPercent > DARK_THRESHOLD;
       iconActive.push(isActive);
+      iconDarkPercents.push(Math.round(darkPercent * 10) / 10);
       
       console.log(`Slot ${i + 1}: ${darkPercent.toFixed(1)}% dark → ${isActive ? 'ACTIVE' : 'inactive'}`);
     }
@@ -1217,6 +1223,87 @@ export const scanDocument = (
     
     console.log(`📐 Cropping to height: ${finalHeight} (was ${cropHeight}, QR detected: ${qrDetected})`);
     
+    // === DEBUG: Icon zones + QR zone + crop line visualization ===
+    if (enableDebugImages) {
+      const zoneDebugMat = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('cvtColor', grayMat, zoneDebugMat, 8, 0); // COLOR_GRAY2BGR = 8
+
+      // 1. Draw icon detection zones (green=active, red=inactive)
+      for (let i = 0; i < 7; i++) {
+        const sliceX = marginLeft + i * sliceWidth;
+        const sliceW = Math.min(sliceWidth, cropWidth - sliceX);
+        const x1 = sliceX;
+        const y1 = bottom5StartY;
+        const x2 = sliceX + sliceW;
+        const y2 = cropHeight;
+        
+        const r = iconActive[i] ? 0 : 255;
+        const g = iconActive[i] ? 255 : 0;
+        const color = OpenCV.createObject(ObjectType.Scalar, 0, g, r, 255); // BGR
+        
+        const tl = OpenCV.createObject(ObjectType.Point, x1, y1);
+        const tr = OpenCV.createObject(ObjectType.Point, x2, y1);
+        const br = OpenCV.createObject(ObjectType.Point, x2, y2);
+        const bl = OpenCV.createObject(ObjectType.Point, x1, y2);
+        OpenCV.invoke('line', zoneDebugMat, tl, tr, color, 6, 8);
+        OpenCV.invoke('line', zoneDebugMat, tr, br, color, 6, 8);
+        OpenCV.invoke('line', zoneDebugMat, br, bl, color, 6, 8);
+        OpenCV.invoke('line', zoneDebugMat, bl, tl, color, 6, 8);
+      }
+
+      // 2. Draw QR search zone (alsó 15% — cyan dashed area outline)
+      const qrSearchStartY = cropHeight - Math.round(cropHeight * 0.15);
+      const cyanColor = OpenCV.createObject(ObjectType.Scalar, 255, 255, 0, 255); // BGR: cyan
+      const qzTl = OpenCV.createObject(ObjectType.Point, 0, qrSearchStartY);
+      const qzTr = OpenCV.createObject(ObjectType.Point, cropWidth, qrSearchStartY);
+      const qzBr = OpenCV.createObject(ObjectType.Point, cropWidth, cropHeight);
+      const qzBl = OpenCV.createObject(ObjectType.Point, 0, cropHeight);
+      OpenCV.invoke('line', zoneDebugMat, qzTl, qzTr, cyanColor, 4, 8);
+      OpenCV.invoke('line', zoneDebugMat, qzTr, qzBr, cyanColor, 4, 8);
+      OpenCV.invoke('line', zoneDebugMat, qzBr, qzBl, cyanColor, 4, 8);
+      OpenCV.invoke('line', zoneDebugMat, qzBl, qzTl, cyanColor, 4, 8);
+
+      // 3. Draw final crop line (yellow horizontal line at finalHeight)
+      const yellowColor = OpenCV.createObject(ObjectType.Scalar, 0, 255, 255, 255); // BGR: yellow
+      const cropLineL = OpenCV.createObject(ObjectType.Point, 0, finalHeight);
+      const cropLineR = OpenCV.createObject(ObjectType.Point, cropWidth, finalHeight);
+      OpenCV.invoke('line', zoneDebugMat, cropLineL, cropLineR, yellowColor, 8, 8);
+
+      // 4. Always show fallback indicators for debugging
+      {
+        const magentaColor = OpenCV.createObject(ObjectType.Scalar, 255, 0, 255, 255); // BGR: magenta
+        const fallback90Y = Math.round(cropHeight * 0.90);
+        const fbLineL = OpenCV.createObject(ObjectType.Point, 0, fallback90Y);
+        const fbLineR = OpenCV.createObject(ObjectType.Point, cropWidth, fallback90Y);
+        OpenCV.invoke('line', zoneDebugMat, fbLineL, fbLineR, magentaColor, 4, 8);
+        
+        // Draw X markers on icon zones to show they are in the cropped-away area
+        for (let i = 0; i < 7; i++) {
+          const sliceX = marginLeft + i * sliceWidth;
+          const sliceW = Math.min(sliceWidth, cropWidth - sliceX);
+          const cx = sliceX + Math.round(sliceW / 2);
+          const cy = bottom5StartY + Math.round(bottom5Height / 2);
+          const halfSize = Math.round(Math.min(sliceW, bottom5Height) * 0.3);
+          
+          const xColor = OpenCV.createObject(ObjectType.Scalar, 0, 0, 255, 255); // BGR: red
+          const xTl = OpenCV.createObject(ObjectType.Point, cx - halfSize, cy - halfSize);
+          const xBr = OpenCV.createObject(ObjectType.Point, cx + halfSize, cy + halfSize);
+          const xTr = OpenCV.createObject(ObjectType.Point, cx + halfSize, cy - halfSize);
+          const xBl = OpenCV.createObject(ObjectType.Point, cx - halfSize, cy + halfSize);
+          OpenCV.invoke('line', zoneDebugMat, xTl, xBr, xColor, 4, 8);
+          OpenCV.invoke('line', zoneDebugMat, xTr, xBl, xColor, 4, 8);
+        }
+      }
+      
+      const zoneDebugResult = OpenCV.toJSValue(zoneDebugMat);
+      if (zoneDebugResult?.base64) {
+        stepImages.push({
+          label: `3. Zones: icon(green/red) QR(cyan) crop(yellow) fallback90%(magenta) QR:${qrDetected ? 'YES' : 'NO'}`,
+          image: zoneDebugResult.base64,
+        });
+      }
+    }
+
     const finalCropRect = OpenCV.createObject(
       ObjectType.Rect,
       0, // x
@@ -1302,40 +1389,51 @@ export const scanDocument = (
     OpenCV.invoke('crop', darkInkMaskDilated, darkInkMaskCropped, finalCombinedRect);
     
     // COLOR HAS PRIORITY over dark ink — remove dark ink where color mask exists
-    // (dilate can bleed dark ink into color areas)
     const notColorCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('bitwise_not', colorMaskCropped, notColorCropped);
     OpenCV.invoke('bitwise_and', darkInkMaskCropped, notColorCropped, darkInkMaskCropped);
     
-    // Create combined mask (color OR dark ink — no overlap now)
-    const combinedPreserveMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('bitwise_or', colorMaskCropped, darkInkMaskCropped, combinedPreserveMask);
+    // === SOFT ALPHA BLENDING for natural color transition ===
+    // Instead of hard binary mask, blur the color mask for gradual edge blending
+    console.log('🎨 Applying soft alpha blending for color regions');
     
-    // Invert combined mask for B&W processed areas
-    const bwMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('bitwise_not', combinedPreserveMask, bwMask);
+    // 1. GaussianBlur the color mask → soft alpha (0-255 gradient at edges)
+    // Small kernel = narrow transition zone, avoids shadow-like halo from original photo background
+    const softColorMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    const softBlurKsize = createSize(5, 5);
+    OpenCV.invoke('GaussianBlur', colorMaskCropped, softColorMask, softBlurKsize, 0, 0, 4); // BORDER_DEFAULT=4
     
-    // Apply masks - B&W processed part (ahol nincs se szín, se fekete tinta)
-    const bwPart = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('bitwise_and', finalCleanMat, finalCleanMat, bwPart, bwMask);
+    // 2. Zero out dark ink areas from soft color mask (dark ink stays pure black)
+    const notDarkInkMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+    OpenCV.invoke('bitwise_not', darkInkMaskCropped, notDarkInkMask);
+    OpenCV.invoke('bitwise_and', softColorMask, notDarkInkMask, softColorMask);
     
-    // Dark ink part - tiszta fekete (0,0,0) ahol sötét tinta van
-    // Nem az eredeti szürkés pixelt használjuk, hanem tiszta feketét!
-    const pureBlack = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
-    // pureBlack is already all zeros (black) by default from createObject
-    const darkInkPart = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('bitwise_and', pureBlack, pureBlack, darkInkPart, darkInkMaskCropped);
-    // darkInkPart is all black where mask is active - which is what we want!
-    // We just need to make sure the B&W part doesn't overlap with dark ink areas
+    // 3. Crop original image to final dimensions (need unmasked original for blending)
+    const originalCropped = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('crop', croppedMat, originalCropped, finalCombinedRect);
     
-    // Combine: B&W processed + colored regions + dark ink (pure black)
-    // Step 1: B&W + colored regions
+    // 4. Convert soft mask to 3-channel for multiply
+    const softAlpha3ch = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('cvtColor', softColorMask, softAlpha3ch, 8, 0); // COLOR_GRAY2BGR = 8
+    
+    const invSoftAlpha3ch = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_not', softAlpha3ch, invSoftAlpha3ch);
+    
+    // 5. Alpha blend: result = (original * softAlpha + bw * invSoftAlpha) / 255
+    const weightedOriginal = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('multiply', originalCropped, softAlpha3ch, weightedOriginal, 1.0 / 255.0);
+    
+    const weightedBW = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('multiply', finalCleanMat, invSoftAlpha3ch, weightedBW, 1.0 / 255.0);
+    
+    const blendedResult = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('add', weightedOriginal, weightedBW, blendedResult);
+    
+    // 6. Zero out dark ink areas → pure black (0,0,0)
     const finalWithColor = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('add', bwPart, coloredRegionsCropped, finalWithColor);
-    // Step 2: add dark ink (pure black) - since dark ink pixels are (0,0,0) and bwPart is already zeroed there,
-    // the result is already correct! The bwMask excludes dark ink areas → those pixels are (0,0,0) = pure black
+    OpenCV.invoke('bitwise_and', blendedResult, blendedResult, finalWithColor, notDarkInkMask);
     
-    console.log('✅ Colored regions + dark ink restored!');
+    console.log('✅ Soft color blending + dark ink restored!');
 
     // Step 9.7: After color restoration
     if (enableDebugImages) {
@@ -1425,7 +1523,7 @@ export const scanDocument = (
       },
       selectedIcons: detectedIcons,
       selectedIconNames: detectedIconNames,
-      iconAnalysis: iconActive.map((a, i) => ({ slot: i + 1, icon: iconNames[i], active: a })),
+      iconAnalysis: iconActive.map((a, i) => ({ slot: i + 1, icon: iconNames[i], active: a, darkPercent: iconDarkPercents[i] })),
     };
   } catch (error) {
     console.error('Scan error:', error);

@@ -48,7 +48,7 @@ const ScanTestScreen = () => {
         `${RNFS.DocumentDirectoryPath}/${TEST_IMAGE_NAME}`,
         `${RNFS.CachesDirectoryPath}/${TEST_IMAGE_NAME}`,
         `${RNFS.MainBundlePath}/${TEST_IMAGE_NAME}`,
-        `${RNFS.MainBundlePath}/IMG_2897-1.JPG`,
+        `${RNFS.MainBundlePath}/IMG_2901.JPG`,
       ];
 
       let base64 = '';
@@ -73,7 +73,7 @@ const ScanTestScreen = () => {
           `Copy the test image to the app Documents dir:\n\n` +
           `iOS Simulator:\n` +
           `xcrun simctl get_app_container booted com.berri data\n` +
-          `# then cp IMG_2897-1.JPG <container>/Documents/${TEST_IMAGE_NAME}\n\n` +
+          `# then cp IMG_2901.JPG <container>/Documents/${TEST_IMAGE_NAME}\n\n` +
           `Tried:\n${possiblePaths.join('\n')}`
         );
         setLoading(false);
@@ -129,7 +129,8 @@ const ScanTestScreen = () => {
         `\nBrightness: ${result.brightnessInfo?.avgBrightness ?? 'N/A'}` +
         `\nLight: ${result.brightnessInfo?.lightCondition ?? 'N/A'}` +
         `\nSteps: ${result.stepImages?.length ?? 0}` +
-        `\nIcons: ${result.selectedIconNames?.join(', ') ?? 'none'}`
+        `\nIcons: ${result.selectedIconNames?.join(', ') ?? 'none'}` +
+        `\nIcon analysis: ${result.iconAnalysis?.map((ic: any) => `${ic.icon}: ${ic.darkPercent}%${ic.active ? ' ✓' : ''}`).join(' | ') ?? 'N/A'}`
       );
     } catch (e: any) {
       console.error('🧪 Scan test error:', e);
@@ -143,7 +144,7 @@ const ScanTestScreen = () => {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Scan Pipeline Test</Text>
-        <Text style={styles.subtitle}>IMG_2897-1.JPG</Text>
+        <Text style={styles.subtitle}>IMG_2901.JPG</Text>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
