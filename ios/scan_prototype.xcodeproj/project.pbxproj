@@ -26,6 +26,8 @@
 		EEED38D62F631F1700A152D8 /* Group 5 (2).jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D52F631F1700A152D8 /* Group 5 (2).jpg */; };
 		EEED38D82F631FAA00A152D8 /* Group 5 (3).jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D72F631FAA00A152D8 /* Group 5 (3).jpg */; };
 		EEED38DA2F641B4D00A152D8 /* IMG_2901.JPG in Resources */ = {isa = PBXBuildFile; fileRef = EEED38D92F641B4D00A152D8 /* IMG_2901.JPG */; };
+		EEED38DC2F641D7700A152D8 /* Group 6.png in Resources */ = {isa = PBXBuildFile; fileRef = EEED38DB2F641D7700A152D8 /* Group 6.png */; };
+		EEED38DE2F641E2B00A152D8 /* Group 6.jpg in Resources */ = {isa = PBXBuildFile; fileRef = EEED38DD2F641E2B00A152D8 /* Group 6.jpg */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -52,6 +54,8 @@
 		EEED38D52F631F1700A152D8 /* Group 5 (2).jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 5 (2).jpg"; sourceTree = "<group>"; };
 		EEED38D72F631FAA00A152D8 /* Group 5 (3).jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 5 (3).jpg"; sourceTree = "<group>"; };
 		EEED38D92F641B4D00A152D8 /* IMG_2901.JPG */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = IMG_2901.JPG; sourceTree = "<group>"; };
+		EEED38DB2F641D7700A152D8 /* Group 6.png */ = {isa = PBXFileReference; lastKnownFileType = image.png; path = "Group 6.png"; sourceTree = "<group>"; };
+		EEED38DD2F641E2B00A152D8 /* Group 6.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "Group 6.jpg"; sourceTree = "<group>"; };
 		FA25957288EB1D5ED784D908 /* libPods-scan_prototype.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-scan_prototype.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
@@ -75,6 +79,8 @@
 				EE544AD12F57034F006A8ECC /* GoogleService-Info.plist */,
 				EEBFD0CE2EDFB9A000DB59B9 /* intro lesz (1).png */,
 				EEED38D92F641B4D00A152D8 /* IMG_2901.JPG */,
+				EEED38DD2F641E2B00A152D8 /* Group 6.jpg */,
+				EEED38DB2F641D7700A152D8 /* Group 6.png */,
 				EEC303082F5F232F009CC398 /* IMG_2897-1.JPG */,
 				EEED38D72F631FAA00A152D8 /* Group 5 (3).jpg */,
 				EEED38D52F631F1700A152D8 /* Group 5 (2).jpg */,
@@ -218,6 +224,8 @@
 				EE544AD22F57034F006A8ECC /* GoogleService-Info.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				EEED38DA2F641B4D00A152D8 /* IMG_2901.JPG in Resources */,
+				EEED38DC2F641D7700A152D8 /* Group 6.png in Resources */,
+				EEED38DE2F641E2B00A152D8 /* Group 6.jpg in Resources */,
 				EEED38D62F631F1700A152D8 /* Group 5 (2).jpg in Resources */,
 				EE7C50DE2F61DC90002A11EF /* ez.JPG in Resources */,
 				EEED38D22F631C8B00A152D8 /* Group 5.jpg in Resources */,

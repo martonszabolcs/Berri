@@ -614,10 +614,9 @@ export const scanDocument = (
     const saturation = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('subtract', maxChannel, minChannel, saturation);
     
-    // Color threshold: capture vibrant + moderately saturated colors
-    // Lower threshold catches pastel/light colors too
+    // Color threshold: 45 balances green ink (~50-60 sat) vs shadows (~30-40 sat)
     const colorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', saturation, colorMask, 50, 255, 0); // THRESH_BINARY = 0, threshold=50 (was 70)
+    OpenCV.invoke('threshold', saturation, colorMask, 40, 255, 0); // THRESH_BINARY = 0, threshold=45
     
     // Minimum brightness filter - túl sötét pixelek nem számítanak (árnyékok)
     const brightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -658,7 +657,7 @@ export const scanDocument = (
     const darkInkTotalPixels = cropWidth * cropHeight;
     const darkInkHighRes = darkInkTotalPixels > 3_000_000;
     const darkInkBlockSize = darkInkHighRes ? 51 : 31;
-    const darkInkC = darkInkHighRes ? 20 : 15; // alacsonyabb C mint a fő threshold → érzékenyebb a tintára
+    const darkInkC = darkInkHighRes ? 15 : 10; // lower C = more sensitive to ink vs background
     const darkInkBrightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     // ADAPTIVE_THRESH_GAUSSIAN_C = 1, THRESH_BINARY_INV = 1 (sötétebb mint környezete → white)
     OpenCV.invoke('adaptiveThreshold', maxChannel, darkInkBrightMask, 140, 1, 1, darkInkBlockSize, darkInkC);
@@ -666,10 +665,10 @@ export const scanDocument = (
     const lowSatMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('threshold', saturation, lowSatMask, 40, 255, 1); // THRESH_BINARY_INV = 1, sat < 40 → nem színes
     
-    // Abszolút fényerő szűrő: csak igazán sötét pixelek (maxChannel < 120)
-    // Ez kiszűri a világosszürke pöttyöket (notebook dots ~150-180 brightness)
+    // Abszolút fényerő szűrő: sötét pixelek (maxChannel < 130)
+    // 130 catches slightly lighter strokes, but below notebook dots (~150-180)
     const absoluteDarkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', maxChannel, absoluteDarkMask, 120, 255, 1); // THRESH_BINARY_INV = 1, dark < 120
+    OpenCV.invoke('threshold', maxChannel, absoluteDarkMask, 130, 255, 1); // THRESH_BINARY_INV = 1, dark < 130
 
     // Combine: lokálisan sötét ÉS abszolút sötét ÉS nem színes = fekete tinta
     const darkInkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -681,7 +680,7 @@ export const scanDocument = (
     OpenCV.invoke('bitwise_not', colorMaskDilated, notColorMask);
     OpenCV.invoke('bitwise_and', darkInkMask, notColorMask, darkInkMask);
     
-    // Dilate slightly to cover ink edges (3x3 ellipse)
+    // Dilate to cover ink edges (3x3 ellipse — minimal to avoid thickening)
     const darkInkDilateKernel = OpenCV.invoke('getStructuringElement', 2, createSize(3, 3)); // MORPH_ELLIPSE = 2
     const darkInkMaskDilated = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('morphologyEx', darkInkMask, darkInkMaskDilated, 1, darkInkDilateKernel); // MORPH_DILATE = 1
@@ -1028,8 +1027,10 @@ export const scanDocument = (
 
     // === TEST: Bottom 5% with 7 column dividers + icon detection ===
     // Teljes szélesség: 12.5 cm, bal margó: 2 cm, jobb margó: 2 cm → hasznos: 8.5 cm
+    // 2% padding from bottom to avoid curved notebook edge bleeding into detection
+    const bottomPadding = Math.round(cropHeight * 0.01);
     const bottom5Height = Math.round(cropHeight * 0.05);
-    const bottom5StartY = cropHeight - bottom5Height;
+    const bottom5StartY = cropHeight - bottom5Height - bottomPadding;
     const marginLeft = Math.round(cropWidth * (2 / 12.5));   // 16%
     const marginRight = Math.round(cropWidth * (2 / 12.5));  // 16%
     const usableWidth = cropWidth - marginLeft - marginRight; // 68%
@@ -1235,7 +1236,7 @@ export const scanDocument = (
         const x1 = sliceX;
         const y1 = bottom5StartY;
         const x2 = sliceX + sliceW;
-        const y2 = cropHeight;
+        const y2 = bottom5StartY + bottom5Height;
         
         const r = iconActive[i] ? 0 : 255;
         const g = iconActive[i] ? 255 : 0;
@@ -1429,9 +1430,19 @@ export const scanDocument = (
     const blendedResult = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
     OpenCV.invoke('add', weightedOriginal, weightedBW, blendedResult);
     
-    // 6. Zero out dark ink areas → pure black (0,0,0)
+    // 6. Dark ink: use original dark pixels darkened to preserve tonal variation
+    // Extract original pixels where dark ink mask is active
+    const darkInkOriginal = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_and', originalCropped, originalCropped, darkInkOriginal, darkInkMaskCropped);
+    // Darken to ~50% brightness: enough to see subtle shading, still dark overall
+    const darkenedInk = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('convertScaleAbs', darkInkOriginal, darkenedInk, 0.9, 0);
+    
+    // Combine: blended (with dark ink areas zeroed) + darkened ink
+    const blendedNoDark = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
+    OpenCV.invoke('bitwise_and', blendedResult, blendedResult, blendedNoDark, notDarkInkMask);
     const finalWithColor = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('bitwise_and', blendedResult, blendedResult, finalWithColor, notDarkInkMask);
+    OpenCV.invoke('add', blendedNoDark, darkenedInk, finalWithColor);
     
     console.log('✅ Soft color blending + dark ink restored!');
 

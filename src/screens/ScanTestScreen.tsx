@@ -48,7 +48,7 @@ const ScanTestScreen = () => {
         `${RNFS.DocumentDirectoryPath}/${TEST_IMAGE_NAME}`,
         `${RNFS.CachesDirectoryPath}/${TEST_IMAGE_NAME}`,
         `${RNFS.MainBundlePath}/${TEST_IMAGE_NAME}`,
-        `${RNFS.MainBundlePath}/IMG_2901.JPG`,
+        `${RNFS.MainBundlePath}/Group 6.jpg`,
       ];
 
       let base64 = '';
@@ -73,7 +73,7 @@ const ScanTestScreen = () => {
           `Copy the test image to the app Documents dir:\n\n` +
           `iOS Simulator:\n` +
           `xcrun simctl get_app_container booted com.berri data\n` +
-          `# then cp IMG_2901.JPG <container>/Documents/${TEST_IMAGE_NAME}\n\n` +
+          `# then cp Group 6.jpg <container>/Documents/${TEST_IMAGE_NAME}\n\n` +
           `Tried:\n${possiblePaths.join('\n')}`
         );
         setLoading(false);
@@ -144,7 +144,7 @@ const ScanTestScreen = () => {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Scan Pipeline Test</Text>
-        <Text style={styles.subtitle}>IMG_2901.JPG</Text>
+        <Text style={styles.subtitle}>Group 6.jpg</Text>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
