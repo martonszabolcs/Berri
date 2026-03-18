@@ -11,8 +11,13 @@ type RootStackParamList = {
   ChangeRecipientScreen: { destination: any };
 };
 
-type ChangeRecipientScreenRouteProp = RouteProp<RootStackParamList, 'ChangeRecipientScreen'>;
-type ChangeRecipientScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+type ChangeRecipientScreenRouteProp = RouteProp<
+  RootStackParamList,
+  'ChangeRecipientScreen'
+>;
+type ChangeRecipientScreenNavigationProp =
+  StackNavigationProp<RootStackParamList>;
+type DestinationType = 'Google Drive' | 'Dropbox' | 'OneDrive' | 'Email';
 
 interface EmailInput {
   id: string;
@@ -25,22 +30,45 @@ const ChangeRecipientScreen = () => {
   const dispatch = useAppDispatch();
   const { destination } = route.params;
   const destinationId = destination.type.toString();
-      const user = useAppSelector((state) => state.app.user);
-  
-  const [emails, setEmails] = useState<EmailInput[]>([
-    { id: '1', value: '' }
-  ]);
+  const user = useAppSelector(state => state.app.user);
+
+  const [emails, setEmails] = useState<EmailInput[]>([{ id: '1', value: '' }]);
+
+  const [selectedDestination, setSelectedDestination] =
+    useState<DestinationType>('Email');
+
+  useEffect(() => {
+    if (destination?.destination) {
+      switch (destination.destination.toLowerCase()) {
+        case 'dropbox':
+          setSelectedDestination('Dropbox');
+          break;
+        case 'google_drive':
+        case 'googledrive':
+          setSelectedDestination('Google Drive');
+          break;
+        case 'onedrive':
+          setSelectedDestination('OneDrive');
+          break;
+        default:
+          setSelectedDestination('Email');
+      }
+    }
+  }, [destination?.destination]);
 
   // Initialize emails from destination
   useEffect(() => {
     if (destination.emails) {
       // Split emails by comma and create email inputs
-      const emailList = destination.emails.split(',').map((email: string) => email.trim()).filter((email: string) => email.length > 0);
+      const emailList = destination.emails
+        .split(',')
+        .map((email: string) => email.trim())
+        .filter((email: string) => email.length > 0);
       const emailInputs = emailList.map((email: string, index: number) => ({
         id: (index + 1).toString(),
-        value: email
+        value: email,
       }));
-      
+
       // Always have at least one input, and add empty one if less than 5
       if (emailInputs.length === 0) {
         setEmails([{ id: '1', value: '' }]);
@@ -56,31 +84,43 @@ const ChangeRecipientScreen = () => {
   // Get destination image based on type
   const getDestinationImage = (type: string) => {
     switch (type) {
-      case '1': return require('../assets/dest_1.png');
-      case '2': return require('../assets/dest_2.png');
-      case '3': return require('../assets/dest_3.png');
-      case '4': return require('../assets/dest_4.png');
-      case '5': return require('../assets/dest_5.png');
-      case '6': return require('../assets/dest_6.png');
-      case '7': return require('../assets/dest_7.png');
-      default: return require('../assets/dest_1.png');
+      case '1':
+        return require('../assets/dest_1.png');
+      case '2':
+        return require('../assets/dest_2.png');
+      case '3':
+        return require('../assets/dest_3.png');
+      case '4':
+        return require('../assets/dest_4.png');
+      case '5':
+        return require('../assets/dest_5.png');
+      case '6':
+        return require('../assets/dest_6.png');
+      case '7':
+        return require('../assets/dest_7.png');
+      default:
+        return require('../assets/dest_1.png');
     }
   };
 
   const handleEmailChange = (id: string, value: string) => {
     setEmails(prevEmails => {
       const updatedEmails = prevEmails.map(email =>
-        email.id === id ? { ...email, value } : email
+        email.id === id ? { ...email, value } : email,
       );
 
       // If this is the last input and it has content, and we have less than 5 emails, add a new one
-      const currentEmailIndex = updatedEmails.findIndex(email => email.id === id);
+      const currentEmailIndex = updatedEmails.findIndex(
+        email => email.id === id,
+      );
       const isLastEmail = currentEmailIndex === updatedEmails.length - 1;
       const hasContent = value.trim().length > 0;
       const canAddMore = updatedEmails.length < 5;
 
       if (isLastEmail && hasContent && canAddMore) {
-        const newId = (parseInt(updatedEmails[updatedEmails.length - 1].id, 10) + 1).toString();
+        const newId = (
+          parseInt(updatedEmails[updatedEmails.length - 1].id, 10) + 1
+        ).toString();
         updatedEmails.push({ id: newId, value: '' });
       }
 
@@ -100,22 +140,24 @@ const ChangeRecipientScreen = () => {
     try {
       // Filter out empty emails for saving
       const validEmails = emails.filter(email => email.value.trim().length > 0);
-      const emailString = validEmails.map(email => email.value.trim()).join(', ');
-      
+      const emailString = validEmails
+        .map(email => email.value.trim())
+        .join(', ');
+
       console.log('🚀 Saving emails:', emailString);
-      
-      const success = await updateDestinationSettings(destinationId, { 
+
+      const success = await updateDestinationSettings(destinationId, {
         emails: emailString,
-        destination: 'email'
+        destination: 'email',
       });
-      
+
       if (success) {
         console.log('✅ Recipient emails saved successfully');
-        
+
         // Refresh user data to get updated destinations
         await dispatch(refreshUser());
         console.log('✅ User data refreshed after recipient emails save');
-        
+
         navigation.goBack();
       } else {
         console.error('❌ Failed to save recipient emails');
@@ -127,36 +169,52 @@ const ChangeRecipientScreen = () => {
 
   const getDestinationName = (dest: any) => {
     if (dest.destination && dest.destination !== 'email') {
-      return dest.destination.charAt(0).toUpperCase() + dest.destination.slice(1);
+      return (
+        dest.destination.charAt(0).toUpperCase() + dest.destination.slice(1)
+      );
     }
     return getFruitName(dest.type.toString());
   };
 
   const getFruitName = (type: string) => {
     switch (type) {
-      case '1': return 'Cherry';
-      case '2': return 'Ananas'; 
-      case '3': return 'Apple';
-      case '4': return 'Banana';
-      case '5': return 'Orange';
-      case '6': return 'Melone';
-      case '7': return 'Grapes';
-      default: return 'Unknown Fruit';
+      case '1':
+        return 'Cherry';
+      case '2':
+        return 'Ananas';
+      case '3':
+        return 'Apple';
+      case '4':
+        return 'Banana';
+      case '5':
+        return 'Orange';
+      case '6':
+        return 'Melone';
+      case '7':
+        return 'Grapes';
+      default:
+        return 'Unknown Fruit';
     }
   };
 
   return (
-    <Layout type="dark" headerTitle={`Change ${getDestinationName(destination)} Recipient`}>
+    <Layout
+      type="dark"
+      headerTitle={`Change ${getDestinationName(destination)} Recipient`}
+    >
       <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Destination Info */}
         <View style={styles.destinationInfo}>
-          <Image 
-            source={getDestinationImage(destinationId)} 
+          <Image
+            source={getDestinationImage(destinationId)}
             style={styles.destinationImage}
           />
           <View style={styles.emailContainer}>
-            <Text style={styles.emailLabel}>Email</Text>
-            <Text style={styles.emailText}>{destination.emails || user.email}</Text>
+            <Text style={styles.emailLabel}>{selectedDestination}</Text>
+            <Text style={styles.emailText}>
+              {selectedDestination === 'Email' &&
+                (destination?.emails || user.email)}
+            </Text>
           </View>
         </View>
 
@@ -168,15 +226,15 @@ const ChangeRecipientScreen = () => {
                 <TextInput
                   placeholder={`Email ${index + 1}`}
                   value={email.value}
-                  onChangeText={(value) => handleEmailChange(email.id, value)}
+                  onChangeText={value => handleEmailChange(email.id, value)}
                   keyboardType="email-address"
                   autoCapitalize="none"
                   withoutStyle
                 />
               </View>
-              
+
               {/* Show delete button only if there's content AND it's not the only input, OR if there are multiple inputs and this one has content */}
-              {(email.value.trim().length > 0 && emails.length > 1) && (
+              {email.value.trim().length > 0 && emails.length > 1 && (
                 <Button
                   title="DELETE"
                   variant="destructive"
@@ -189,7 +247,7 @@ const ChangeRecipientScreen = () => {
           ))}
         </View>
 
-          {/* Save Button */}
+        {/* Save Button */}
         <View style={styles.saveButtonContainer}>
           <Button
             title="Save"

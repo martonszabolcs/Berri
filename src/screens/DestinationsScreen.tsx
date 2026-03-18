@@ -16,6 +16,8 @@ const DestinationsScreen = () => {
   const destinations = useAppSelector((state) => state.app.destinations);
   const user = useAppSelector((state) => state.app.user);
 
+
+
   const allDestinations = useMemo(() => {
     const all = [1,2,3,4,5,6,7];
     return all.map((type) => {
@@ -31,6 +33,21 @@ const DestinationsScreen = () => {
   const navigateToDestination = (destination: any) => {
     navigation.navigate('DestinationScreen', { destination });
   };
+
+  const getDestinationName = (dest: any) => {
+    switch (dest.destination.toLowerCase()) {
+        case 'dropbox':
+          return 'Dropbox';
+        case 'google_drive':
+        case 'googledrive':
+          return 'Google Drive';
+        case 'onedrive':
+          return 'OneDrive';
+        default:
+          return 'Email';
+      }
+    }
+  
 
   return (
     <Layout 
@@ -53,8 +70,8 @@ const DestinationsScreen = () => {
               <View style={styles.cardContent}>
                 <DestinationIcon type={destination.type} variant="screen" />
                 <View style={styles.destinationInfo}>
-                  <Text style={styles.destinationText}>{destination.destination === "email" ? "E-mail" : destination.destination}</Text>
-                  <Text style={styles.destinationText}>{destination.emails || user.email}</Text>
+                  <Text style={styles.destinationText}>{getDestinationName(destination)}</Text>
+                  <Text style={styles.destinationText}>{getDestinationName(destination) === "Email" && (destination.emails || user.email)}</Text>
                 </View>
                 <Image 
                   resizeMode='contain'

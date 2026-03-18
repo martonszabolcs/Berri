@@ -12,6 +12,7 @@ import {
   ActivityIndicator,
   Share,
 } from 'react-native';
+import RNFS from 'react-native-fs';
 import { useNavigation } from '@react-navigation/native';
 import {
   Layout,
@@ -265,6 +266,39 @@ const HistorySelectScreen = () => {
     }
   };
 
+//   const shareImage = async (filePath: string) => {
+//   try {
+//     // Olvasd be a képet base64-ként
+//     const base64Data = await RNFS.readFile(filePath, 'base64');
+
+//     // iOS-en kell a data URI formátum
+//     const base64Uri = `data:image/png;base64,${base64Data}`;
+
+//     await Share.share({
+//       url: base64Uri,
+//       message: 'Sharing my image',
+//     });
+//   } catch (error) {
+//     console.error('Error sharing image:', error);
+//   }
+// };
+
+const shareImage = async (filePath: string, index: number, total: number) => {
+  try {
+    const base64Data = await RNFS.readFile(filePath, 'base64');
+    const ext = filePath.split('.').pop()?.toLowerCase();
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+    const base64Uri = `data:${mime};base64,${base64Data}`;
+
+    await Share.share({
+      url: base64Uri,
+      message: `Sharing scanned BERRĪ document (${index + 1}/${total})`,
+    });
+  } catch (error) {
+    console.error('Error sharing file:', filePath, error);
+  }
+};
+
   const shareSelectedHistories = async () => {
     const getAllHistories = selectedCards
       .map((cardId: string) => {
@@ -313,10 +347,7 @@ const HistorySelectScreen = () => {
       // Share files (React Native Share only supports one URL at a time)
       if (allFiles.length === 1) {
         // Single file sharing
-        await Share.share({
-          url: allFiles[0],
-          message: `Sharing scanned BERRĪ document`,
-        });
+        await shareImage(allFiles[0], 1, 1);
       } else {
         // Multiple files - share them one by one or show selection
         Alert.alert(
@@ -330,22 +361,21 @@ const HistorySelectScreen = () => {
             {
               text: 'Share First File',
               onPress: async () => {
-                await Share.share({
-                  url: allFiles[0],
-                  message: `Sharing first of ${fileCount} scanned BERRĪ documents`,
-                });
+                 await shareImage(allFiles[0], 1, 1);
               },
             },
             {
               text: 'Share All Individually',
               onPress: async () => {
                 for (let i = 0; i < allFiles.length; i++) {
-                  await Share.share({
-                    url: allFiles[i],
-                    message: `Sharing scanned BERRĪ document (${
-                      i + 1
-                    }/${fileCount})`,
-                  });
+                  await shareImage(allFiles[i], i, fileCount);
+
+                  // await Share.share({
+                  //   url: allFiles[i],
+                  //   message: `Sharing scanned BERRĪ document (${
+                  //     i + 1
+                  //   }/${fileCount})`,
+                  // });
                   // Small delay between shares
                   await new Promise<void>(resolve => setTimeout(resolve, 500));
                 }

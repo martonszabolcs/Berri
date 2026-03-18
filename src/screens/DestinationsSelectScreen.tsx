@@ -219,6 +219,7 @@ await saveFilesToAsyncstorage({
             console.log('✅ Files uploaded to Dropbox successfully');
           } catch (error) {
             console.error('❌ Error uploading to Dropbox:', error);
+            
           }
         } else if (finalDest.destination === 'onedrive') {
           console.log('📤 Sending to OneDrive...');
@@ -452,9 +453,23 @@ await saveFilesToAsyncstorage({
     };
   }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
 
+    const getDestinationName = (dest: any) => {
+    switch (dest.destination.toLowerCase()) {
+        case 'dropbox':
+          return 'Dropbox';
+        case 'google_drive':
+        case 'googledrive':
+          return 'Google Drive';
+        case 'onedrive':
+          return 'OneDrive';
+        default:
+          return 'Email';
+      }
+    }
+  
 
   return (
-    <Layout paddingBottom type="dark" headerTitle="Where should we send your scans?">
+    <Layout type="dark" headerTitle="Where should we send your scans?">
       <ScrollView>
         <View style={styles.content}>
           {allDestinations.map((destination: any) => (
@@ -480,9 +495,9 @@ await saveFilesToAsyncstorage({
                 />
                 <View style={styles.destinationInfo}>
                   <Text style={styles.destinationText}>
-                    {destination.destination === 'email' ? 'E-mail' : destination.destination}
+                    {getDestinationName(destination)}
                   </Text>
-                  <Text style={styles.destinationText}>{destination.emails || user.email}</Text>
+                  <Text style={styles.destinationText}>{getDestinationName(destination) === "Email" && (destination.emails || user.email)}</Text>
                 </View>
                 {selectedDestinations.includes(destination.type) && (
                   <Image

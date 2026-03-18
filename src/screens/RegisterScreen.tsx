@@ -32,17 +32,8 @@ const RegisterScreen = () => {
   const dispatch = useAppDispatch();
 
   const handleRegister = async () => {
-    if (
-      password.length < 8 ||
-      password.search(/[a-z]/) === -1 ||
-      password.search(/[A-Z]/) === -1 ||
-      password.search(/[0-9]/) === -1 ||
-      password.search(/[^A-Za-z0-9]/) === -1
-    ) {
-      showErrorToast(
-        'Weak Password',
-        'Password must have 8+ chars, uppercase, lowercase, number & special character',
-      );
+    if (password.length < 8) {
+      showErrorToast('Weak Password', 'Password must have 8+ characters');
       return;
     }
 
@@ -85,8 +76,13 @@ const RegisterScreen = () => {
 
   return (
     <Layout type="auth">
-      <KeyboardAwareScrollView enableOnAndroid>
-        <View style={[styles.content, { minHeight: screenHeight }]}>
+      <KeyboardAwareScrollView
+        enableOnAndroid
+        extraScrollHeight={200}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ flexGrow: 1 }}
+      >
+        <View style={[styles.content]}>
           <Image
             resizeMode="contain"
             source={require('../assets/logo.png')}
@@ -118,10 +114,6 @@ const RegisterScreen = () => {
             />
 
             <LiText text="minimum 8 characters" />
-            <LiText text="one lowercase letter" />
-            <LiText text="one uppercase letter" />
-            <LiText text="one number" />
-            <LiText text="one special character" />
 
             <Button
               title={isLoading ? 'Loading...' : 'SIGN UP'}
@@ -140,13 +132,13 @@ const RegisterScreen = () => {
 const styles = StyleSheet.create({
   content: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
   logo: {
     width: '60%',
     marginBottom: 20,
+    marginTop: 100,
   },
   title: {
     color: 'white',
