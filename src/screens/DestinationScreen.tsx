@@ -18,6 +18,7 @@ type DestinationScreenRouteProp = RouteProp<
   'DestinationScreen'
 >;
 type DestinationScreenNavigationProp = StackNavigationProp<RootStackParamList>;
+type DestinationType = 'Google Drive' | 'Dropbox' | 'OneDrive' | 'Email';
 
 const DestinationScreen = () => {
   const navigation = useNavigation<DestinationScreenNavigationProp>();
@@ -27,6 +28,28 @@ const DestinationScreen = () => {
   const user = useAppSelector(state => state.app.user);
   const destinations = useAppSelector(state => state.app.destinations);
   const [destination, setDestination] = useState(route.params.destination);
+const [selectedDestination, setSelectedDestination] =
+    useState<DestinationType>('Email');
+
+
+    useEffect(() => {
+        if (destination?.destination) {
+          switch (destination.destination.toLowerCase()) {
+            case 'dropbox':
+              setSelectedDestination('Dropbox');
+              break;
+            case 'google_drive':
+            case 'googledrive':
+              setSelectedDestination('Google Drive');
+              break;
+            case 'onedrive':
+              setSelectedDestination('OneDrive');
+              break;
+            default:
+              setSelectedDestination('Email');
+          }
+        }
+      }, [destination?.destination]);
 
   useEffect(() => {
     setDestination(
@@ -115,6 +138,9 @@ const DestinationScreen = () => {
         return 'Unknown Fruit';
     }
   };
+
+
+  
   return (
     <Layout
       type="dark"
@@ -128,8 +154,8 @@ const DestinationScreen = () => {
             style={styles.destinationImage}
           />
           <View style={styles.emailContainer}>
-            <Text style={styles.emailLabel}>Email</Text>
-            <Text style={styles.emailText}>{destination.emails || user.email}</Text>
+            <Text style={styles.emailLabel}>{selectedDestination}</Text>
+            <Text style={styles.emailText}>{selectedDestination === "Email" && (destination?.emails || user.email)}</Text>
           </View>
         </View>
 

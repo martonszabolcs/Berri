@@ -17,27 +17,27 @@ const HOW_TO_ITEMS: HowToItem[] = [
   {
     title: 'SET UP DESTINATIONS',
     imageUrl: ht1,
-    url: 'https://www.google.com',
+    url: 'https://berribook.com/setup-destination',
   },
   {
     title: 'SCAN YOUR BERRĪBOOK',
     imageUrl: ht2,
-    url: 'https://www.google.com',
+    url: 'https://berribook.com/scan-your-berribook',
   },
   {
     title: 'ERASE YOUR BERRĪBOOK',
     imageUrl: ht3,
-    url: 'https://www.google.com',
+    url: 'https://berribook.com/erase-your-berribook',
   },
   {
     title: 'USE YOUR FRIXION PEN',
     imageUrl: ht4,
-    url: 'https://www.google.com',
+    url: 'https://berribook.com/use-your-pen',
   },
   {
     title: 'BERRĪNEWS',
     imageUrl: ht5,
-    url: 'https://www.google.com',
+    url: 'https://berribook.com/news',
   },
 ];
 

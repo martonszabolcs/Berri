@@ -100,42 +100,82 @@ class SendFilesApiService {
       filePath: getFullFilePath(file.url || file.filename),
     }));
 
-    // Send to all destinations from the history entry
-    for (const destinationId of destinationIds) {
-      console.log(`📤 Processing resend to destination ${destinationId}...`);
-      
-      // Find the destination configuration
-      const destinationConfig = destinations.find(
-        (dest: any) => dest.type === destinationId,
-      );
 
-      if (!destinationConfig) {
 
-        console.log(`📧 User has no destination of type ${destinationId}, creating email destination with user email`);
-          // Use the same API as ChangeDestinationScreen
-          const { updateDestinationSettings } = await import('./userApiService');
-          
-          const success = await updateDestinationSettings(destinationId.toString(), {
-            destination: 'email',
-            emails: user.email,
-          });
-          
-          if (success) {
-            console.log('✅ Email destination created successfully');
-            // Refresh user data to get updated destinations
-          } else {
-            console.error('❌ Failed to create email destination');
+          // TODO uniq email, dropbox, google drive, onedrive
+      let finalSelectedDestinations = []
+      for (const selectedDestinationType of destinationIds) {
+        console.log(`📤 Processing destination ${selectedDestinationType}...`);
+
+        let destinationConfig = destinations.find(
+          (dest: any) => dest.type === selectedDestinationType,
+        );
+
+        if (!destinationConfig) {
+          console.log(
+            `📧 User has no destination of type ${selectedDestinationType}, creating email destination with user email`,
+          );
+
+          try {
+                      const { updateDestinationSettings } = await import('./userApiService');
+            const success = await updateDestinationSettings(
+              selectedDestinationType.toString(),
+              {
+                destination: 'email',
+                emails: user.email,
+              },
+            );
+
+            if (success) {
+              console.log('✅ Email destination created successfully');
+              // const { refreshUser } = await import('../store/appSlice');
+              // await dispatch(refreshUser());
+            } else {
+              console.error('❌ Failed to create email destination');
+            }
+          } catch (error) {
+            console.error('❌ Error creating email destination:', error);
           }
-        
-      
+        }
+
+        const fallbackDestination = {
+          type: selectedDestinationType,
+          destination: 'email',
+          emails: user.email,
+        };
+        const finalDest = destinationConfig || fallbackDestination;
+        finalSelectedDestinations.push(finalDest)
       }
 
-      const fallbackDestination = {
-        type: destinationId,
-        destination: 'email',
-        emails: user.email,
-      };
-      const selectedDest = destinationConfig || fallbackDestination;
+const uniqSelectedDestinations = finalSelectedDestinations.filter(
+  (current, index, self) => {
+    // Minden korábbi elem, amit összehasonlítunk
+    const isDuplicate = self.slice(0, index).some(prev => {
+      // Ha destination különbözik, ok
+      if (prev.destination !== current.destination) return false;
+
+      // Ha destination email, akkor csak akkor duplikált, ha ugyanaz az emails tömb
+      if (current.destination === 'email') {
+        // Egyszerű összehasonlítás: JSON.stringify
+        return JSON.stringify(prev.emails) === JSON.stringify(current.emails);
+      }
+
+      // Minden más destination esetén csak a destination alapján szűrünk
+      return true;
+    });
+
+    return !isDuplicate;
+  }
+);
+
+
+
+
+    // Send to all destinations from the history entry
+    for (const uniqDest of uniqSelectedDestinations) {
+      console.log(`📤 Processing resend to destination ${uniqDest.type}...`);
+
+      const selectedDest = uniqDest;
 
       if (selectedDest.destination === 'email') {
         console.log('📧 Resending via email to:', user.email);

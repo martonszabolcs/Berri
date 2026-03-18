@@ -28,19 +28,19 @@ const SettingsScreen = () => {
   };
 
   const handleHelpCenter = () => {
-    Linking.openURL('https://www.google.com');
+    Linking.openURL('https://berribook.com/help-center');
   };
 
   const handleContactBerriBook = () => {
-    Linking.openURL('https://www.google.com');
+    Linking.openURL('https://berribook.com/contact');
   };
 
   const handlePrivacyPolicy = () => {
-    Linking.openURL('https://www.google.com');
+    Linking.openURL('https://berribook.com/-privacy-policy');
   };
 
   const handleTermsOfService = () => {
-    Linking.openURL('https://www.google.com');
+    Linking.openURL('https://berribook.com/terms-and-conditions');
   };
 
   const handleDestinationSetup = () => {

@@ -91,7 +91,7 @@ const CustomDrawerContent = ({ navigation }: CustomDrawerContentProps) => {
         <Text style={{marginHorizontal: "auto", marginBottom: 10}}>SOCIAL MEDIA</Text>
         <View style={styles.socialContainer}>
           <TouchableOpacity
-            onPress={() => openSocialLink('https://facebook.com')}
+            onPress={() => openSocialLink('https://www.facebook.com/Berribookhungary')}
           >
             <Image
               source={require('../../assets/FB.png')}
@@ -99,7 +99,7 @@ const CustomDrawerContent = ({ navigation }: CustomDrawerContentProps) => {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => openSocialLink('https://instagram.com')}
+            onPress={() => openSocialLink('https://www.instagram.com/berri_book')}
           >
             <Image
               source={require('../../assets/instagram.png')}
@@ -107,7 +107,7 @@ const CustomDrawerContent = ({ navigation }: CustomDrawerContentProps) => {
             />
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => openSocialLink('https://youtube.com')}
+            onPress={() => openSocialLink('https://www.youtube.com/@Berribook')}
           >
             <Image
               source={require('../../assets/YT.png')}

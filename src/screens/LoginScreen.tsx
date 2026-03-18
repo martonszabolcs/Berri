@@ -70,8 +70,13 @@ const LoginScreen = () => {
 
   return (
     <Layout type="auth">
-      <KeyboardAwareScrollView enableOnAndroid>
-        <View style={[styles.content, { minHeight: screenHeight }]}>
+        <KeyboardAwareScrollView
+              enableOnAndroid
+              extraScrollHeight={200}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ flexGrow: 1 }}
+            >
+        <View style={[styles.content]}>
           <Image
             resizeMode="contain"
             source={require('../assets/logo.png')}
@@ -118,13 +123,13 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   content: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 32,
   },
   logo: {
     width: '60%',
     marginBottom: 20,
+    marginTop: 100,
   },
   title: {
     color: 'white',

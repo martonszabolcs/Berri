@@ -470,7 +470,7 @@ const ChangeDestinationScreen = () => {
 
   return (
     <Layout
-      paddingBottom
+      //paddingBottom
       type="dark"
       headerTitle={`Change ${getDestinationName(destination)} Destination`}
     >
@@ -481,8 +481,8 @@ const ChangeDestinationScreen = () => {
             style={styles.destinationImage}
           />
           <View style={styles.emailContainer}>
-            <Text style={styles.emailLabel}>Email</Text>
-            <Text style={styles.emailText}>{destination?.emails || user.email}</Text>
+            <Text style={styles.emailLabel}>{selectedDestination}</Text>
+            <Text style={styles.emailText}>{selectedDestination === "Email" && (destination?.emails || user.email)}</Text>
           </View>
         </View>
 

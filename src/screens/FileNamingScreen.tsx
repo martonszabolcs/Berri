@@ -20,7 +20,6 @@ const TEMPLATE_OPTIONS: TemplateOption[] = [
   { id: 'year', label: 'Year', value: '{Year}' },
   { id: 'month', label: 'Month', value: '{Month}' },
   { id: 'day', label: 'Day', value: '{Day}' },
-  { id: 'time', label: 'Time', value: '{Time}' },
 ];
 
 type TemplateItem = {

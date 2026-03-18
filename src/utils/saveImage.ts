@@ -131,18 +131,6 @@ export const processFileNameTemplate = (template: string): string => {
 };
 
 /**
- * Generates a unique filename with timestamp
- * @param baseName - Base name for the file (without extension)
- * @param extension - File extension (e.g., 'jpg', 'pdf')
- * @returns string - Unique filename with timestamp
- */
-export const generateUniqueFileName = (baseName: string, extension: string): string => {
-  const timestamp = Date.now();
-  const dateStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-  return `${baseName}_${dateStr}_${timestamp}.${extension}`;
-};
-
-/**
  * Saves the scanned document to permanent storage with automatic filename generation
  * @param imageBase64 - Base64 encoded scanned document
  * @returns Promise<string | null> - Returns the permanent file path on success, null on failure
@@ -155,8 +143,13 @@ export const saveScannedDocument = async (imageBase64: string, settings: any): P
     const processedTemplate = processFileNameTemplate(fileNameTemplate);
     
     // Add unique timestamp to ensure uniqueness
-    const timestamp = Date.now();
-    const fileName = `${processedTemplate}_${timestamp}.jpg`;
+    const now = new Date();
+    const hh = String(now.getHours()).padStart(2, '0');
+    const mm = String(now.getMinutes()).padStart(2, '0');
+    const ss = String(now.getSeconds()).padStart(2, '0');
+
+    const timeString = `${hh}${mm}${ss}`; // pl. "142305"
+    const fileName = `${processedTemplate}_${timeString}.jpg`;
     
     console.log('📄 Original template:', fileNameTemplate);
     console.log('📄 Processed template:', processedTemplate);
