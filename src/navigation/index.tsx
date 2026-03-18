@@ -76,6 +76,11 @@ const hideHeader = {
   gestureEnabled: false,
 };
 
+const noGestureHeader = {
+  headerShown: false,
+  gestureEnabled: false,
+};
+
 const screenOptions = {
   headerShown: false,
   presentation: 'transparentModal',
@@ -314,17 +319,17 @@ const Navigation = () => {
         <Stack.Screen
           name="LaunchScreen"
           component={LaunchScreen}
-          options={hideHeader}
+          options={noGestureHeader}
         />
         <Stack.Screen
           name="MainTabs"
           component={DrawerNavigator}
-          options={hideHeader}
+          options={noGestureHeader}
         />
         <Stack.Screen
           name="AuthScreen"
           component={AuthScreen}
-          options={hideHeader}
+          options={noGestureHeader}
         />
         <Stack.Screen
           name="LoginScreen"
