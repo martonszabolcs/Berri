@@ -10,8 +10,9 @@ import {
   AppState,
   Alert,
   ActivityIndicator,
-  Share,
 } from 'react-native';
+import Share from 'react-native-share';
+import { Dirs, FileSystem } from 'react-native-file-access';
 import RNFS from 'react-native-fs';
 import { useNavigation } from '@react-navigation/native';
 import {
@@ -27,13 +28,15 @@ import { useSelector } from 'react-redux';
 import { useAppDispatch } from '../store/hooks';
 import sendFilesApiService from '../store/api/sendFilesApi';
 import { saveDropboxToken, saveOneDriveToken } from '../store/settingsSlice';
-import {
-  deleteMultipleHistoryEntries,
-} from '../utils/historyUtils';
+import { deleteMultipleHistoryEntries } from '../utils/historyUtils';
 import { setHistory } from '../store/appSlice';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
-import { showErrorToast, showSuccessToast, showInfoToast } from '../utils/toast';
+import {
+  showErrorToast,
+  showSuccessToast,
+  showInfoToast,
+} from '../utils/toast';
 
 const HistorySelectScreen = () => {
   const navigation = useNavigation();
@@ -262,42 +265,131 @@ const HistorySelectScreen = () => {
       );
     } catch (error) {
       console.error('❌ Error during merge operation:', error);
-      showErrorToast('Merge Failed', 'Could not merge items. Please try again.');
+      showErrorToast(
+        'Merge Failed',
+        'Could not merge items. Please try again.',
+      );
     }
   };
 
-//   const shareImage = async (filePath: string) => {
-//   try {
-//     // Olvasd be a képet base64-ként
-//     const base64Data = await RNFS.readFile(filePath, 'base64');
+  //   const shareImage = async (filePath: string) => {
+  //   try {
+  //     // Olvasd be a képet base64-ként
+  //     const base64Data = await RNFS.readFile(filePath, 'base64');
 
-//     // iOS-en kell a data URI formátum
-//     const base64Uri = `data:image/png;base64,${base64Data}`;
+  //     // iOS-en kell a data URI formátum
+  //     const base64Uri = `data:image/png;base64,${base64Data}`;
 
-//     await Share.share({
-//       url: base64Uri,
-//       message: 'Sharing my image',
-//     });
-//   } catch (error) {
-//     console.error('Error sharing image:', error);
-//   }
-// };
+  //     await Share.share({
+  //       url: base64Uri,
+  //       message: 'Sharing my image',
+  //     });
+  //   } catch (error) {
+  //     console.error('Error sharing image:', error);
+  //   }
+  // };
 
-const shareImage = async (filePath: string, index: number, total: number) => {
-  try {
-    const base64Data = await RNFS.readFile(filePath, 'base64');
-    const ext = filePath.split('.').pop()?.toLowerCase();
-    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
-    const base64Uri = `data:${mime};base64,${base64Data}`;
+  // Helper to build full file path from filename or url
+  const getFullFilePath = (filePath: string): string => {
+    if (filePath.includes('/')) {
+      return filePath;
+    }
+    return `${Dirs.DocumentDir}/${filePath}`;
+  };
 
-    await Share.share({
-      url: base64Uri,
-      message: `Sharing scanned BERRĪ document (${index + 1}/${total})`,
-    });
-  } catch (error) {
-    console.error('Error sharing file:', filePath, error);
-  }
-};
+  const getBase64FromFile = async (path: string) => {
+    return await RNFS.readFile(path, 'base64');
+  };
+  const getMimeType = (path: string) => {
+    if (path.endsWith('.png')) return 'image/png';
+    if (path.endsWith('.jpg') || path.endsWith('.jpeg')) return 'image/jpeg';
+    if (path.endsWith('.pdf')) return 'application/pdf';
+    return 'application/octet-stream';
+  };
+  const shareImage = async (filePath: string, index: number, total: number) => {
+    const fullPath = getFullFilePath(filePath);
+    const mime = getMimeType(fullPath);
+    const fileName = `document_${index + 1}.jpg`;
+    console.log('FILEPATJ', filePath);
+    console.log('PATH:', fullPath);
+    console.log('URL:', `file://${fullPath}`);
+    console.log('EXISTS:', await RNFS.exists(fullPath));
+    const destPath = `${RNFS.CachesDirectoryPath}/${filePath}`;
+    try {
+      await RNFS.copyFile(fullPath, destPath);
+      await Share.open({
+        title: `BERRĪ Document (${index + 1}/${total})`,
+        message: `Sharing scanned BERRĪ document (${index + 1}/${total})`,
+        url: `file://${destPath}`,
+        type: mime,
+        useInternalStorage: true,
+      } as any);
+    } catch (error: any) {
+      if (error?.message !== 'User did not share') {
+        console.error('Error sharing file:', fullPath, error);
+      }
+    }
+  };
+
+  //   const shareImage = async (filePath: string, index: number, total: number) => {
+  //     console.log('sharing:    ', filePath);
+  //     const fullPath = getFullFilePath(filePath);
+  // console.log('EXISTS:', await RNFS.exists(fullPath));
+  //     try {
+  //       const base64string = await getBase64FromFile(fullPath);
+  //       const mime = getMimeType(fullPath);
+
+  //       const dataUrl = `data:${mime};base64,${base64string}`;
+
+  //       try {
+  //         await Share.open({
+  //           title: `BERRĪ Document (${index + 1}/${total})`,
+  //           message: `Sharing scanned BERRĪ document (${index + 1}/${total})`,
+  //           url: dataUrl,
+  //           type: mime,
+  //   filename: `document_${index + 1}`,
+  //         });
+  //       } catch (error) {
+  //         console.error('Error sharing file:', fullPath, error);
+
+  //         if (error?.message !== 'User did not share') {
+  //           console.error('Error sharing file:', filePath, error);
+  //         }
+  //       }
+  //     } catch (error) {
+  //       console.error('Error base64 file:', fullPath, error);
+  //     }
+  //   };
+
+  // const shareImage = async (filePath: string, index: number, total: number) => {
+  //   try {
+  //     const fullPath = getFullFilePath(filePath);
+
+  //     await Share.share({
+  //       url: fullPath,
+  //       message: `Sharing scanned BERRĪ document (${index + 1}/${total})`,
+  //       title: `BERRĪ Document (${index + 1}/${total})`,
+  //     });
+  //   } catch (error) {
+  //     console.error('Error sharing file:', filePath, error);
+  //   }
+  // };
+
+  // const shareImage = async (filePath: string, index: number, total: number) => {
+  //   try {
+  //     const base64Data = await RNFS.readFile(getFullFilePath(filePath), 'base64');
+  //     const ext = filePath.split('.').pop()?.toLowerCase();
+  //     const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : 'image/png';
+  //     const base64Uri = `data:${mime};base64,${base64Data}`;
+
+  //     await Share.share({
+  //       url: base64Uri,
+  //       message: `Sharing scanned BERRĪ document (${index + 1}/${total})`,
+  //     });
+  //   } catch (error) {
+  //     console.error('Error sharing file:', filePath, error);
+  //   }
+  // };
 
   const shareSelectedHistories = async () => {
     const getAllHistories = selectedCards
@@ -326,9 +418,10 @@ const shareImage = async (filePath: string, index: number, total: number) => {
       getAllHistories.forEach((historyItem: any) => {
         if (historyItem.files && historyItem.files.length > 0) {
           historyItem.files.forEach((file: any) => {
-            const filePath = file.url.startsWith('file://')
-              ? file.url
-              : `file://${file.url}`;
+            // const filePath = file.url.startsWith('file://')
+            //   ? file.url
+            //   : `file://${file.url}`;
+            const filePath = file.url;
             allFiles.push(filePath);
             fileCount++;
           });
@@ -361,7 +454,7 @@ const shareImage = async (filePath: string, index: number, total: number) => {
             {
               text: 'Share First File',
               onPress: async () => {
-                 await shareImage(allFiles[0], 1, 1);
+                await shareImage(allFiles[0], 1, 1);
               },
             },
             {
@@ -391,7 +484,10 @@ const shareImage = async (filePath: string, index: number, total: number) => {
       setSelectedCards([]);
     } catch (error) {
       console.error('❌ Error sharing files:', error);
-      showErrorToast('Share Failed', 'Could not share files. Please try again.');
+      showErrorToast(
+        'Share Failed',
+        'Could not share files. Please try again.',
+      );
     }
   };
 
@@ -409,9 +505,13 @@ const shareImage = async (filePath: string, index: number, total: number) => {
         // Filter to only histories that need this specific service
         const pendingHistories = currentHistories.filter(historyItem => {
           // Check if any of the history's destinations match this service
-          const historyDestinations = historyItem?.destinations || [historyItem?.destination];
+          const historyDestinations = historyItem?.destinations || [
+            historyItem?.destination,
+          ];
           return historyDestinations.some((destId: number) => {
-            const destination = destinations.find((d: any) => d.type === destId);
+            const destination = destinations.find(
+              (d: any) => d.type === destId,
+            );
             return destination?.destination === service;
           });
         });
@@ -432,8 +532,10 @@ const shareImage = async (filePath: string, index: number, total: number) => {
               } to ${service}...`,
             );
 
-            const historyDestinations = historyItem.destinations || [historyItem.destination];
-            
+            const historyDestinations = historyItem.destinations || [
+              historyItem.destination,
+            ];
+
             // Wait for each upload to complete before moving to next
             await sendFilesApiService.resendToDestination(
               historyDestinations,
@@ -451,13 +553,16 @@ const shareImage = async (filePath: string, index: number, total: number) => {
             );
 
             // Update history entry with fresh timestamp (keeping existing destinations)
-            const updatedHistory = history.map((h: any) => 
-              h.timestamp === historyItem.timestamp 
+            const updatedHistory = history.map((h: any) =>
+              h.timestamp === historyItem.timestamp
                 ? { ...h, timestamp: Date.now() }
-                : h
+                : h,
             );
             dispatch(setHistory(updatedHistory));
-            await AsyncStorage.setItem('history', JSON.stringify(updatedHistory));
+            await AsyncStorage.setItem(
+              'history',
+              JSON.stringify(updatedHistory),
+            );
           } catch (error) {
             console.error(
               `❌ [${i + 1}/${pendingHistories.length}] Error resending ${
@@ -533,7 +638,9 @@ const shareImage = async (filePath: string, index: number, total: number) => {
             }...`,
           );
 
-          const historyDestinations = historyItem.destinations || [historyItem.destination];
+          const historyDestinations = historyItem.destinations || [
+            historyItem.destination,
+          ];
 
           // Wait for each upload to complete before moving to next
           await sendFilesApiService.resendToDestination(
@@ -568,9 +675,7 @@ const shareImage = async (filePath: string, index: number, total: number) => {
             errorMessage?.includes('unauthorized') ||
             errorMessage?.includes('token')
           ) {
-            console.log(
-              `🔐 OAuth error detected, stopping bulk operation...`,
-            );
+            console.log(`🔐 OAuth error detected, stopping bulk operation...`);
             setIsBulkResending(false);
 
             // Let the OAuth flow handle the re-authentication
@@ -588,7 +693,9 @@ const shareImage = async (filePath: string, index: number, total: number) => {
 
       showSuccessToast(
         'Resend Complete',
-        `Sent ${successCount} files${failureCount > 0 ? `, ${failureCount} failed` : ''}`,
+        `Sent ${successCount} files${
+          failureCount > 0 ? `, ${failureCount} failed` : ''
+        }`,
       );
       setSelectedCards([]);
     } catch (error) {
@@ -685,11 +792,17 @@ const shareImage = async (filePath: string, index: number, total: number) => {
               );
               await resumeBulkResendWithFreshTokens('dropbox', updatedSettings);
 
-              showSuccessToast('Files Resent', 'Files have been resent to Dropbox successfully!');
+              showSuccessToast(
+                'Files Resent',
+                'Files have been resent to Dropbox successfully!',
+              );
               setSelectedCards([]);
             } catch (error) {
               console.error('❌ Error resuming bulk resend:', error);
-              showErrorToast('Resend Failed', 'Failed to resume sending files. Please try again.');
+              showErrorToast(
+                'Resend Failed',
+                'Failed to resume sending files. Please try again.',
+              );
             }
           } catch (error) {
             console.error('❌ Failed to save Dropbox tokens:', error);
@@ -760,11 +873,17 @@ const shareImage = async (filePath: string, index: number, total: number) => {
                 updatedSettings,
               );
 
-              showSuccessToast('Files Resent', 'Files have been resent to OneDrive successfully!');
+              showSuccessToast(
+                'Files Resent',
+                'Files have been resent to OneDrive successfully!',
+              );
               setSelectedCards([]);
             } catch (error) {
               console.error('❌ Error resuming bulk resend:', error);
-              showErrorToast('Resend Failed', 'Failed to resume sending files. Please try again.');
+              showErrorToast(
+                'Resend Failed',
+                'Failed to resume sending files. Please try again.',
+              );
             }
           } catch (error) {
             console.error('❌ Failed to save OneDrive tokens:', error);
@@ -860,19 +979,20 @@ const shareImage = async (filePath: string, index: number, total: number) => {
 
       <Layout paddingBottom>
         <View style={styles.selectionHeader}>
-          <Button onPress={cancelSelection} 
-          variant="text-white"
-          title="Cancel"
+          <Button
+            onPress={cancelSelection}
+            variant="text-white"
+            title="Cancel"
           />
-           
+
           <Text style={styles.selectedCountText}>
             {selectedCards.length} selected
           </Text>
-          <Button onPress={selectAllCards} 
-          variant="text-white"
-          title="Select All"
+          <Button
+            onPress={selectAllCards}
+            variant="text-white"
+            title="Select All"
           />
-         
         </View>
 
         <View style={styles.container}>
@@ -996,7 +1116,6 @@ const shareImage = async (filePath: string, index: number, total: number) => {
               )}
             </View>
           </View>
-          
 
           <View style={styles.selectionBottomBar}>
             <TouchableOpacity
