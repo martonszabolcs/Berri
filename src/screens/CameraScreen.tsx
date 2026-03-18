@@ -32,8 +32,10 @@ import {
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
 import { saveScannedDocument } from '../utils/saveImage';
-import { useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
-import { useAppSelector } from '../store/hooks';
+import { useNavigation, useFocusEffect, useIsFocused, CommonActions } from '@react-navigation/native';
+import { useAppSelector, useAppDispatch } from '../store/hooks';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { setHistory } from '../store/appSlice';
 import { DestinationIcon } from '../components';
 
 interface DocumentCorner {
@@ -79,6 +81,9 @@ const UI_MESSAGES = {
   // Warning - blurry image
   BLUR_WARNING: '  Image is blurry!',
 
+  // Warning - low light
+  LIGHT_WARNING: '. Turn on the light!',
+
   // Warning - too steep angle (perspective)
   PERSPECTIVE_WARNING: '  Face the camera straight!',
 
@@ -121,6 +126,7 @@ export default function App() {
   // === DEBUG FLAG - SZINKRONBAN A useInferenceLogic.tsx-ben lévővel ===
   const DEBUG_ON = false; // false = nincs debug kép, jobb teljesítmény!
   const navigation = useNavigation();
+  const dispatch = useAppDispatch();
   const isFocused = useIsFocused();
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
@@ -237,6 +243,7 @@ export default function App() {
   interface CapturedImage {
     id: string;
     imageBase64: string;
+    fileUri: string;
     qrValue: string | null;
     qrPosition: 'left' | 'right' | null;
     timestamp: number;
@@ -245,6 +252,7 @@ export default function App() {
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
+  const [isGalleryZoomed, setIsGalleryZoomed] = useState(false);
   
   const [stepImages, setStepImages] = useState<
     { label: string; image: string }[]
@@ -911,9 +919,16 @@ export default function App() {
         await new Promise<void>(resolve => setTimeout(resolve, 600));
 
         // === MULTI-IMAGE: Add image to collection instead of showing modal ===
+        const imageId = `img_${Date.now()}`;
+        const tempDir = `${Dirs.CacheDir}/gallery_preview`;
+        await FileSystem.mkdir(tempDir);
+        const tempUri = `${tempDir}/${imageId}.jpg`;
+        await FileSystem.writeFile(tempUri, scanResult.imageBase64, 'base64');
+
         const newImage: CapturedImage = {
-          id: `img_${Date.now()}`,
+          id: imageId,
           imageBase64: scanResult.imageBase64,
+          fileUri: `file://${tempUri}`,
           qrValue: scanResult.qrValue || null,
           qrPosition: captureQrPosition || null,
           timestamp: Date.now(),
@@ -1193,11 +1208,12 @@ export default function App() {
   const getCurrentStatus = useMemo(() => {
     // Use smoothed results instead of raw results for stability
     if (smoothedResults.length === 0) {
+      const earlyLightWarning = (currentBrightness !== null && currentBrightness < 60) ? UI_MESSAGES.LIGHT_WARNING : '';
       return {
         isDetected: stableDetectionStatus.isDetected, // Use stable status
         isRectangleGood: true,
         message: UI_MESSAGES.SEARCHING,
-        instruction: UI_MESSAGES.SEARCHING_INSTRUCTION,
+        instruction: UI_MESSAGES.SEARCHING_INSTRUCTION + earlyLightWarning,
       };
     }
 
@@ -1210,6 +1226,9 @@ export default function App() {
 
     // BLUR ELLENŐRZÉS - használjuk a stabil verzió
     const blurWarning = stableIsBlurry ? UI_MESSAGES.BLUR_WARNING : '';
+
+    // FÉNY ELLENŐRZÉS - alacsony fénynél figyelmeztetés
+    const lightWarning = (currentBrightness !== null && currentBrightness < 50) ? UI_MESSAGES.LIGHT_WARNING : '';
 
     // PERSPEKTÍVA ELLENŐRZÉS - túl ferde szög figyelmeztetés
     const perspectiveWarning = latestResult.perspectiveWarning
@@ -1242,7 +1261,8 @@ export default function App() {
             UI_MESSAGES.MOVE_CLOSER_INSTRUCTION +
             rectangleWarning +
             blurWarning +
-            perspectiveWarning,
+            perspectiveWarning +
+            lightWarning,
         };
       }
 
@@ -1300,7 +1320,7 @@ export default function App() {
         isRectangleGood: true,
         message: UI_MESSAGES.PARTIALLY_VISIBLE(confidence),
         instruction:
-          UI_MESSAGES.PARTIALLY_INSTRUCTION + blurWarning + perspectiveWarning,
+          UI_MESSAGES.PARTIALLY_INSTRUCTION + blurWarning + perspectiveWarning + lightWarning,
       };
     }
 
@@ -1311,10 +1331,11 @@ export default function App() {
       instruction:
         UI_MESSAGES.SEARCHING_PROGRESS_INSTRUCTION +
         blurWarning +
-        perspectiveWarning,
+        perspectiveWarning +
+        lightWarning,
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [smoothedResults, stableDetectionStatus, stableIsBlurry]);
+  }, [smoothedResults, stableDetectionStatus, stableIsBlurry, currentBrightness]);
 
   const currentStatus = getCurrentStatus;
 
@@ -1732,50 +1753,99 @@ export default function App() {
                 ))}
               </ScrollView>
               
-              {/* Continue button - below thumbnails */}
-              <TouchableOpacity
-                style={styles.continueButton}
-                onPress={async () => {
-                  if (capturedImages.length === 0) return;
-                  
-                  try {
-                    // Save ALL captured images
-                    const savedPaths: string[] = [];
+              {/* Send & Save buttons - below thumbnails */}
+              <View style={styles.continueButtonRow}>
+                <TouchableOpacity
+                  style={[styles.continueButton, styles.saveButton]}
+                  onPress={async () => {
+                    if (capturedImages.length === 0) return;
                     
-                    for (const image of capturedImages) {
-                      const savedPath = await saveScannedDocument(image.imageBase64, settings);
-                      if (savedPath) {
-                        savedPaths.push(savedPath);
-                        console.log('✅ Image saved:', savedPath);
+                    try {
+                      const savedPaths: string[] = [];
+                      
+                      for (const image of capturedImages) {
+                        const savedPath = await saveScannedDocument(image.imageBase64, settings);
+                        if (savedPath) {
+                          savedPaths.push(savedPath);
+                        }
                       }
+                      
+                      if (savedPaths.length > 0) {
+                        // Save to history
+                        const history = await AsyncStorage.getItem('history');
+                        const historyArray = history ? JSON.parse(history) : [];
+                        const newEntry = {
+                          timestamp: Date.now(),
+                          files: savedPaths.map(filePath => ({
+                            url: filePath.split('/').pop() || 'unknown_file',
+                            filename: filePath.split('/').pop() || 'unknown_file',
+                          })),
+                          destinations: [],
+                        };
+                        historyArray.push(newEntry);
+                        await AsyncStorage.setItem('history', JSON.stringify(historyArray));
+                        dispatch(setHistory(historyArray));
+                        
+                        setCapturedImages([]);
+                        
+                        // Navigate to History tab
+                        const parentNavigation = navigation.getParent();
+                        if (parentNavigation) {
+                          navigation.dispatch(
+                            CommonActions.reset({
+                              index: 0,
+                              routes: [{ name: 'CameraScreen' }],
+                            })
+                          );
+                          parentNavigation.navigate('History');
+                        }
+                      }
+                    } catch (error) {
+                      console.error('Error saving documents:', error);
                     }
+                  }}
+                >
+                  <Text style={styles.continueButtonText}>
+                    Save
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.continueButton}
+                  onPress={async () => {
+                    if (capturedImages.length === 0) return;
                     
-                    if (savedPaths.length > 0) {
-                      console.log(`✅ All ${savedPaths.length} documents saved`);
+                    try {
+                      const savedPaths: string[] = [];
                       
-                      // Clear captured images
-                      setCapturedImages([]);
+                      for (const image of capturedImages) {
+                        const savedPath = await saveScannedDocument(image.imageBase64, settings);
+                        if (savedPath) {
+                          savedPaths.push(savedPath);
+                        }
+                      }
                       
-                      // Merge all detected icons from all images, convert 0-indexed to 1-indexed
-                      const allDetectedIcons = [...new Set(
-                        capturedImages.flatMap(img => img.selectedIcons.map(i => i + 1))
-                      )];
-                      
-                      // Navigate to destination select with ALL file paths
-                      (navigation as any).navigate('DestinationSelectScreen', {
-                        savedFilePaths: savedPaths,
-                        destinationType: allDetectedIcons.length > 0 ? allDetectedIcons : [1],
-                      });
+                      if (savedPaths.length > 0) {
+                        setCapturedImages([]);
+                        
+                        const allDetectedIcons = [...new Set(
+                          capturedImages.flatMap(img => img.selectedIcons.map(i => i + 1))
+                        )];
+                        
+                        (navigation as any).navigate('DestinationSelectScreen', {
+                          savedFilePaths: savedPaths,
+                          destinationType: allDetectedIcons.length > 0 ? allDetectedIcons : [1],
+                        });
+                      }
+                    } catch (error) {
+                      console.error('Error saving documents:', error);
                     }
-                  } catch (error) {
-                    console.error('Error saving documents:', error);
-                  }
-                }}
-              >
-                <Text style={styles.continueButtonText}>
-                  Next ({capturedImages.length})
-                </Text>
-              </TouchableOpacity>
+                  }}
+                >
+                  <Text style={styles.continueButtonText}>
+                    Send
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           )}
 
@@ -1984,6 +2054,7 @@ export default function App() {
             data={capturedImages}
             horizontal
             pagingEnabled
+            scrollEnabled={!isGalleryZoomed}
             showsHorizontalScrollIndicator={false}
             initialScrollIndex={galleryStartIndex}
             getItemLayout={(_, index) => ({
@@ -1994,22 +2065,13 @@ export default function App() {
             keyExtractor={item => item.id}
             renderItem={({ item, index }) => (
               <View style={[styles.galleryImageContainer, { width: screenWidth }]}>
-                <ScrollView
-                  style={styles.zoomScrollView}
-                  contentContainerStyle={styles.zoomScrollContent}
-                  maximumZoomScale={5}
-                  minimumZoomScale={1}
-                  showsHorizontalScrollIndicator={false}
-                  showsVerticalScrollIndicator={false}
-                  centerContent={true}
-                  bouncesZoom={true}
-                >
+                <View style={styles.zoomScrollContent}>
                   <Image
-                    source={{ uri: `data:image/jpeg;base64,${item.imageBase64}` }}
+                    source={{ uri: item.fileUri }}
                     style={[styles.galleryImage, { width: screenWidth * 0.85, height: screenHeight * 0.6 }]}
                     resizeMode="contain"
                   />
-                </ScrollView>
+                </View>
                 {/* Page indicator */}
                 <View style={styles.galleryPageIndicator}>
                   <Text style={styles.galleryPageText}>
@@ -2593,13 +2655,23 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '800',
   },
+  continueButtonRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
   continueButton: {
+    flex: 1,
     backgroundColor: 'rgba(37, 37, 68, 1)',
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderRadius: 25,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  saveButton: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.5)',
   },
   continueButtonText: {
     color: 'white',
