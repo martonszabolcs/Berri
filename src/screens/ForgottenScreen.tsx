@@ -7,6 +7,7 @@ import { useAppDispatch } from '../store/hooks';
 import { forgotPassword } from '../store/appSlice';
 import { showErrorToast, showSuccessToast } from '../utils/toast';
 import React from 'react';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-aware-scroll-view';
 
 type RootStackParamList = {
   LaunchScreen: undefined;
@@ -55,6 +56,12 @@ const ForgottenScreen = () => {
 
   return (
     <Layout type="auth">
+       <KeyboardAwareScrollView
+                    enableOnAndroid
+                    extraScrollHeight={60}
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ flexGrow: 1 }}
+                  >
       <View style={styles.content}>
         <Image
           resizeMode="contain"
@@ -89,6 +96,8 @@ const ForgottenScreen = () => {
           />
         </View>
       </View>
+      </KeyboardAwareScrollView>
+      
     </Layout>
   );
 };
