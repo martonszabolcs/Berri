@@ -82,7 +82,7 @@ const styles = StyleSheet.create({
     top: 0, // Start from top of contentWrapper, not full screen
     left: 0,
     right: 0,
-    bottom: 0,
+    // bottom: 0,
     backgroundColor: 'rgba(37, 37, 68, 0.86)',
     zIndex: 1000,
     paddingTop: 20, // Small margin from select

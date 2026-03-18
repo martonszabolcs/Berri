@@ -907,6 +907,7 @@ const shareImage = async (filePath: string, index: number, total: number) => {
           />
 
           {/* Content area that will be covered by overlay */}
+
           <View style={styles.contentWrapper}>
             {/* Select Overlay */}
             <HistorySelectOverlay
@@ -925,7 +926,7 @@ const shareImage = async (filePath: string, index: number, total: number) => {
                 </View>
               ) : (
                 <ScrollView
-                  style={styles.historyList}
+                  //style={styles.historyList}
                   showsVerticalScrollIndicator={false}
                 >
                   {isGridView ? (
@@ -995,6 +996,7 @@ const shareImage = async (filePath: string, index: number, total: number) => {
               )}
             </View>
           </View>
+          
 
           <View style={styles.selectionBottomBar}>
             <TouchableOpacity

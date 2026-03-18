@@ -73,13 +73,14 @@ const Drawer = createDrawerNavigator();
 
 const hideHeader = {
   headerShown: false,
-  gestureEnabled: true,
+  gestureEnabled: false,
 };
 
 const screenOptions = {
   headerShown: false,
   presentation: 'transparentModal',
   cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
+  gestureEnabled: false,
 };
 
 const tabScreenOptions = {
@@ -110,11 +111,7 @@ const NewScanStack = () => {
         component={CameraScreen}
         options={hideHeader}
       />
-      <Stack.Screen
-        name="DestinationSelectScreen"
-        component={DestinationSelectScreen}
-        options={hideHeader}
-      />
+     
     </Stack.Navigator>
   );
 };
@@ -233,6 +230,8 @@ const MainTabs = () => {
           tabBarLabel: 'New Scan',
           tabBarIcon: renderNewScanTabBarIcon,
           lazy: false, // Pre-load camera to avoid lag on first tap
+          // tabBarStyle: { display: 'none' },
+          // tabBarItemStyle: { display: 'none' as const }
         }}
         listeners={({ navigation }) => ({
           tabPress: (e) => {
@@ -309,7 +308,9 @@ const Navigation = () => {
     <NavigationContainer theme={DarkTheme}>
       <Stack.Navigator 
         initialRouteName="LaunchScreen" 
-        screenOptions={screenOptions}>
+        screenOptions={screenOptions}
+        
+        >
         <Stack.Screen
           name="LaunchScreen"
           component={LaunchScreen}
@@ -353,6 +354,11 @@ const Navigation = () => {
         <Stack.Screen
           name="HistorySelectScreen"
           component={HistorySelectScreen}
+          options={hideHeader}
+        />
+        <Stack.Screen
+          name="DestinationSelectScreen"
+          component={DestinationSelectScreen}
           options={hideHeader}
         />
         <Stack.Screen
