@@ -25,6 +25,7 @@ interface ScanDocumentParams {
   frameHeight?: number;
   frameBrightness?: number; // Frame detection brightness (from seekerInfo)
   enableDebugImages?: boolean; // Enable/disable debug step images (default: true)
+  isTorchOn?: boolean; // Whether torch/flash was on during capture
 }
 
 interface ScanDocumentResult {
@@ -38,6 +39,7 @@ interface ScanDocumentResult {
     avgBrightness: number;
     lightCondition: 'Daylight' | 'Normal' | 'Night';
     betaBoost: number;
+    frameBrightness?: number;
   };
   selectedIcons?: number[];
   selectedIconNames?: string[];
@@ -86,6 +88,7 @@ export const scanDocument = (
     frameHeight: providedFrameHeight,
     frameBrightness = 128, // Default if not provided
     enableDebugImages = false, // Default: debug images disabled for performance
+    isTorchOn = false, // Default: torch off
   } = params;
 
   try {
@@ -587,6 +590,45 @@ export const scanDocument = (
       });
     }
 
+    // === WHITE BALANCE CORRECTION (when torch is on) ===
+    if (isTorchOn) {
+      console.log('💡 Torch detected - applying white balance correction');
+      // Gray world assumption: scale each channel so its mean equals the overall gray mean
+      const wbB = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+      const wbG = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+      const wbR = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+      OpenCV.invoke('extractChannel', croppedMat, wbB, 0);
+      OpenCV.invoke('extractChannel', croppedMat, wbG, 1);
+      OpenCV.invoke('extractChannel', croppedMat, wbR, 2);
+      
+      // Get mean of each channel
+      const meanBResult = OpenCV.invoke('mean', wbB);
+      const meanGResult = OpenCV.invoke('mean', wbG);
+      const meanRResult = OpenCV.invoke('mean', wbR);
+      const avgB = (OpenCV.toJSValue(meanBResult) as any).a || 128;
+      const avgG = (OpenCV.toJSValue(meanGResult) as any).a || 128;
+      const avgR = (OpenCV.toJSValue(meanRResult) as any).a || 128;
+      
+      // Target gray = average of all channels
+      const grayTarget = (avgB + avgG + avgR) / 3;
+      const scaleB = grayTarget / Math.max(avgB, 1);
+      const scaleG = grayTarget / Math.max(avgG, 1);
+      const scaleR = grayTarget / Math.max(avgR, 1);
+      
+      console.log(`🎨 WB correction: B=${avgB.toFixed(0)}→×${scaleB.toFixed(2)}, G=${avgG.toFixed(0)}→×${scaleG.toFixed(2)}, R=${avgR.toFixed(0)}→×${scaleR.toFixed(2)}`);
+      
+      // Scale each channel and insert back
+      OpenCV.invoke('convertScaleAbs', wbB, wbB, scaleB, 0);
+      OpenCV.invoke('convertScaleAbs', wbG, wbG, scaleG, 0);
+      OpenCV.invoke('convertScaleAbs', wbR, wbR, scaleR, 0);
+      
+      OpenCV.invoke('insertChannel', wbB, croppedMat, 0);
+      OpenCV.invoke('insertChannel', wbG, croppedMat, 1);
+      OpenCV.invoke('insertChannel', wbR, croppedMat, 2);
+      
+      console.log('✅ White balance correction applied');
+    }
+
     // === COLOR MASK DETECTION - Detektáljuk a színes területeket ===
     console.log('🎨 Detecting VIBRANT colored regions for preservation');
     
@@ -614,9 +656,9 @@ export const scanDocument = (
     const saturation = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('subtract', maxChannel, minChannel, saturation);
     
-    // Color threshold: 45 balances green ink (~50-60 sat) vs shadows (~30-40 sat)
+    // Color threshold: higher value = only stronger/more saturated colors detected
     const colorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', saturation, colorMask, 40, 255, 0); // THRESH_BINARY = 0, threshold=45
+    OpenCV.invoke('threshold', saturation, colorMask, 40, 255, 0); // THRESH_BINARY = 0, threshold=60 (was 40)
     
     // Minimum brightness filter - túl sötét pixelek nem számítanak (árnyékok)
     const brightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -728,6 +770,7 @@ export const scanDocument = (
 
     console.log('💡 Brightness detection:', {
       avgBrightness: avgBrightness.toFixed(1),
+      frameBrightness,
       lightCondition,
     });
 
@@ -742,7 +785,7 @@ export const scanDocument = (
         stepImages: [],
         qrValue: currentQrValue,
         qrPosition: currentQrPosition,
-        brightnessInfo: { avgBrightness, lightCondition, betaBoost },
+        brightnessInfo: { avgBrightness, lightCondition, betaBoost, frameBrightness },
         selectedIcons: [],
         selectedIconNames: [],
         iconAnalysis: [],
@@ -782,7 +825,7 @@ export const scanDocument = (
     const isHighRes = totalPixels > 3_000_000;
     // Larger block = more robust to noise, smaller block = more detail
     // Must be odd number
-    const blockSize = isHighRes ? 51 : 31;
+    const blockSize = isHighRes ? 51 : 40;
     // C constant: pixel must be C levels DARKER than local mean to be black
     // Notebook dots are ~20-40 levels darker than paper → C=50 filters them out
     // Real ink/text is ~80-150 levels darker → easily passes C=50
@@ -1531,6 +1574,7 @@ export const scanDocument = (
         avgBrightness: 128,
         lightCondition: 'Normal',
         betaBoost: 0,
+        frameBrightness,
       },
       selectedIcons: detectedIcons,
       selectedIconNames: detectedIconNames,

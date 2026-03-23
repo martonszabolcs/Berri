@@ -126,8 +126,9 @@ const ScanTestScreen = () => {
       setInfo(prev =>
         (prev || '') +
         `\n\nResult: ${result.success ? 'SUCCESS' : 'FAIL'}` +
-        `\nBrightness: ${result.brightnessInfo?.avgBrightness ?? 'N/A'}` +
+        `\nBrightness (mean): ${result.brightnessInfo?.avgBrightness ?? 'N/A'}` +
         `\nLight: ${result.brightnessInfo?.lightCondition ?? 'N/A'}` +
+        `\nFrame brightness (ambient): ${result.brightnessInfo?.frameBrightness ?? 'N/A'}` +
         `\nSteps: ${result.stepImages?.length ?? 0}` +
         `\nIcons: ${result.selectedIconNames?.join(', ') ?? 'none'}` +
         `\nIcon analysis: ${result.iconAnalysis?.map((ic: any) => `${ic.icon}: ${ic.darkPercent}%${ic.active ? ' ✓' : ''}`).join(' | ') ?? 'N/A'}`

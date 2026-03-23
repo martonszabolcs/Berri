@@ -784,9 +784,23 @@ export const useInferenceLogic = (
         // Blur info string létrehozása
         const blurInfo = `Blur:✓ (skip)`;
 
+        // Raw mean brightness (Scalar)
         const meanResult = OpenCV.invoke('mean', gray);
         const meanData = OpenCV.toJSValue(meanResult);
-        const meanBrightness = meanData.a;
+        const rawMean = meanData.a as number;
+
+        // StdDev a gray képen - ambient light becsléshez
+        // Létrehozunk egy kisméretű képet (1 pixel) az stddev-ből
+        const grayMeanMat = OpenCV.createObject(ObjectType.Mat, 1, 1, DataTypes.CV_64F);
+        const grayStdDevMat = OpenCV.createObject(ObjectType.Mat, 1, 1, DataTypes.CV_64F);
+        OpenCV.invoke('meanStdDev', gray, grayMeanMat, grayStdDevMat);
+        // A stddev mat mean-je = az stddev érték (1 channel gray képnél)
+        const stdDevScalar = OpenCV.invoke('mean', grayStdDevMat);
+        const rawStdDev = (OpenCV.toJSValue(stdDevScalar).a as number) || 1;
+
+        // Ambient light score: sötétben a kamera kompenzál (ISO-t teker),
+        // de a stddev csökken (kevesebb kontraszt). Ezt kombináljuk.
+        const meanBrightness = Math.round(rawMean * (rawStdDev / 64));
 
         const adaptiveResult = getAdaptiveBrightnessThresholds(
           meanBrightness,

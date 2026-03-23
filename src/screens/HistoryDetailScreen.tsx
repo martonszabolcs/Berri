@@ -11,16 +11,13 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Dirs } from 'react-native-file-access';
-import { Layout, Text, DestinationIcon } from '../components';
+import { Layout, Text, DestinationIcon, ZoomableImage } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
-import {
-  showErrorToast,
-  showSuccessToast,
-  showInfoToast,
-} from '../utils/toast';
+import { showErrorToast, showSuccessToast, showInfoToast } from '../utils/toast';
 
 import { sendFilesApiService } from '../store/api/sendFilesApi';
 import {
@@ -80,16 +77,16 @@ const HistoryDetailScreen = () => {
   const [selectedDestinations, setSelectedDestinations] = useState<number[]>(
     history.destinations || (history.destination ? [history.destination] : []),
   );
-  const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
   const screenWidth = Dimensions.get('window').width;
   const screenHeight = Dimensions.get('window').height;
+  const [zoomImageUri, setZoomImageUri] = useState<string | null>(null);
 
   const displayName = `${history.files?.[0]?.filename}`;
   const displayDate = new Date(history.timestamp).toLocaleDateString();
 
   const toggleDestination = async (destinationId: number) => {
     let newSelectedDestinations: number[] = [];
-
+    
     setSelectedDestinations(prev => {
       if (prev.includes(destinationId)) {
         newSelectedDestinations = prev.filter(id => id !== destinationId);
@@ -127,10 +124,7 @@ const HistoryDetailScreen = () => {
             navigation.goBack();
           } catch (error) {
             console.error('❌ Error deleting history entry:', error);
-            showErrorToast(
-              'Delete Failed',
-              'Could not delete scan. Please try again.',
-            );
+            showErrorToast('Delete Failed', 'Could not delete scan. Please try again.');
           }
         },
       },
@@ -167,20 +161,11 @@ const HistoryDetailScreen = () => {
                 dispatch,
               );
 
-              showSuccessToast(
-                'Scan Sent!',
-                'Successfully resent to destination(s)',
-              );
-              setTimeout(
-                () => navigation.navigate('MainTabs', { screen: 'History' }),
-                1500,
-              );
+              showSuccessToast('Scan Sent!', 'Successfully resent to destination(s)');
+              setTimeout(() => navigation.goBack(), 1500);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              showErrorToast(
-                'Resend Failed',
-                'Could not send scan. Please try again.',
-              );
+              showErrorToast('Resend Failed', 'Could not send scan. Please try again.');
             }
           },
         },
@@ -203,7 +188,7 @@ const HistoryDetailScreen = () => {
 
         // IMPORTANT: Use the EXACT same redirect_uri as in the authorization request
         const exactRedirectUri = 'berri://dropbox-auth'; // Must match authorization request
-
+        
         const body = new URLSearchParams({
           code: authCode,
           grant_type: 'authorization_code',
@@ -217,12 +202,12 @@ const HistoryDetailScreen = () => {
           clientId: clientId,
           redirectUri: exactRedirectUri,
           codeVerifierLength: verifier.length,
-          codeVerifierPreview: verifier.substring(0, 15) + '...',
+          codeVerifierPreview: verifier.substring(0, 15) + '...'
         });
 
         console.log('📤 Sending token exchange request to:', tokenUrl);
         console.log('📤 Request body:', body.toString());
-
+        
         const response = await fetch(tokenUrl, {
           method: 'POST',
           headers: {
@@ -232,11 +217,11 @@ const HistoryDetailScreen = () => {
         });
 
         const data = await response.json();
-
+        
         console.log('📥 Token exchange response:', {
           status: response.status,
           ok: response.ok,
-          data: data,
+          data: data
         });
 
         if (response.ok) {
@@ -253,12 +238,12 @@ const HistoryDetailScreen = () => {
             const updatedSettings = {
               ...settings,
               dropboxAccessToken: tokens.accessToken,
-              dropboxRefreshToken: tokens.refreshToken,
+              dropboxRefreshToken: tokens.refreshToken
             };
 
             console.log('🔄 Using fresh Dropbox tokens for resend:', {
               hasNewAccessToken: !!tokens.accessToken,
-              hasNewRefreshToken: !!tokens.refreshToken,
+              hasNewRefreshToken: !!tokens.refreshToken
             });
 
             try {
@@ -275,10 +260,7 @@ const HistoryDetailScreen = () => {
               setTimeout(() => navigation.goBack(), 1500);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              showErrorToast(
-                'Resend Failed',
-                'Could not send scan. Please try again.',
-              );
+              showErrorToast('Resend Failed', 'Could not send scan. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save Dropbox tokens:', error);
@@ -290,16 +272,7 @@ const HistoryDetailScreen = () => {
         console.error('❌ Error during token exchange:', error);
       }
     },
-    [
-      clientId,
-      dispatch,
-      navigation,
-      selectedDestinations,
-      destinations,
-      history,
-      user,
-      settings,
-    ],
+    [clientId, dispatch, navigation, selectedDestinations, destinations, history, user, settings],
   );
 
   const exchangeOneDriveCodeForToken = useCallback(
@@ -340,12 +313,12 @@ const HistoryDetailScreen = () => {
             const updatedSettings = {
               ...settings,
               oneDriveAccessToken: tokens.accessToken,
-              oneDriveRefreshToken: tokens.refreshToken,
+              oneDriveRefreshToken: tokens.refreshToken
             };
 
             console.log('🔄 Using fresh OneDrive tokens for resend:', {
               hasNewAccessToken: !!tokens.accessToken,
-              hasNewRefreshToken: !!tokens.refreshToken,
+              hasNewRefreshToken: !!tokens.refreshToken
             });
 
             // Based on screen:
@@ -359,17 +332,11 @@ const HistoryDetailScreen = () => {
                 dispatch,
               );
 
-              showSuccessToast(
-                'Scan Sent!',
-                'Successfully resent via OneDrive',
-              );
+              showSuccessToast('Scan Sent!', 'Successfully resent via OneDrive');
               setTimeout(() => navigation.goBack(), 1500);
             } catch (error) {
               console.error('❌ Error resending files:', error);
-              showErrorToast(
-                'Resend Failed',
-                'Could not send scan. Please try again.',
-              );
+              showErrorToast('Resend Failed', 'Could not send scan. Please try again.');
             }
           } catch (error) {
             console.error('❌ Failed to save OneDrive tokens:', error);
@@ -381,17 +348,7 @@ const HistoryDetailScreen = () => {
         console.error('❌ Error during OneDrive token exchange:', error);
       }
     },
-    [
-      oneDriveClientId,
-      oneDriveRedirectUri,
-      dispatch,
-      navigation,
-      selectedDestinations,
-      destinations,
-      history,
-      user,
-      settings,
-    ],
+    [oneDriveClientId, oneDriveRedirectUri, dispatch, navigation, selectedDestinations, destinations, history, user, settings],
   );
 
   useEffect(() => {
@@ -401,10 +358,7 @@ const HistoryDetailScreen = () => {
         const codeVerifierOutside = sendFilesApiService.getCodeVerifier();
         if (codeMatch && codeVerifierOutside) {
           const authCode = codeMatch[1];
-          console.log(
-            '🔑 Retrieved code verifier for Dropbox:',
-            codeVerifierOutside,
-          );
+          console.log('🔑 Retrieved code verifier for Dropbox:', codeVerifierOutside);
           console.log('🔑 Exchanging Dropbox auth code for token:', authCode);
           exchangeDropboxCodeForToken(authCode, codeVerifierOutside);
         } else if (codeMatch && !codeVerifierOutside) {
@@ -460,14 +414,8 @@ const HistoryDetailScreen = () => {
   }, [dispatch, exchangeDropboxCodeForToken, exchangeOneDriveCodeForToken]);
 
   return (
-    <Layout
-      paddingBottom
-      type="default"
-      headerTitle={'Detail'}
-      showBackButton={true}
-    >
-      <View style={styles.container}>
-      <ScrollView showsVerticalScrollIndicator={false}>
+    <Layout paddingBottom type="default" headerTitle={'Detail'} showBackButton={true}>
+      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
         {/* Title and Date */}
         <View style={styles.headerInfo}>
           <Text style={styles.title}>{displayName}</Text>
@@ -478,20 +426,20 @@ const HistoryDetailScreen = () => {
         <View style={styles.imagesContainer}>
           {history.files && history.files.length > 0 ? (
             history.files.map((file, index) => (
-              <TouchableOpacity
+              <View
                 key={index}
                 style={styles.imageContainer}
-                onPress={() => setZoomImageUri(getFullFilePath(file))}
-                activeOpacity={0.9}
               >
                 <View style={styles.imageWrapper}>
-                  <Image
-                    source={{ uri: getFullFilePath(file) }}
-                    style={styles.image}
-                    resizeMode="contain"
-                  />
+                  <GestureHandlerRootView>
+                    <ZoomableImage
+                      uri={getFullFilePath(file)}
+                      width={screenWidth - 40}
+                      height={400}
+                    />
+                  </GestureHandlerRootView>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))
           ) : (
             <View style={styles.imageContainer}>
@@ -502,7 +450,6 @@ const HistoryDetailScreen = () => {
           )}
         </View>
       </ScrollView>
-      </View>
 
       {/* Zoom Modal */}
       <Modal
@@ -511,37 +458,23 @@ const HistoryDetailScreen = () => {
         animationType="fade"
         onRequestClose={() => setZoomImageUri(null)}
       >
-        <View style={styles.zoomModalContainer}>
+        <GestureHandlerRootView style={styles.zoomModalContainer}>
           <TouchableOpacity
             style={styles.zoomCloseButton}
             onPress={() => setZoomImageUri(null)}
           >
             <Text style={styles.zoomCloseText}>✕</Text>
           </TouchableOpacity>
-          <ScrollView
-            style={styles.zoomScrollView}
-            contentContainerStyle={styles.zoomScrollContent}
-            maximumZoomScale={5}
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            centerContent={true}
-            bouncesZoom={true}
-          >
-            {zoomImageUri && (
-              <Image
-                source={{ uri: zoomImageUri }}
-                style={{
-                  width: screenWidth,
-                  height: screenHeight * 0.8,
-                  borderRadius: 4,
-                }}
-                resizeMode="contain"
-              />
-            )}
-          </ScrollView>
-        </View>
+          {zoomImageUri && (
+            <ZoomableImage
+              uri={zoomImageUri}
+              width={screenWidth}
+              height={screenHeight * 0.8}
+            />
+          )}
+        </GestureHandlerRootView>
       </Modal>
+
       {/* Bottom Action Bar */}
       <View style={styles.actionBar}>
         {/* Delete Button */}
@@ -695,15 +628,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 24,
     fontWeight: '300',
-  },
-  zoomScrollView: {
-    flex: 1,
-    width: '100%',
-  },
-  zoomScrollContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });
 

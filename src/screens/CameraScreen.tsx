@@ -29,6 +29,7 @@ import {
   Vibration,
   Linking,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
 import { saveScannedDocument } from '../utils/saveImage';
@@ -36,7 +37,7 @@ import { useNavigation, useFocusEffect, useIsFocused, CommonActions } from '@rea
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setHistory } from '../store/appSlice';
-import { DestinationIcon } from '../components';
+import { DestinationIcon, ZoomableImage } from '../components';
 
 interface DocumentCorner {
   x: number;
@@ -236,6 +237,7 @@ export default function App() {
     'Hold still',
   );
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
+  const [zoomCapturedImage, setZoomCapturedImage] = useState<string | null>(null);
   const [capturedQrValue, setCapturedQrValue] = useState<string | null>(null); // QR kód érték a végeredményhez
   
   // === MULTI-IMAGE COLLECTION ===
@@ -785,6 +787,7 @@ export default function App() {
           frameHeight: captureFrameHeight,
           frameBrightness: captureBrightness,
           enableDebugImages: debugImagesEnabled,
+          isTorchOn: torchEnabled,
         });
 
         // Ha NEM sikerült a kivágás, újra próbálkozunk
@@ -921,7 +924,10 @@ export default function App() {
         // === MULTI-IMAGE: Add image to collection instead of showing modal ===
         const imageId = `img_${Date.now()}`;
         const tempDir = `${Dirs.CacheDir}/gallery_preview`;
-        await FileSystem.mkdir(tempDir);
+        const tempDirExists = await FileSystem.exists(tempDir);
+        if (!tempDirExists) {
+          await FileSystem.mkdir(tempDir);
+        }
         const tempUri = `${tempDir}/${imageId}.jpg`;
         await FileSystem.writeFile(tempUri, scanResult.imageBase64, 'base64');
 
@@ -1100,9 +1106,11 @@ export default function App() {
       smoothedResults[0].confidence >= MIN_CONFIDENCE_THRESHOLD &&
       //hasQrValue && // QR KÓD KELL AZ AUTO-CAPTURE-HEZ! - KIKAPCSOLVA, QR NÉLKÜL IS FOTÓZ
       !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS - BEKAPCSOLVA!
+      (currentBrightness === null || currentBrightness >= 75) && // NE FOTÓZZON SÖTÉTBEN!
       !isCapturing &&
       !isCaptureAnimating &&
       !showCapturedImage &&
+      !showGalleryModal &&
       !autoCaptureTriggeredRef.current
     ) {
       const { isGood: isRectangleGood } = checkRectangleShape(
@@ -1145,9 +1153,11 @@ export default function App() {
               smoothedResults[0].confidence >= MIN_CONFIDENCE_THRESHOLD &&
               //finalHasQrValue && // QR KÓD KELL!
               !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS - BEKAPCSOLVA!
+              (currentBrightness === null || currentBrightness >= 50) && // NE FOTÓZZON SÖTÉTBEN!
               !isCapturing &&
               !isCaptureAnimating &&
-              !showCapturedImage;
+              !showCapturedImage &&
+              !showGalleryModal;
 
             const { isGood: finalRectangleCheck } = checkRectangleShape(
               smoothedResults[0].corners,
@@ -1190,9 +1200,11 @@ export default function App() {
   }, [
     smoothedResults,
     currentQrPosition, // QR lock state!
+    currentBrightness, // Brightness check - ne fotózzon sötétben!
     isCapturing,
     isCaptureAnimating,
     showCapturedImage,
+    showGalleryModal,
     // checkRectangleShape és handleCapture nincs benne - stabil referenciák
   ]);
 
@@ -1208,7 +1220,7 @@ export default function App() {
   const getCurrentStatus = useMemo(() => {
     // Use smoothed results instead of raw results for stability
     if (smoothedResults.length === 0) {
-      const earlyLightWarning = (currentBrightness !== null && currentBrightness < 60) ? UI_MESSAGES.LIGHT_WARNING : '';
+      const earlyLightWarning = (currentBrightness !== null && currentBrightness < 75) ? UI_MESSAGES.LIGHT_WARNING : '';
       return {
         isDetected: stableDetectionStatus.isDetected, // Use stable status
         isRectangleGood: true,
@@ -1228,7 +1240,8 @@ export default function App() {
     const blurWarning = stableIsBlurry ? UI_MESSAGES.BLUR_WARNING : '';
 
     // FÉNY ELLENŐRZÉS - alacsony fénynél figyelmeztetés
-    const lightWarning = (currentBrightness !== null && currentBrightness < 50) ? UI_MESSAGES.LIGHT_WARNING : '';
+    const lightWarning = (currentBrightness !== null && currentBrightness < 75) ? UI_MESSAGES.LIGHT_WARNING : '';
+    const isTooDark = currentBrightness !== null && currentBrightness < 50; // Túl sötét → ne legyen "detected"
 
     // PERSPEKTÍVA ELLENŐRZÉS - túl ferde szög figyelmeztetés
     const perspectiveWarning = latestResult.perspectiveWarning
@@ -1270,25 +1283,27 @@ export default function App() {
       // Ha van QR kód → automatikus fotózás, ha nincs → várakozás
       if (hasRealQrValue) {
         return {
-          isDetected: true,
+          isDetected: !isTooDark,
           isRectangleGood,
-          message: UI_MESSAGES.DETECTED_WITH_QR(confidence),
+          message: isTooDark ? UI_MESSAGES.SEARCHING : UI_MESSAGES.DETECTED_WITH_QR(confidence),
           instruction:
-            UI_MESSAGES.DETECTED_WITH_QR_INSTRUCTION +
+            (isTooDark ? UI_MESSAGES.SEARCHING_INSTRUCTION : UI_MESSAGES.DETECTED_WITH_QR_INSTRUCTION) +
             rectangleWarning +
             blurWarning +
-            perspectiveWarning,
+            perspectiveWarning +
+            lightWarning,
         };
       } else {
         return {
-          isDetected: true,
+          isDetected: !isTooDark,
           isRectangleGood,
-          message: UI_MESSAGES.DETECTED(confidence),
+          message: isTooDark ? UI_MESSAGES.SEARCHING : UI_MESSAGES.DETECTED(confidence),
           instruction:
-            UI_MESSAGES.DETECTED_INSTRUCTION +
+            (isTooDark ? UI_MESSAGES.SEARCHING_INSTRUCTION : UI_MESSAGES.DETECTED_INSTRUCTION) +
             rectangleWarning +
             blurWarning +
-            perspectiveWarning,
+            perspectiveWarning +
+            lightWarning,
         };
       }
     }
@@ -1297,21 +1312,25 @@ export default function App() {
     if (confidence > 0.5) {
       if (hasRealQrValue) {
         return {
-          isDetected: true,
+          isDetected: !isTooDark,
           isRectangleGood: true,
-          message: UI_MESSAGES.DETECTED_WITH_QR(confidence),
+          message: isTooDark ? UI_MESSAGES.SEARCHING : UI_MESSAGES.DETECTED_WITH_QR(confidence),
           instruction:
-            UI_MESSAGES.DETECTED_WITH_QR_INSTRUCTION +
+            (isTooDark ? UI_MESSAGES.SEARCHING_INSTRUCTION : UI_MESSAGES.DETECTED_WITH_QR_INSTRUCTION) +
             blurWarning +
-            perspectiveWarning,
+            perspectiveWarning +
+            lightWarning,
         };
       } else {
         return {
-          isDetected: true,
+          isDetected: !isTooDark,
           isRectangleGood: true,
-          message: UI_MESSAGES.DETECTED(confidence),
+          message: isTooDark ? UI_MESSAGES.SEARCHING : UI_MESSAGES.DETECTED(confidence),
           instruction:
-            UI_MESSAGES.DETECTED_INSTRUCTION + blurWarning + perspectiveWarning,
+            (isTooDark ? UI_MESSAGES.SEARCHING_INSTRUCTION : UI_MESSAGES.DETECTED_INSTRUCTION) +
+            blurWarning +
+            perspectiveWarning +
+            lightWarning,
         };
       }
     } else if (confidence > 0.2) {
@@ -1491,7 +1510,7 @@ export default function App() {
                 photo={true}
                 enableFpsGraph={false}
                 torch={torchEnabled ? 'on' : 'off'}
-                isActive={isFocused && !showCapturedImage}
+                isActive={isFocused && !showCapturedImage && !showGalleryModal}
                 exposure={-0.5}
                 frameProcessor={frameProcessor}
                 resizeMode="cover"
@@ -1554,7 +1573,11 @@ export default function App() {
             style={styles.backButton}
             onPress={() => (navigation as any).navigate('History')}
           >
-            <Text style={styles.backButtonText}>←</Text>
+            <Image
+              source={require('../assets/left_arrow.png')}
+              style={styles.backButtonIcon}
+              resizeMode="contain"
+            />
           </TouchableOpacity>
 
           {/* Document overlay - ANIMÁLT verzió - MARAD AMÍG A4 NEM JELENIK MEG */}
@@ -1917,11 +1940,16 @@ export default function App() {
                 <Text style={styles.qrValueLabel}>QR: {capturedQrValue}</Text>
               )}
               <View style={styles.finalResultFrame}>
-                <Image
-                  source={{ uri: `data:image/jpeg;base64,${capturedImageUri}` }}
-                  style={styles.finalResultImage}
-                  resizeMode="contain"
-                />
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setZoomCapturedImage(`data:image/jpeg;base64,${capturedImageUri}`)}
+                >
+                  <Image
+                    source={{ uri: `data:image/jpeg;base64,${capturedImageUri}` }}
+                    style={{ width: screenWidth - 80, height: (screenWidth - 80) * (5 / 3) }}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -2037,7 +2065,7 @@ export default function App() {
 
       {/* === FULLSCREEN GALLERY MODAL === */}
       {showGalleryModal && capturedImages.length > 0 && (
-        <View style={styles.galleryModalContainer}>
+        <GestureHandlerRootView style={styles.galleryModalContainer}>
           {/* Header */}
           <View style={styles.galleryHeader}>
            
@@ -2066,10 +2094,11 @@ export default function App() {
             renderItem={({ item, index }) => (
               <View style={[styles.galleryImageContainer, { width: screenWidth }]}>
                 <View style={styles.zoomScrollContent}>
-                  <Image
-                    source={{ uri: item.fileUri }}
-                    style={[styles.galleryImage, { width: screenWidth * 0.85, height: screenHeight * 0.6 }]}
-                    resizeMode="contain"
+                  <ZoomableImage
+                    uri={item.fileUri}
+                    width={screenWidth * 0.85}
+                    height={screenHeight * 0.6}
+                    onZoomChange={(zoomed) => setIsGalleryZoomed(zoomed)}
                   />
                 </View>
                 {/* Page indicator */}
@@ -2115,6 +2144,23 @@ export default function App() {
               </View>
             )}
           />
+        </GestureHandlerRootView>
+      )}
+      {zoomCapturedImage && (
+        <View style={styles.zoomOverlay}>
+          <GestureHandlerRootView style={styles.zoomModalContainer}>
+            <TouchableOpacity
+              style={styles.zoomCloseButton}
+              onPress={() => setZoomCapturedImage(null)}
+            >
+              <Text style={styles.zoomCloseText}>✕</Text>
+            </TouchableOpacity>
+            <ZoomableImage
+              uri={zoomCapturedImage}
+              width={screenWidth}
+              height={screenHeight * 0.8}
+            />
+          </GestureHandlerRootView>
         </View>
       )}
     </View>
@@ -2167,15 +2213,17 @@ const styles = StyleSheet.create({
     top: 20,
     left: 20,
     zIndex: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  backButtonText: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: '300',
+  backButtonIcon: {
+    width: 20,
+    height: 20,
+    tintColor: 'white',
   },
   debugToggleButton: {
     position: 'absolute',
@@ -2845,5 +2893,38 @@ const styles = StyleSheet.create({
     color: '#C4A8FF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Zoom Modal Styles
+  zoomOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  zoomModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomCloseButton: {
+    position: 'absolute' as const,
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  zoomCloseText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: '300' as const,
   },
 });
