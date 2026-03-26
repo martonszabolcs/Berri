@@ -11,10 +11,11 @@ import {
   Modal,
   Dimensions,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { Dirs } from 'react-native-file-access';
-import { Layout, Text, DestinationIcon } from '../components';
+import { Layout, Text, DestinationIcon, ZoomableImage } from '../components';
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import {
   showErrorToast,
@@ -478,20 +479,20 @@ const HistoryDetailScreen = () => {
         <View style={styles.imagesContainer}>
           {history.files && history.files.length > 0 ? (
             history.files.map((file, index) => (
-              <TouchableOpacity
+              <View
                 key={index}
                 style={styles.imageContainer}
-                onPress={() => setZoomImageUri(getFullFilePath(file))}
-                activeOpacity={0.9}
               >
                 <View style={styles.imageWrapper}>
-                  <Image
-                    source={{ uri: getFullFilePath(file) }}
-                    style={styles.image}
-                    resizeMode="contain"
-                  />
+                  <GestureHandlerRootView>
+                    <ZoomableImage
+                      uri={getFullFilePath(file)}
+                      width={screenWidth - 40}
+                      height={400}
+                    />
+                  </GestureHandlerRootView>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))
           ) : (
             <View style={styles.imageContainer}>
@@ -511,36 +512,21 @@ const HistoryDetailScreen = () => {
         animationType="fade"
         onRequestClose={() => setZoomImageUri(null)}
       >
-        <View style={styles.zoomModalContainer}>
+        <GestureHandlerRootView style={styles.zoomModalContainer}>
           <TouchableOpacity
             style={styles.zoomCloseButton}
             onPress={() => setZoomImageUri(null)}
           >
             <Text style={styles.zoomCloseText}>✕</Text>
           </TouchableOpacity>
-          <ScrollView
-            style={styles.zoomScrollView}
-            contentContainerStyle={styles.zoomScrollContent}
-            maximumZoomScale={5}
-            minimumZoomScale={1}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            centerContent={true}
-            bouncesZoom={true}
-          >
-            {zoomImageUri && (
-              <Image
-                source={{ uri: zoomImageUri }}
-                style={{
-                  width: screenWidth,
-                  height: screenHeight * 0.8,
-                  borderRadius: 4,
-                }}
-                resizeMode="contain"
-              />
-            )}
-          </ScrollView>
-        </View>
+          {zoomImageUri && (
+            <ZoomableImage
+              uri={zoomImageUri}
+              width={screenWidth}
+              height={screenHeight * 0.8}
+            />
+          )}
+        </GestureHandlerRootView>
       </Modal>
       {/* Bottom Action Bar */}
       <View style={styles.actionBar}>
@@ -695,15 +681,6 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 24,
     fontWeight: '300',
-  },
-  zoomScrollView: {
-    flex: 1,
-    width: '100%',
-  },
-  zoomScrollContent: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
 });
 

@@ -13,6 +13,7 @@ export { default as HistoryCard } from './atoms/HistoryCard';
 export { default as BackgroundImage } from './atoms/BackgroundImage';
 export { default as DestinationIcon } from './atoms/DestinationIcon';
 export { default as AvatarIcon } from './atoms/AvatarIcon';
+export { default as ZoomableImage } from './atoms/ZoomableImage';
 export { TabBarIcon } from './atoms/TabBarIcon';
 export { HistoryTabBarIcon, NewScanTabBarIcon, DestinationsTabBarIcon } from './atoms/TabBarIconComponents';
 
