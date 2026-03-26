@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		006BE034AC0E4C66A10ADA11 /* YT.png in Resources */ = {isa = PBXBuildFile; fileRef = 14113135F78B4717BAC11EA8 /* YT.png */; };
-		00E53EF9A6CD4B08BCE9D784 /* ios_photo.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 3D387CE19C914E109524F494 /* ios_photo.mp3 */; };
 		092929F45B1E43F1AF03C90C /* search.png in Resources */ = {isa = PBXBuildFile; fileRef = 76F8E1A81E7C49CFA4005430 /* search.png */; };
 		0E6CE5D673C044C3B408323E /* delete.png in Resources */ = {isa = PBXBuildFile; fileRef = 26B4B74712C44CA995D3A1C8 /* delete.png */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
@@ -59,6 +58,7 @@
 		E3D1D3E124A44CE2885CAA55 /* select.png in Resources */ = {isa = PBXBuildFile; fileRef = 207C1D5E3BF442438B050F5B /* select.png */; };
 		E56D130CB7FC4589BF82B6F6 /* dest5.svg in Resources */ = {isa = PBXBuildFile; fileRef = 49ABF1B5CE1D4BA8A302F6E8 /* dest5.svg */; };
 		E61639CF2F8A4997AD156BAA /* Inter-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5058337D03554285AEE851DE /* Inter-Regular.ttf */; };
+		ED30F3973EC04E50872E040F /* ios_photo.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 0B0FFA33928948D2A5BCAEF5 /* ios_photo.mp3 */; };
 		EE544AD22F57034F006A8ECC /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = EE544AD12F57034F006A8ECC /* GoogleService-Info.plist */; };
 		EE7C50DE2F61DC90002A11EF /* ez.JPG in Resources */ = {isa = PBXBuildFile; fileRef = EE7C50DD2F61DC90002A11EF /* ez.JPG */; };
 		EEBFD0CF2EDFB9A000DB59B9 /* intro lesz (1).png in Resources */ = {isa = PBXBuildFile; fileRef = EEBFD0CE2EDFB9A000DB59B9 /* intro lesz (1).png */; };
@@ -80,6 +80,7 @@
 		0639821CF97B4DE7B26A7ACA /* HT1.png */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = HT1.png; path = ../src/assets/HT1.png; sourceTree = "<group>"; };
 		076D8A135390440AA303B22E /* dest_5.png */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = dest_5.png; path = ../src/assets/dest_5.png; sourceTree = "<group>"; };
 		07B5DB2A1FE04AC1BB041437 /* x.png */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = x.png; path = ../src/assets/x.png; sourceTree = "<group>"; };
+		0B0FFA33928948D2A5BCAEF5 /* ios_photo.mp3 */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = ios_photo.mp3; path = ../src/assets/sounds/ios_photo.mp3; sourceTree = "<group>"; };
 		0E436637AA054332AC98FAC6 /* arrow-down.png */ = {isa = PBXFileReference; explicitFileType = undefined; fileEncoding = 9; includeInIndex = 0; lastKnownFileType = unknown; name = "arrow-down.png"; path = "../src/assets/arrow-down.png"; sourceTree = "<group>"; };
 		13B07F961A680F5B00A75B9A /* scan_prototype.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = scan_prototype.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = scan_prototype/Images.xcassets; sourceTree = "<group>"; };
@@ -290,6 +291,7 @@
 				F2DC8D0EEE0A4D87811DC7CA /* arrange.png */,
 				5F4E9F6FDCB34164881CA177 /* bg_purple_auth.png */,
 				82E3404752E246C491FCE53B /* dest2.svg */,
+				0B0FFA33928948D2A5BCAEF5 /* ios_photo.mp3 */,
 			);
 			name = Resources;
 			sourceTree = "<group>";
@@ -374,7 +376,6 @@
 				D9685564A4B8496193175D6D /* Inter-Bold.ttf in Resources */,
 				5951202192EE43F6A6955C8F /* InterDisplay-SemiBold.ttf in Resources */,
 				E61639CF2F8A4997AD156BAA /* Inter-Regular.ttf in Resources */,
-				00E53EF9A6CD4B08BCE9D784 /* ios_photo.mp3 in Resources */,
 				86E59EC9CC574F12A655846B /* dest_7.png in Resources */,
 				5B44EB1506EE48AD88124B7E /* dest_6.png in Resources */,
 				A289C6975D9F44CB9CAEB71A /* resend.png in Resources */,
@@ -420,6 +421,7 @@
 				36B719A70F7C4FD690F940FA /* arrange.png in Resources */,
 				F0EA34A9F40E4961B3F61403 /* bg_purple_auth.png in Resources */,
 				371F193501834B9392F57950 /* dest2.svg in Resources */,
+				ED30F3973EC04E50872E040F /* ios_photo.mp3 in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -541,7 +543,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LAASW3G6J9;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = scan_prototype/Info.plist;
@@ -571,7 +573,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CURRENT_PROJECT_VERSION = 17;
+				CURRENT_PROJECT_VERSION = 18;
 				DEVELOPMENT_TEAM = LAASW3G6J9;
 				INFOPLIST_FILE = scan_prototype/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "BERRĪ";
