@@ -54,6 +54,8 @@
 	</dict>
 	<key>NSCameraUsageDescription</key>
 	<string>$(PRODUCT_NAME) needs access to your Camera.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>$(PRODUCT_NAME) needs access to your Photo Library to save scanned documents.</string>
 	<key>NSLocationAlwaysUsageDescription</key>
 	<string>Your location is not needed. This request has popped up due to a 3rd party framework used by the app in a context that does NOT need you to reveal you location. Do be sure to check audit trail for the location queries on ios 15 or later.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

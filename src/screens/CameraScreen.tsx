@@ -29,6 +29,7 @@ import {
   Vibration,
   Linking,
 } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Dirs, FileSystem } from 'react-native-file-access';
 import { OpenCV, ObjectType, DataTypes } from 'react-native-fast-opencv';
 import { saveScannedDocument } from '../utils/saveImage';
@@ -36,7 +37,11 @@ import { useNavigation, useFocusEffect, useIsFocused, CommonActions } from '@rea
 import { useAppSelector, useAppDispatch } from '../store/hooks';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setHistory } from '../store/appSlice';
-import { DestinationIcon } from '../components';
+import { DestinationIcon, ZoomableImage } from '../components';
+import Sound from 'react-native-sound';
+
+// Respect silent switch (like native camera shutter)
+Sound.setCategory('Ambient');
 
 interface DocumentCorner {
   x: number;
@@ -236,6 +241,7 @@ export default function App() {
     'Hold still',
   );
   const [capturedImageUri, setCapturedImageUri] = useState<string | null>(null);
+  const [zoomCapturedImage, setZoomCapturedImage] = useState<string | null>(null);
   const [capturedQrValue, setCapturedQrValue] = useState<string | null>(null); // QR kód érték a végeredményhez
   
   // === MULTI-IMAGE COLLECTION ===
@@ -749,7 +755,7 @@ export default function App() {
 
         // Fotó készítése
         const photo = await camera.current.takePhoto({
-          enableShutterSound: true,
+          enableShutterSound: false,
         });
 
         console.log(`📸 Photo ${photoAttempt} taken:`, photo);
@@ -871,6 +877,14 @@ export default function App() {
       // Sikeres scan - folytatjuk az animációval
 
       if (scanResult.success && scanResult.imageBase64) {
+        // Play success sound immediately
+        const shutterSound = new Sound('ios_photo.mp3', Sound.MAIN_BUNDLE, (error) => {
+          if (!error) {
+            shutterSound.setVolume(1.0);
+            shutterSound.play(() => shutterSound.release());
+          }
+        });
+
         // Most már van beszkennelt kép - megjelenítjük az A4-ben
         setA4AnimationImage(scanResult.imageBase64);
         setShowA4Animation(true);
@@ -921,7 +935,10 @@ export default function App() {
         // === MULTI-IMAGE: Add image to collection instead of showing modal ===
         const imageId = `img_${Date.now()}`;
         const tempDir = `${Dirs.CacheDir}/gallery_preview`;
-        await FileSystem.mkdir(tempDir);
+        const tempDirExists = await FileSystem.exists(tempDir);
+        if (!tempDirExists) {
+          await FileSystem.mkdir(tempDir);
+        }
         const tempUri = `${tempDir}/${imageId}.jpg`;
         await FileSystem.writeFile(tempUri, scanResult.imageBase64, 'base64');
 
@@ -1554,7 +1571,11 @@ export default function App() {
             style={styles.backButton}
             onPress={() => (navigation as any).navigate('History')}
           >
-            <Text style={styles.backButtonText}>←</Text>
+            <Image
+              source={require('../assets/left_arrow.png')}
+              style={styles.backButtonIcon}
+              resizeMode="contain"
+            />
           </TouchableOpacity>
 
           {/* Document overlay - ANIMÁLT verzió - MARAD AMÍG A4 NEM JELENIK MEG */}
@@ -1917,11 +1938,16 @@ export default function App() {
                 <Text style={styles.qrValueLabel}>QR: {capturedQrValue}</Text>
               )}
               <View style={styles.finalResultFrame}>
-                <Image
-                  source={{ uri: `data:image/jpeg;base64,${capturedImageUri}` }}
-                  style={styles.finalResultImage}
-                  resizeMode="contain"
-                />
+                <TouchableOpacity
+                  activeOpacity={0.9}
+                  onPress={() => setZoomCapturedImage(`data:image/jpeg;base64,${capturedImageUri}`)}
+                >
+                  <Image
+                    source={{ uri: `data:image/jpeg;base64,${capturedImageUri}` }}
+                    style={{ width: screenWidth - 80, height: (screenWidth - 80) * (5 / 3) }}
+                    resizeMode="contain"
+                  />
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -2037,7 +2063,7 @@ export default function App() {
 
       {/* === FULLSCREEN GALLERY MODAL === */}
       {showGalleryModal && capturedImages.length > 0 && (
-        <View style={styles.galleryModalContainer}>
+        <GestureHandlerRootView style={styles.galleryModalContainer}>
           {/* Header */}
           <View style={styles.galleryHeader}>
            
@@ -2066,10 +2092,11 @@ export default function App() {
             renderItem={({ item, index }) => (
               <View style={[styles.galleryImageContainer, { width: screenWidth }]}>
                 <View style={styles.zoomScrollContent}>
-                  <Image
-                    source={{ uri: item.fileUri }}
-                    style={[styles.galleryImage, { width: screenWidth * 0.85, height: screenHeight * 0.6 }]}
-                    resizeMode="contain"
+                  <ZoomableImage
+                    uri={item.fileUri}
+                    width={screenWidth * 0.85}
+                    height={screenHeight * 0.6}
+                    onZoomChange={(zoomed) => setIsGalleryZoomed(zoomed)}
                   />
                 </View>
                 {/* Page indicator */}
@@ -2115,6 +2142,23 @@ export default function App() {
               </View>
             )}
           />
+        </GestureHandlerRootView>
+      )}
+      {zoomCapturedImage && (
+        <View style={styles.zoomOverlay}>
+          <GestureHandlerRootView style={styles.zoomModalContainer}>
+            <TouchableOpacity
+              style={styles.zoomCloseButton}
+              onPress={() => setZoomCapturedImage(null)}
+            >
+              <Text style={styles.zoomCloseText}>✕</Text>
+            </TouchableOpacity>
+            <ZoomableImage
+              uri={zoomCapturedImage}
+              width={screenWidth}
+              height={screenHeight * 0.8}
+            />
+          </GestureHandlerRootView>
         </View>
       )}
     </View>
@@ -2167,15 +2211,17 @@ const styles = StyleSheet.create({
     top: 20,
     left: 20,
     zIndex: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
-  backButtonText: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: '300',
+  backButtonIcon: {
+    width: 20,
+    height: 20,
+    tintColor: 'white',
   },
   debugToggleButton: {
     position: 'absolute',
@@ -2845,5 +2891,38 @@ const styles = StyleSheet.create({
     color: '#C4A8FF',
     fontSize: 15,
     fontWeight: '600',
+  },
+  // Zoom Modal Styles
+  zoomOverlay: {
+    position: 'absolute' as const,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    elevation: 9999,
+  },
+  zoomModalContainer: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomCloseButton: {
+    position: 'absolute' as const,
+    top: 50,
+    right: 20,
+    zIndex: 10,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
+  },
+  zoomCloseText: {
+    color: 'white',
+    fontSize: 24,
+    fontWeight: '300' as const,
   },
 });
