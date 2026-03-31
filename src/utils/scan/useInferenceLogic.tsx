@@ -64,7 +64,7 @@ const BINARY_THRESHOLD = 10; // Egyszerű threshold érték
 const CANNY_THRESHOLD_LOW = 50; // Canny él detektálás alsó küszöb
 const CANNY_THRESHOLD_HIGH = 150; // Canny él detektálás felső küszöb
 const GAUSSIAN_BLUR_KERNEL_SIZE = 3; // Gaussian blur kernel méret (5x5)
-const MORPHOLOGY_KERNEL_SIZE = 10; // Morfológiai műveletek kernel méret (5x5)
+const MORPHOLOGY_KERNEL_SIZE = 3; // Morfológiai műveletek kernel méret (3x3 - csökkentve, ne zárja össze a padló/asztal éleit)
 
 // === CONTOUR (KÖRVONAL) APPROXIMÁCIÓ ===
 const EPSILON_VALUES = [0.005, 0.01, 0.02, 0.05]; // Epsilon szorzók polygon approximációhoz
@@ -493,6 +493,7 @@ export const useInferenceLogic = (
 
   // === KERNEL CACHE - OPTIMALIZÁLÁS! ===
   // Kerneleket csak egyszer hozzuk létre, nem minden frame-en!
+  // FONTOS: Ha MORPHOLOGY_KERNEL_SIZE változik, töröld az app cache-t vagy rebuildelj!
   let cachedKernel5x5: any = null;
   let cachedKsize5x5: any = null;
 
@@ -1019,6 +1020,15 @@ export const useInferenceLogic = (
                   minDim > rotatedHeight * 0.04
                 ) {
                   score += SCORE_SIZE_MEDIUM;
+                }
+
+                // Túl nagy contour büntetése - ha >70% a kép területe, valószínűleg
+                // a háttér (asztal/padló) és nem a dokumentum
+                const areaRatio = area / imgArea;
+                if (areaRatio > 0.7) {
+                  score -= 30; // Erős büntetés
+                } else if (areaRatio > 0.5) {
+                  score -= 10; // Enyhe büntetés
                 }
 
                 // QR KÓD - csak info céllal, nem ad bonuszt a detektáláshoz

@@ -35,5 +35,29 @@ target 'scan_prototype' do
       config[:reactNativePath],
       :mac_catalyst_enabled => false
     )
+    
+    # Fix fmt consteval build error with newer Xcode/Clang
+    installer.pods_project.targets.each do |target|
+      if target.name == 'fmt'
+        target.build_configurations.each do |config|
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= ['$(inherited)']
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'FMT_USE_CONSTEVAL=0'
+        end
+      end
+    end
+
+    # Patch fmt header to respect external FMT_USE_CONSTEVAL define
+    fmt_header = File.join(installer.sandbox.root, 'fmt/include/fmt/base.h')
+    if File.exist?(fmt_header)
+      content = File.read(fmt_header)
+      unless content.include?('Already defined externally')
+        content.sub!(
+          "// Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.\n#if !defined(__cpp_lib_is_constant_evaluated)",
+          "// Detect consteval, C++20 constexpr extensions and std::is_constant_evaluated.\n#if defined(FMT_USE_CONSTEVAL)\n// Already defined externally, keep it.\n#elif !defined(__cpp_lib_is_constant_evaluated)"
+        )
+        File.write(fmt_header, content)
+        Pod::UI.puts "Patched fmt/base.h to respect FMT_USE_CONSTEVAL=0".yellow
+      end
+    end
   end
 end

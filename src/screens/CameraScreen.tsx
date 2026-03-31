@@ -28,6 +28,7 @@ import {
   FlatList,
   Vibration,
   Linking,
+  ToastAndroid,
 } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Dirs, FileSystem } from 'react-native-file-access';
@@ -257,6 +258,13 @@ export default function App() {
   }
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
+  const showGalleryModalRef = useRef(false);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    showGalleryModalRef.current = showGalleryModal;
+  }, [showGalleryModal]);
+
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [isGalleryZoomed, setIsGalleryZoomed] = useState(false);
   
@@ -683,6 +691,11 @@ export default function App() {
   // === PHOTO CAPTURE ===
   // Handles document photo capture and processing with animation
   const handleCapture = useCallback(async () => {
+    // Don't capture while gallery modal is open
+    if (showGalleryModalRef.current) {
+      return;
+    }
+
     // Validation: Check if we have valid document corners
     if (
       smoothedResults.length === 0 ||
@@ -800,8 +813,13 @@ export default function App() {
           );
           
           if (photoAttempt === MAX_PHOTO_ATTEMPTS) {
+            const failReason = scanResult?.error || 'Corner detection failed';
             console.warn(
-              `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts (detection failed). Restarting...`,
+              `⚠️ Failed after ${MAX_PHOTO_ATTEMPTS} attempts (detection failed). Reason: ${failReason}`,
+            );
+            ToastAndroid.show(
+              `Scan failed: ${failReason}`,
+              ToastAndroid.LONG,
             );
             autoCaptureTriggeredRef.current = false;
             autoCaptureTimerRef.current = null;
@@ -851,10 +869,15 @@ export default function App() {
         detectionSuccess: scanResult?.success,
       });
 
-      // Ha végül sem sikerült a detection - CSENDESEN ÚJRAKEZDJÜK
+      // Ha végül sem sikerült a detection
       if (!scanResult || !scanResult.success) {
-        console.log(
-          '⚠️ Photo detection failed - silently restarting detection',
+        const failReason = scanResult?.error || 'Detection returned no result';
+        console.warn(
+          `⚠️ Photo detection failed - reason: ${failReason}`,
+        );
+        ToastAndroid.show(
+          `Scan failed: ${failReason}`,
+          ToastAndroid.LONG,
         );
 
         // Reset auto-capture state
@@ -871,7 +894,7 @@ export default function App() {
         // Restart frame processor - user can try again
         setIsFrameProcessorActive(true);
         console.log('▶️ Frame processor restarted - ready for next attempt');
-        return; // Silent fail - no error message to user
+        return;
       }
 
       // Sikeres scan - folytatjuk az animációval
@@ -980,8 +1003,11 @@ export default function App() {
         console.log('📸 Image added to collection. Total:', capturedImages.length + 1);
       }
     } catch (error) {
-      // Silent fail - user can retry
       console.error('Photo capture error:', error);
+      ToastAndroid.show(
+        `Capture error: ${error instanceof Error ? error.message : String(error)}`,
+        ToastAndroid.LONG,
+      );
     } finally {
       setIsCapturing(false);
       setIsCaptureAnimating(false);
@@ -995,9 +1021,13 @@ export default function App() {
       autoCaptureTriggeredRef.current = false;
       autoCaptureTimerRef.current = null;
 
-      // 🟢 START: Indítsuk újra a frame processor-t!
-      console.log('▶️ Resuming frame processor');
-      setIsFrameProcessorActive(true);
+      // 🟢 START: Indítsuk újra a frame processor-t (csak ha nincs gallery modal nyitva)!
+      if (!showGalleryModalRef.current) {
+        console.log('▶️ Resuming frame processor');
+        setIsFrameProcessorActive(true);
+      } else {
+        console.log('⏸️ Gallery modal open - frame processor stays paused');
+      }
     }
   }, [
     smoothedResults,
@@ -1120,6 +1150,7 @@ export default function App() {
       !isCapturing &&
       !isCaptureAnimating &&
       !showCapturedImage &&
+      !showGalleryModal &&
       !autoCaptureTriggeredRef.current
     ) {
       const { isGood: isRectangleGood } = checkRectangleShape(
@@ -1164,7 +1195,8 @@ export default function App() {
               !stableIsBlurry && // STABIL BLUR ELLENŐRZÉS - BEKAPCSOLVA!
               !isCapturing &&
               !isCaptureAnimating &&
-              !showCapturedImage;
+              !showCapturedImage &&
+              !showGalleryModal;
 
             const { isGood: finalRectangleCheck } = checkRectangleShape(
               smoothedResults[0].corners,
@@ -1210,6 +1242,7 @@ export default function App() {
     isCapturing,
     isCaptureAnimating,
     showCapturedImage,
+    showGalleryModal,
     // checkRectangleShape és handleCapture nincs benne - stabil referenciák
   ]);
 
@@ -1612,7 +1645,7 @@ export default function App() {
             )}
 
           {/* Spinner amikor a frame processor leáll (fotózás alatt) */}
-          {!isFrameProcessorActive && !showA4Animation && (
+          {!isFrameProcessorActive && !showA4Animation && !showGalleryModal && (
             <View style={styles.processingSpinnerOverlay}>
               <View style={styles.processingSpinnerContainer}>
                 <ActivityIndicator size="large" color="#C4A8FF" />
@@ -1751,8 +1784,10 @@ export default function App() {
                     key={img.id}
                     style={styles.thumbnailWrapper}
                     onPress={() => {
+                      if (isCapturing || isCaptureAnimating) return;
                       setGalleryStartIndex(index);
                       setShowGalleryModal(true);
+                      setIsFrameProcessorActive(false);
                     }}
                   >
                     <Image
@@ -1763,13 +1798,6 @@ export default function App() {
                     <View style={styles.thumbnailBadge}>
                       <Text style={styles.thumbnailBadgeText}>{index + 1}</Text>
                     </View>
-                    {img.qrPosition && (
-                      <View style={styles.thumbnailQrBadge}>
-                        <Text style={styles.thumbnailQrBadgeText}>
-                          {img.qrPosition === 'left' ? 'L' : 'R'}
-                        </Text>
-                      </View>
-                    )}
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -2069,7 +2097,10 @@ export default function App() {
            
             <TouchableOpacity
               style={styles.galleryCloseButton}
-              onPress={() => setShowGalleryModal(false)}
+              onPress={() => {
+                setShowGalleryModal(false);
+                setIsFrameProcessorActive(true);
+              }}
             >
               <Text style={styles.galleryCloseText}>✕</Text>
             </TouchableOpacity>
@@ -2129,6 +2160,7 @@ export default function App() {
                     // Close modal if no images left
                     if (newImages.length === 0) {
                       setShowGalleryModal(false);
+                      setIsFrameProcessorActive(true);
                     }
                   }}
                 >

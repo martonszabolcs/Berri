@@ -2657,7 +2657,7 @@ PODS:
     - React-Core
   - RNFS (2.20.0):
     - React-Core
-  - RNGestureHandler (2.30.0):
+  - RNGestureHandler (2.30.1):
     - boost
     - DoubleConversion
     - fast_float
@@ -3432,7 +3432,7 @@ SPEC CHECKSUMS:
   MLKitVision: 90922bca854014a856f8b649d1f1f04f63fd9c79
   nanopb: d4d75c12cd1316f4a64e3c6963f879ecd4b5e0d5
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
-  RCT-Folly: 59ec0ac1f2f39672a0c6e6cecdd39383b764646f
+  RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: c4b9e2fd0ab200e3af72b013ed6113187c607077
   RCTRequired: e97dd5dafc1db8094e63bc5031e0371f092ae92a
   RCTTypeSafety: 720403058b7c1380c6a3ae5706981d6362962c89
@@ -3505,7 +3505,7 @@ SPEC CHECKSUMS:
   RNFBAnalytics: ce602b90e85802ba8dbdd16f37579f72b7991f38
   RNFBApp: c5526741c2ee14bd3ab6d57bf8e42be8314bca2f
   RNFS: 89de7d7f4c0f6bafa05343c578f61118c8282ed8
-  RNGestureHandler: e37bdb684df1ac17c7e1d8f71a3311b2793c186b
+  RNGestureHandler: 1e48679ce8c172831ade9698caaf773c1554d3dc
   RNGoogleSignin: 45fff01f82e484114f6b15115361f3544b850b2c
   RNReanimated: f39d5f29612cb37617241ea2e91bfecaabe0d1c4
   RNScreens: 7f643ee0fd1407dc5085c7795460bd93da113b8f
@@ -3520,6 +3520,6 @@ SPEC CHECKSUMS:
   Yoga: 11c9686a21e2cd82a094a723649d9f4507200fb0
   ZIPFoundation: dfd3d681c4053ff7e2f7350bc4e53b5dba3f5351
 
-PODFILE CHECKSUM: f77e026c6307cfe86ee3c69a439a1212259ecbc1
+PODFILE CHECKSUM: 018cc70302ed820710acd32c11ccf0377c78e4a2
 
 COCOAPODS: 1.16.2

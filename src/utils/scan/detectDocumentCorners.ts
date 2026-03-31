@@ -414,8 +414,24 @@ export const detectDocumentCorners = (
     // Reason: binary threshold causes morphology closing to merge document edges with background
     // OpenCV.invoke('bitwise_or', binary, edges, edges);
     
-    // Use edges (Canny only) for contour detection
-    const finalEdges = edges; // Use Canny edges directly
+    // DILATE - Vonalak összezárása (mint useInferenceLogic.tsx-ben)
+    // Ez segít, hogy a megszakadt élek összeérjenek és zárt kontúrt alkossanak
+    const dilateKernelSize = OpenCV.createObject(ObjectType.Size, 3, 3);
+    const dilateKernel = OpenCV.invoke(
+      'getStructuringElement',
+      MorphShapes.MORPH_RECT,
+      dilateKernelSize,
+    );
+    OpenCV.invoke(
+      'morphologyEx',
+      edges,
+      edges,
+      MorphTypes.MORPH_DILATE,
+      dilateKernel,
+    );
+
+    // Use edges (Canny + dilate) for contour detection
+    const finalEdges = edges;
 
     let debugCombinedImage: string | null = null;
     if (ENABLE_DEBUG_IMAGES) {
@@ -625,6 +641,15 @@ export const detectDocumentCorners = (
               minDim > FRAME_HEIGHT * 0.04
             ) {
               score += SCORE_SIZE_MEDIUM;
+            }
+
+            // Túl nagy contour büntetése - ha >70% a kép területe, valószínűleg
+            // a háttér (asztal/padló) és nem a dokumentum
+            const areaRatioScore = area / imgArea;
+            if (areaRatioScore > 0.7) {
+              score -= 30;
+            } else if (areaRatioScore > 0.5) {
+              score -= 10;
             }
 
             if (score > bestContourScore) {
