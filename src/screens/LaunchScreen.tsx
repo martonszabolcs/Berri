@@ -1,7 +1,8 @@
 import React, { useEffect, useCallback } from 'react';
-import { StyleSheet, Image, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
+import LottieView from 'lottie-react-native';
 import { Layout } from '../components';
 import { useAppDispatch, useAppSelector } from '../store/hooks';
 import { initializeAuth } from '../store/appSlice';
@@ -51,19 +52,21 @@ const LaunchScreen = () => {
   return (
     <Layout type="default">
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-      <Image
-        resizeMode="contain"
-        source={require('../assets/logo.png')}
-        style={styles.logo}
-      />
+        <LottieView
+          source={require('../../image2lottie-animation.json')}
+          autoPlay
+          loop={false}
+          style={styles.lottie}
+        />
       </View>
     </Layout>
   );
 };
 
 const styles = StyleSheet.create({
-  logo: {
-    width: '60%',
+  lottie: {
+    width: '80%',
+    aspectRatio: 1,
   },
 });
 

@@ -24,6 +24,7 @@
     "axios": "^1.13.1",
     "buffer": "^6.0.3",
     "date-fns": "^4.1.0",
+    "lottie-react-native": "^7.3.6",
     "metro": "0.81.0",
     "metro-config": "0.81.0",
     "pdf-lib": "^1.17.1",
