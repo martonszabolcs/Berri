@@ -103,7 +103,11 @@ const SettingsScreen = () => {
             subtitle="Configure scan destinations"
             onPress={handleDestinationSetup}
           />
-           
+          <MenuListItem
+            title="Scan Pipeline Test"
+            subtitle="Test and tune scan quality settings"
+            onPress={handleScanTest}
+          />
         </View>
       </ScrollView>
     </Layout>

@@ -10,6 +10,22 @@ import {
   DetectionResult,
 } from '../utils/scan/useInferenceLogic';
 import { scanDocument } from '../utils/scan/scanDocument';
+import {
+  ScanQualityLevels,
+  DEFAULT_QUALITY_LEVELS,
+  applyScanQualityPreset,
+  AdvancedScanSettings,
+  DEFAULT_ADVANCED_SETTINGS,
+  applyAdvancedOverrides,
+} from '../utils/scan/scanConfig';
+import {
+  loadScanQualitySettings,
+  saveScanQualitySettings,
+  loadAdvancedSettings,
+  saveAdvancedSettings,
+  clearAdvancedSettings,
+} from '../utils/scan/scanSettingsStorage';
+import Slider from '@react-native-community/slider';
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
@@ -247,6 +263,18 @@ export default function App() {
   
   // === MULTI-IMAGE COLLECTION ===
   // Collected images for multi-page document
+  interface ScanParams {
+    frameCorners: { x: number; y: number }[];
+    processedCorners: { x: number; y: number }[];
+    qrValue: string | null;
+    qrPosition: 'left' | 'right' | null;
+    qrBounds: { left: number; top: number; width: number; height: number } | null;
+    photoWidth: number;
+    photoHeight: number;
+    frameWidth: number;
+    frameHeight: number;
+    frameBrightness: number;
+  }
   interface CapturedImage {
     id: string;
     imageBase64: string;
@@ -255,6 +283,8 @@ export default function App() {
     qrPosition: 'left' | 'right' | null;
     timestamp: number;
     selectedIcons: number[];
+    rawPhotoPath: string; // Path to original raw photo in cache
+    scanParams: ScanParams; // Params needed to re-scan
   }
   const [capturedImages, setCapturedImages] = useState<CapturedImage[]>([]);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
@@ -267,6 +297,29 @@ export default function App() {
 
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [isGalleryZoomed, setIsGalleryZoomed] = useState(false);
+
+  // === SCAN QUALITY TUNING ===
+  const [showTunePanel, setShowTunePanel] = useState(false);
+  const [tuneBlackLevel, setTuneBlackLevel] = useState(5);
+  const [tuneColorLevel, setTuneColorLevel] = useState(5);
+  const [isTuneRescanning, setIsTuneRescanning] = useState(false);
+  const [isFirstTimeTuning, setIsFirstTimeTuning] = useState(false);
+  const tuneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const galleryFlatListRef = useRef<FlatList>(null);
+  const isFirstTimeScanRef = useRef(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [advancedSettings, setAdvancedSettings] = useState<AdvancedScanSettings>({ ...DEFAULT_ADVANCED_SETTINGS });
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+
+  // Load saved scan quality settings on mount
+  useEffect(() => {
+    loadScanQualitySettings().then(({ levels, isFirstTime }) => {
+      setTuneBlackLevel(levels.blackLevel);
+      setTuneColorLevel(levels.colorLevel);
+      isFirstTimeScanRef.current = isFirstTime;
+    });
+    loadAdvancedSettings().then(adv => setAdvancedSettings(adv));
+  }, []);
   
   const [stepImages, setStepImages] = useState<
     { label: string; image: string }[]
@@ -965,6 +1018,15 @@ export default function App() {
         const tempUri = `${tempDir}/${imageId}.jpg`;
         await FileSystem.writeFile(tempUri, scanResult.imageBase64, 'base64');
 
+        // Save raw photo to cache for re-scanning (tune feature)
+        const rawDir = `${Dirs.CacheDir}/raw_photos`;
+        const rawDirExists = await FileSystem.exists(rawDir);
+        if (!rawDirExists) {
+          await FileSystem.mkdir(rawDir);
+        }
+        const rawPhotoPath = `${rawDir}/${imageId}_raw.jpg`;
+        await FileSystem.writeFile(rawPhotoPath, photoBase64, 'base64');
+
         const newImage: CapturedImage = {
           id: imageId,
           imageBase64: scanResult.imageBase64,
@@ -973,6 +1035,19 @@ export default function App() {
           qrPosition: captureQrPosition || null,
           timestamp: Date.now(),
           selectedIcons: scanResult.selectedIcons || [],
+          rawPhotoPath,
+          scanParams: {
+            frameCorners: captureFrameCorners,
+            processedCorners: captureProcessedCorners,
+            qrValue: captureQrValue || null,
+            qrPosition: captureQrPosition || null,
+            qrBounds: captureQrBounds || null,
+            photoWidth: photoSize.width,
+            photoHeight: photoSize.height,
+            frameWidth: captureFrameWidth,
+            frameHeight: captureFrameHeight,
+            frameBrightness: captureBrightness,
+          },
         };
         setCapturedImages(prev => {
           const updated = [...prev, newImage];
@@ -1526,6 +1601,119 @@ export default function App() {
       </View>
     );
   }
+
+  // === SCAN QUALITY TUNE: Re-scan handler ===
+  const handleTuneRescan = async (
+    blackLevel: number,
+    colorLevel: number,
+    currentIndex: number,
+    advOverrides: AdvancedScanSettings,
+  ) => {
+    const img = capturedImages[currentIndex];
+    if (!img) return;
+
+    setIsTuneRescanning(true);
+    try {
+      // Apply simple preset first
+      applyScanQualityPreset({ blackLevel, colorLevel });
+      // Apply advanced overrides only if any are set (non-null)
+      const hasOverrides = Object.values(advOverrides).some(v => v !== null);
+      if (hasOverrides) {
+        applyAdvancedOverrides(advOverrides);
+      }
+
+      // Read raw photo from cache
+      const rawBase64 = await FileSystem.readFile(img.rawPhotoPath, 'base64');
+
+      const result = await scanDocument({
+        rawImageBase64: rawBase64,
+        frameCorners: img.scanParams.frameCorners,
+        processedCorners: img.scanParams.processedCorners,
+        currentQrValue: img.scanParams.qrValue,
+        currentQrPosition: img.scanParams.qrPosition,
+        qrBounds: img.scanParams.qrBounds,
+        photoWidth: img.scanParams.photoWidth,
+        photoHeight: img.scanParams.photoHeight,
+        frameWidth: img.scanParams.frameWidth,
+        frameHeight: img.scanParams.frameHeight,
+        frameBrightness: img.scanParams.frameBrightness,
+        enableDebugImages: false,
+      });
+
+      if (result.success && result.imageBase64) {
+        // Update preview file
+        const tempDir = `${Dirs.CacheDir}/gallery_preview`;
+        const tempUri = `${tempDir}/${img.id}.jpg`;
+        await FileSystem.writeFile(tempUri, result.imageBase64, 'base64');
+
+        // Update image in state
+        setCapturedImages(prev =>
+          prev.map(p =>
+            p.id === img.id
+              ? {
+                  ...p,
+                  imageBase64: result.imageBase64!,
+                  fileUri: `file://${tempUri}?t=${Date.now()}`,
+                  selectedIcons: result.selectedIcons || p.selectedIcons,
+                }
+              : p,
+          ),
+        );
+      }
+    } catch (e) {
+      console.warn('Tune re-scan failed:', e);
+    } finally {
+      setIsTuneRescanning(false);
+    }
+  };
+
+  // Debounced tune change handler (preview only, no auto-save)
+  const handleTuneSliderChange = (
+    blackLevel: number,
+    colorLevel: number,
+    currentIndex: number,
+    advOverrides: AdvancedScanSettings,
+  ) => {
+    if (tuneDebounceRef.current) {
+      clearTimeout(tuneDebounceRef.current);
+    }
+    tuneDebounceRef.current = setTimeout(() => {
+      handleTuneRescan(blackLevel, colorLevel, currentIndex, advOverrides);
+    }, 400);
+  };
+
+  // Advanced slider change → re-scan with debounce
+  const handleAdvancedChange = (key: keyof AdvancedScanSettings, value: number) => {
+    const updated = { ...advancedSettings, [key]: value };
+    setAdvancedSettings(updated);
+    if (tuneDebounceRef.current) clearTimeout(tuneDebounceRef.current);
+    tuneDebounceRef.current = setTimeout(() => {
+      handleTuneRescan(tuneBlackLevel, tuneColorLevel, galleryStartIndex, updated);
+    }, 400);
+  };
+
+  // Explicit save handler for tune panel
+  const handleTuneSave = async () => {
+    // Cancel any pending re-scan
+    if (tuneDebounceRef.current) {
+      clearTimeout(tuneDebounceRef.current);
+      tuneDebounceRef.current = null;
+    }
+    setIsTuneRescanning(false);
+    await saveScanQualitySettings({ blackLevel: tuneBlackLevel, colorLevel: tuneColorLevel });
+    const hasAdvanced = Object.values(advancedSettings).some(v => v !== null);
+    if (hasAdvanced) {
+      await saveAdvancedSettings(advancedSettings);
+    } else {
+      await clearAdvancedSettings();
+    }
+    isFirstTimeScanRef.current = false;
+    setIsFirstTimeTuning(false);
+    setShowTunePanel(false);
+    setShowAdvanced(false);
+    setShowGalleryModal(false);
+    setIsFrameProcessorActive(true);
+  };
 
   return (
     <View style={styles.container}>
@@ -2091,34 +2279,85 @@ export default function App() {
 
       {/* === FULLSCREEN GALLERY MODAL === */}
       {showGalleryModal && capturedImages.length > 0 && (
-        <GestureHandlerRootView style={styles.galleryModalContainer}>
+        <GestureHandlerRootView style={styles.galleryModalContainer}
+          onLayout={() => {
+            if (isFirstTimeScanRef.current) {
+              setShowTunePanel(true);
+              setIsFirstTimeTuning(true);
+              isFirstTimeScanRef.current = false;
+            }
+          }}
+        >
           {/* Header */}
           <View style={styles.galleryHeader}>
-           
-            <TouchableOpacity
-              style={styles.galleryCloseButton}
-              onPress={() => {
-                setShowGalleryModal(false);
-                setIsFrameProcessorActive(true);
-              }}
-            >
-              <Text style={styles.galleryCloseText}>✕</Text>
-            </TouchableOpacity>
+            {!isFirstTimeTuning ? (
+              <TouchableOpacity
+                style={styles.galleryCloseButton}
+                onPress={() => {
+                  setShowGalleryModal(false);
+                  setShowTunePanel(false);
+                  setIsFrameProcessorActive(true);
+                }}
+              >
+                <Text style={styles.galleryCloseText}>✕</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.galleryCloseButton} />
+            )}
+            {isFirstTimeTuning && (
+              <Text style={styles.tuneFirstTimeTitle}>Set up scan quality</Text>
+            )}
+            {!isFirstTimeTuning && capturedImages.length > 0 && (
+              <TouchableOpacity
+                style={styles.galleryHeaderDeleteButton}
+                onPress={() => {
+                  const currentImage = capturedImages[galleryStartIndex];
+                  if (!currentImage) return;
+                  const newImages = capturedImages.filter(img => img.id !== currentImage.id);
+                  setCapturedImages(newImages);
+                  if (newImages.length === 0) {
+                    setShowGalleryModal(false);
+                    setIsFrameProcessorActive(true);
+                  } else if (galleryStartIndex >= newImages.length) {
+                    setGalleryStartIndex(newImages.length - 1);
+                  }
+                }}
+              >
+                <Image
+                  resizeMode="contain"
+                  source={require('../assets/trash.png')}
+                  style={styles.galleryHeaderDeleteIcon}
+                />
+              </TouchableOpacity>
+            )}
           </View>
 
+          <ScrollView
+            style={styles.galleryScrollView}
+            contentContainerStyle={styles.galleryScrollContent}
+            showsVerticalScrollIndicator={false}
+            bounces={false}
+          >
           {/* Swipeable gallery */}
           <FlatList
+            ref={galleryFlatListRef}
             data={capturedImages}
             horizontal
             pagingEnabled
             scrollEnabled={!isGalleryZoomed}
+            nestedScrollEnabled
             showsHorizontalScrollIndicator={false}
+            style={{ height: screenHeight * 0.55 }}
             initialScrollIndex={galleryStartIndex}
             getItemLayout={(_, index) => ({
               length: screenWidth,
               offset: screenWidth * index,
               index,
             })}
+            onMomentumScrollEnd={(e) => {
+              const newIndex = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
+              setGalleryStartIndex(newIndex);
+            }}
             keyExtractor={item => item.id}
             renderItem={({ item, index }) => (
               <View style={[styles.galleryImageContainer, { width: screenWidth }]}>
@@ -2126,9 +2365,15 @@ export default function App() {
                   <ZoomableImage
                     uri={item.fileUri}
                     width={screenWidth * 0.85}
-                    height={screenHeight * 0.6}
+                    height={screenHeight * 0.4}
                     onZoomChange={(zoomed) => setIsGalleryZoomed(zoomed)}
                   />
+                  {/* Re-scan loading overlay */}
+                  {isTuneRescanning && (
+                    <View style={styles.tuneRescanOverlay}>
+                      <ActivityIndicator size="small" color="#C4A8FF" />
+                    </View>
+                  )}
                 </View>
                 {/* Page indicator */}
                 <View style={styles.galleryPageIndicator}>
@@ -2151,29 +2396,178 @@ export default function App() {
                     </View>
                   ))}
                 </View>
-                {/* Delete button for this image */}
-                <TouchableOpacity
-                  style={styles.galleryDeleteButton}
-                  onPress={() => {
-                    const newImages = capturedImages.filter(img => img.id !== item.id);
-                    setCapturedImages(newImages);
-                    // Close modal if no images left
-                    if (newImages.length === 0) {
-                      setShowGalleryModal(false);
-                      setIsFrameProcessorActive(true);
-                    }
-                  }}
-                >
-                  <Image
-                    resizeMode="contain"
-                    source={require('../assets/trash.png')}
-                    style={styles.galleryDeleteIcon}
-                  />
-                  <Text style={styles.galleryDeleteText}>Delete</Text>
-                </TouchableOpacity>
               </View>
             )}
           />
+
+          {/* === TUNE PANEL (always visible) === */}
+          <View style={styles.tunePanelArea}>
+            {isFirstTimeTuning && (
+              <Text style={styles.tuneFirstTimeHint}>
+                Adjust the sliders to match your writing style, then tap Save
+              </Text>
+            )}
+
+            <View style={styles.tuneSlidersContainer}>
+              {!showAdvanced && (
+                <>
+                  <View style={styles.tuneSliderRow}>
+                    <View style={styles.tuneSliderHeader}>
+                      <View style={styles.tuneLabelWithInfo}>
+                        <Text style={styles.tuneSliderLabel}>Black ink</Text>
+                        <TouchableOpacity onPress={() => setActiveTooltip(activeTooltip === 'black' ? null : 'black')}>
+                          <Text style={styles.tuneInfoButton}>ⓘ</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.tuneSliderValue}>{tuneBlackLevel}</Text>
+                    </View>
+                    {activeTooltip === 'black' && (
+                      <Text style={styles.tooltipText}>Controls how strongly black/dark writing is detected. Higher = picks up faint pencil marks and small dots. Lower = only strong, clear lines.</Text>
+                    )}
+                    <Slider
+                      style={styles.tuneSlider}
+                      minimumValue={1}
+                      maximumValue={10}
+                      step={1}
+                      value={tuneBlackLevel}
+                      onValueChange={(val: number) => {
+                        setTuneBlackLevel(val);
+                        handleTuneSliderChange(val, tuneColorLevel, galleryStartIndex, advancedSettings);
+                      }}
+                      minimumTrackTintColor="#C4A8FF"
+                      maximumTrackTintColor="rgba(255,255,255,0.15)"
+                      thumbTintColor="#FFFFFF"
+                    />
+                  </View>
+
+                  <View style={styles.tuneSliderRow}>
+                    <View style={styles.tuneSliderHeader}>
+                      <View style={styles.tuneLabelWithInfo}>
+                        <Text style={styles.tuneSliderLabel}>Color ink</Text>
+                        <TouchableOpacity onPress={() => setActiveTooltip(activeTooltip === 'color' ? null : 'color')}>
+                          <Text style={styles.tuneInfoButton}>ⓘ</Text>
+                        </TouchableOpacity>
+                      </View>
+                      <Text style={styles.tuneSliderValue}>{tuneColorLevel}</Text>
+                    </View>
+                    {activeTooltip === 'color' && (
+                      <Text style={styles.tooltipText}>Controls how strongly colored writing is detected (pens, highlighters, stamps). Higher = picks up faint or pastel colors. Lower = only vivid, saturated colors.</Text>
+                    )}
+                    <Slider
+                      style={styles.tuneSlider}
+                      minimumValue={1}
+                      maximumValue={10}
+                      step={1}
+                      value={tuneColorLevel}
+                      onValueChange={(val: number) => {
+                        setTuneColorLevel(val);
+                        handleTuneSliderChange(tuneBlackLevel, val, galleryStartIndex, advancedSettings);
+                      }}
+                      minimumTrackTintColor="#C4A8FF"
+                      maximumTrackTintColor="rgba(255,255,255,0.15)"
+                      thumbTintColor="#FFFFFF"
+                    />
+                  </View>
+                </>
+              )}
+
+              <View style={styles.tuneButtonsRow}>
+                <TouchableOpacity
+                  style={styles.tuneResetButton}
+                  onPress={() => {
+                    setTuneBlackLevel(DEFAULT_QUALITY_LEVELS.blackLevel);
+                    setTuneColorLevel(DEFAULT_QUALITY_LEVELS.colorLevel);
+                    setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS });
+                    setShowAdvanced(false);
+                    handleTuneSliderChange(
+                      DEFAULT_QUALITY_LEVELS.blackLevel,
+                      DEFAULT_QUALITY_LEVELS.colorLevel,
+                      galleryStartIndex,
+                      { ...DEFAULT_ADVANCED_SETTINGS },
+                    );
+                  }}
+                >
+                  <Text style={styles.tuneResetText}>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.advancedToggle}
+                  onPress={() => {
+                    if (showAdvanced) {
+                      // Switching to Simple: clear advanced overrides and re-scan with simple only
+                      setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS });
+                      setShowAdvanced(false);
+                      handleTuneSliderChange(
+                        tuneBlackLevel,
+                        tuneColorLevel,
+                        galleryStartIndex,
+                        { ...DEFAULT_ADVANCED_SETTINGS },
+                      );
+                    } else {
+                      setShowAdvanced(true);
+                    }
+                  }}
+                >
+                  <Text style={styles.advancedToggleText}>
+                    {showAdvanced ? 'Simple' : 'Advanced'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.tuneSaveButton}
+                  onPress={handleTuneSave}
+                >
+                  <Text style={styles.tuneSaveText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+
+              {/* === ADVANCED PANEL === */}
+              {showAdvanced && (
+                <View style={styles.advancedPanel}>
+                  {[
+                    { key: 'detailSensitivity' as const, label: 'Detail sensitivity', info: 'How much fine detail to capture — faint pencil marks, small dots, thin lines.' },
+                    { key: 'lightStrokeCapture' as const, label: 'Light stroke capture', info: 'Keep faint or light strokes that are barely visible. Higher = keeps lighter marks.' },
+                    { key: 'outputDarkness' as const, label: 'Output darkness', info: 'How dark the ink appears in the final result. Higher = darker, bolder output.' },
+                    { key: 'colorDetection' as const, label: 'Color detection', info: 'How easily colored writing is detected. Higher = catches faint or pastel colors too.' },
+                    { key: 'darkColorCapture' as const, label: 'Dark color capture', info: 'Keep dark-colored writing like dark blue, brown, or dark green. Higher = keeps more.' },
+                    { key: 'paperTolerance' as const, label: 'Paper tolerance', info: 'Handle off-white, cream, or yellowed paper. Higher = more tolerant of non-white backgrounds.' },
+                    { key: 'largeColorAreas' as const, label: 'Large color areas', info: 'Keep large uniformly-colored elements like stickers, stamps, or logos. 1 = off, 5+ = recommended.' },
+                  ].map(param => {
+                    const val = advancedSettings[param.key];
+                    const displayVal = val !== null ? String(val) : 'auto';
+                    return (
+                      <View key={param.key} style={styles.advancedRow}>
+                        <View style={styles.tuneSliderHeader}>
+                          <View style={styles.tuneLabelWithInfo}>
+                            <Text style={styles.advancedLabel}>{param.label}</Text>
+                            <TouchableOpacity onPress={() => setActiveTooltip(activeTooltip === param.key ? null : param.key)}>
+                              <Text style={styles.tuneInfoButton}>ⓘ</Text>
+                            </TouchableOpacity>
+                          </View>
+                          <Text style={[styles.tuneSliderValue, val === null && styles.advancedAutoText]}>
+                            {displayVal}
+                          </Text>
+                        </View>
+                        {activeTooltip === param.key && (
+                          <Text style={styles.tooltipText}>{param.info}</Text>
+                        )}
+                        <Slider
+                          style={styles.tuneSlider}
+                          minimumValue={1}
+                          maximumValue={10}
+                          step={1}
+                          value={val ?? 5}
+                          onValueChange={(v: number) => handleAdvancedChange(param.key, v)}
+                          minimumTrackTintColor="rgba(196, 168, 255, 0.5)"
+                          maximumTrackTintColor="rgba(255,255,255,0.1)"
+                          thumbTintColor="#C4A8FF"
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          </View>
+          </ScrollView>
         </GestureHandlerRootView>
       )}
       {zoomCapturedImage && (
@@ -2763,16 +3157,24 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.95)',
+    backgroundColor: '#000000',
     zIndex: 1000,
   },
   galleryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  galleryHeaderDeleteButton: {
+    padding: 8,
+  },
+  galleryHeaderDeleteIcon: {
+    width: 22,
+    height: 22,
+    tintColor: '#9853A6',
   },
   galleryTitle: {
     color: 'white',
@@ -2787,8 +3189,13 @@ const styles = StyleSheet.create({
     fontSize: 28,
     fontWeight: '300',
   },
-  galleryImageContainer: {
+  galleryScrollView: {
     flex: 1,
+  },
+  galleryScrollContent: {
+    flexGrow: 1,
+  },
+  galleryImageContainer: {
     justifyContent: 'flex-start',
     alignItems: 'center',
     paddingTop: 10,
@@ -2844,6 +3251,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 16,
+    marginBottom: 12,
     gap: 10,
   },
   galleryIconItem: {
@@ -2956,5 +3364,144 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 24,
     fontWeight: '300' as const,
+  },
+  // === TUNE PANEL STYLES ===
+  tuneFirstTimeTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    flex: 1,
+    paddingVertical: 4,
+  },
+  tuneFirstTimeHint: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
+    lineHeight: 20,
+  },
+  tunePanelArea: {
+    paddingHorizontal: 16,
+    paddingBottom: 20,
+    backgroundColor: '#000000',
+  },
+  tuneSlidersContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    gap: 8,
+  },
+  tuneSliderRow: {
+    gap: 0,
+  },
+  tuneSliderHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  tuneSliderLabel: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  tuneLabelWithInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  tuneInfoButton: {
+    color: 'rgba(196, 168, 255, 0.5)',
+    fontSize: 14,
+  },
+  tooltipText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 11,
+    lineHeight: 15,
+    backgroundColor: 'rgba(60, 40, 90, 0.9)',
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginBottom: 4,
+    overflow: 'hidden',
+  },
+  tuneSlider: {
+    width: '100%',
+    height: 32,
+  },
+  tuneSliderValue: {
+    color: '#C4A8FF',
+    fontSize: 15,
+    fontWeight: '700',
+    minWidth: 20,
+    textAlign: 'right',
+  },
+  tuneButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 2,
+  },
+  tuneResetButton: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+  },
+  tuneResetText: {
+    color: 'rgba(255, 255, 255, 0.4)',
+    fontSize: 13,
+  },
+  tuneSaveButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 7,
+    borderRadius: 8,
+    backgroundColor: '#9763ff',
+  },
+  tuneSaveText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  advancedToggle: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 168, 255, 0.3)',
+  },
+  advancedToggleText: {
+    color: 'rgba(196, 168, 255, 0.6)',
+    fontSize: 13,
+  },
+  advancedPanel: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    gap: 2,
+  },
+  advancedRow: {
+    gap: 0,
+  },
+  advancedLabel: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+  },
+  advancedAutoText: {
+    color: 'rgba(255, 255, 255, 0.3)',
+    fontStyle: 'italic',
+  },
+  tuneRescanOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
+    borderRadius: 8,
   },
 });

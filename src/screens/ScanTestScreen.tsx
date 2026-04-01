@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   View,
   StyleSheet,
@@ -10,6 +10,9 @@ import {
 } from 'react-native';
 import { Text } from '../components';
 import { scanDocument } from '../utils/scan/scanDocument';
+import { applyScanQualityPreset, DEFAULT_QUALITY_LEVELS } from '../utils/scan/scanConfig';
+import { loadScanQualitySettings, saveScanQualitySettings } from '../utils/scan/scanSettingsStorage';
+import Slider from '@react-native-community/slider';
 import RNFS from 'react-native-fs';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -34,6 +37,21 @@ const ScanTestScreen = () => {
   const [stepImages, setStepImages] = useState<{ label: string; image: string }[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [tuneBlackLevel, setTuneBlackLevel] = useState(DEFAULT_QUALITY_LEVELS.blackLevel);
+  const [tuneColorLevel, setTuneColorLevel] = useState(DEFAULT_QUALITY_LEVELS.colorLevel);
+  const [isRescanning, setIsRescanning] = useState(false);
+  const lastBase64Ref = useRef<string>('');
+  const tuneDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load saved settings on mount
+  useEffect(() => {
+    loadScanQualitySettings().then(result => {
+      if (result.existed) {
+        setTuneBlackLevel(result.settings.blackLevel);
+        setTuneColorLevel(result.settings.colorLevel);
+      }
+    });
+  }, []);
 
   const runScan = useCallback(async () => {
     setLoading(true);
@@ -81,6 +99,10 @@ const ScanTestScreen = () => {
       }
 
       setInfo(`Loaded from: ${usedPath}\nBase64 length: ${base64.length}`);
+      lastBase64Ref.current = base64;
+
+      // Apply current tune levels
+      applyScanQualityPreset({ blackLevel: tuneBlackLevel, colorLevel: tuneColorLevel });
 
       // iPhone fotó raw pixelekben landscape (4032x3024), EXIF forgatja portrait-re
       const estimatedWidth = 4032;
@@ -138,13 +160,132 @@ const ScanTestScreen = () => {
     } finally {
       setLoading(false);
     }
+  }, [tuneBlackLevel, tuneColorLevel]);
+
+  // Re-scan with new tune values (debounced)
+  const handleTuneRescan = useCallback(async (blackLevel: number, colorLevel: number) => {
+    if (!lastBase64Ref.current) { return; }
+    setIsRescanning(true);
+    try {
+      applyScanQualityPreset({ blackLevel, colorLevel });
+      const estimatedWidth = 4032;
+      const estimatedHeight = 3024;
+      const dummyCorners = makeDummyCorners(estimatedWidth, estimatedHeight);
+      const result = scanDocument({
+        rawImageBase64: lastBase64Ref.current,
+        frameCorners: dummyCorners,
+        processedCorners: dummyCorners,
+        currentQrValue: null,
+        currentQrPosition: null,
+        qrBounds: null,
+        photoWidth: estimatedWidth,
+        photoHeight: estimatedHeight,
+        frameWidth: estimatedWidth,
+        frameHeight: estimatedHeight,
+        frameBrightness: 128,
+        enableDebugImages: true,
+      });
+      if (result.success && result.imageBase64) {
+        setResultImage(result.imageBase64);
+      }
+      if (result.stepImages && result.stepImages.length > 0) {
+        setStepImages(result.stepImages);
+      }
+    } catch (e) {
+      console.warn('Tune re-scan failed:', e);
+    } finally {
+      setIsRescanning(false);
+    }
   }, []);
+
+  const handleTuneSliderChange = (blackLevel: number, colorLevel: number) => {
+    if (tuneDebounceRef.current) {
+      clearTimeout(tuneDebounceRef.current);
+    }
+    tuneDebounceRef.current = setTimeout(() => {
+      handleTuneRescan(blackLevel, colorLevel);
+    }, 400);
+  };
+
+  const handleTuneSave = () => {
+    saveScanQualitySettings({ blackLevel: tuneBlackLevel, colorLevel: tuneColorLevel });
+  };
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={styles.title}>Scan Pipeline Test</Text>
         <Text style={styles.subtitle}>Group 6.jpg</Text>
+
+        {/* Tune panel */}
+        <View style={styles.tuneContainer}>
+          <Text style={styles.tuneTitle}>Scan quality settings</Text>
+          {isRescanning && (
+            <ActivityIndicator size="small" color="#C4A8FF" style={styles.tuneSpinner} />
+          )}
+          <View style={styles.tuneSliderRow}>
+            <Text style={styles.tuneLabel}>Black ink</Text>
+            <View style={styles.tuneSliderTrack}>
+              <Text style={styles.tuneEndLabel}>Weak</Text>
+              <Slider
+                style={styles.tuneSlider}
+                minimumValue={1}
+                maximumValue={10}
+                step={1}
+                value={tuneBlackLevel}
+                onValueChange={(val: number) => {
+                  setTuneBlackLevel(val);
+                  handleTuneSliderChange(val, tuneColorLevel);
+                }}
+                minimumTrackTintColor="#C4A8FF"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#FFFFFF"
+              />
+              <Text style={styles.tuneEndLabel}>Strong</Text>
+            </View>
+            <Text style={styles.tuneValue}>{tuneBlackLevel}</Text>
+          </View>
+          <View style={styles.tuneSliderRow}>
+            <Text style={styles.tuneLabel}>Color ink</Text>
+            <View style={styles.tuneSliderTrack}>
+              <Text style={styles.tuneEndLabel}>Weak</Text>
+              <Slider
+                style={styles.tuneSlider}
+                minimumValue={1}
+                maximumValue={10}
+                step={1}
+                value={tuneColorLevel}
+                onValueChange={(val: number) => {
+                  setTuneColorLevel(val);
+                  handleTuneSliderChange(tuneBlackLevel, val);
+                }}
+                minimumTrackTintColor="#C4A8FF"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#FFFFFF"
+              />
+              <Text style={styles.tuneEndLabel}>Strong</Text>
+            </View>
+            <Text style={styles.tuneValue}>{tuneColorLevel}</Text>
+          </View>
+          <View style={styles.tuneButtonsRow}>
+            <TouchableOpacity
+              style={styles.tuneResetButton}
+              onPress={() => {
+                setTuneBlackLevel(DEFAULT_QUALITY_LEVELS.blackLevel);
+                setTuneColorLevel(DEFAULT_QUALITY_LEVELS.colorLevel);
+                handleTuneSliderChange(DEFAULT_QUALITY_LEVELS.blackLevel, DEFAULT_QUALITY_LEVELS.colorLevel);
+              }}
+            >
+              <Text style={styles.tuneResetText}>Reset</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.tuneSaveButton}
+              onPress={handleTuneSave}
+            >
+              <Text style={styles.tuneSaveText}>Save settings</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
 
         <TouchableOpacity
           style={[styles.button, loading && styles.buttonDisabled]}
@@ -252,6 +393,80 @@ const styles = StyleSheet.create({
     width: IMAGE_WIDTH,
     backgroundColor: '#2a2a4a',
     borderRadius: 8,
+  },
+  tuneContainer: {
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  tuneTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 12,
+  },
+  tuneSpinner: {
+    marginBottom: 8,
+  },
+  tuneSliderRow: {
+    marginBottom: 12,
+  },
+  tuneLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 4,
+  },
+  tuneSliderTrack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  tuneEndLabel: {
+    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: 11,
+    width: 40,
+    textAlign: 'center',
+  },
+  tuneSlider: {
+    flex: 1,
+    height: 40,
+  },
+  tuneValue: {
+    color: '#C4A8FF',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 2,
+  },
+  tuneButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 8,
+  },
+  tuneResetButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  tuneResetText: {
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: 13,
+  },
+  tuneSaveButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: '#6c63ff',
+  },
+  tuneSaveText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

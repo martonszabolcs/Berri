@@ -1,6 +1,7 @@
 import { Alert, Platform } from 'react-native';
 import { OpenCV, ObjectType, DataTypes, ColorConversionCodes, RetrievalModes, ContourApproximationModes } from 'react-native-fast-opencv';
 import { detectDocumentCorners } from './detectDocumentCorners';
+import { scanMaskConfig, ScanMaskConfig } from './scanConfig';
 
 interface DocumentCorner {
   x: number;
@@ -25,6 +26,7 @@ interface ScanDocumentParams {
   frameHeight?: number;
   frameBrightness?: number; // Frame detection brightness (from seekerInfo)
   enableDebugImages?: boolean; // Enable/disable debug step images (default: true)
+  maskConfig?: Partial<ScanMaskConfig>; // Override scan mask config values per-call
 }
 
 interface ScanDocumentResult {
@@ -86,7 +88,13 @@ export const scanDocument = (
     frameHeight: providedFrameHeight,
     frameBrightness = 128, // Default if not provided
     enableDebugImages = false, // Default: debug images disabled for performance
+    maskConfig: maskConfigOverrides,
   } = params;
+
+  // Merge runtime config with per-call overrides
+  const cfg: ScanMaskConfig = maskConfigOverrides
+    ? { ...scanMaskConfig, ...maskConfigOverrides }
+    : scanMaskConfig;
 
   try {
     if (frameCorners.length !== 4 || processedCorners.length !== 4) {
@@ -589,6 +597,16 @@ export const scanDocument = (
 
     // === COLOR MASK DETECTION - Detektáljuk a színes területeket ===
     console.log('🎨 Detecting VIBRANT colored regions for preservation');
+    console.log('⚙️ Mask config:', {
+      blackMaskAdaptiveC: cfg.blackMaskAdaptiveC,
+      darkInkC_iOS: cfg.darkInkC_iOS,
+      darkInkC_Android: cfg.darkInkC_Android,
+      darkInkAbsoluteDarkMax: cfg.darkInkAbsoluteDarkMax,
+      colorSatExcess: cfg.colorMaskSatExcessThreshold,
+      colorGlobalSatMin: cfg.colorMaskGlobalSatMin,
+      colorBrightMin: cfg.colorMaskBrightMin,
+      colorWhiteMax: cfg.colorMaskWhiteMax,
+    });
     
     // Split channels to detect color variance
     const bChannel = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -622,24 +640,32 @@ export const scanDocument = (
     
     // 1. Blur saturation → approximates local mean
     const satBlurred = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    const satBlurKsize = OpenCV.invoke('getStructuringElement', 0, createSize(51, 51)); // just for size
-    OpenCV.invoke('GaussianBlur', saturation, satBlurred, createSize(51, 51), 0, 0, 4);
+    const satBlurKsize = OpenCV.invoke('getStructuringElement', 0, createSize(cfg.colorMaskLocalBlurSize, cfg.colorMaskLocalBlurSize)); // just for size
+    OpenCV.invoke('GaussianBlur', saturation, satBlurred, createSize(cfg.colorMaskLocalBlurSize, cfg.colorMaskLocalBlurSize), 0, 0, 4);
     
     // 2. Local excess: sat - blurred (clamped to 0 by OpenCV subtract on uint8)
     const satExcess = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     OpenCV.invoke('subtract', saturation, satBlurred, satExcess);
     
-    // 3. Threshold the excess: must be 8+ above local average to count as colored
-    // 8 is enough to reject uniform flash cast (~0 excess) while keeping ink edges (excess 15-60+)
+    // 3. Threshold the excess: must be X+ above local average to count as colored
     const colorMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', satExcess, colorMask, 8, 255, 0); // THRESH_BINARY
+    OpenCV.invoke('threshold', satExcess, colorMask, cfg.colorMaskSatExcessThreshold, 255, 0); // THRESH_BINARY
     
-    // Also keep a global minimum: saturation must be at least 18 to avoid noise
+    // Also keep a global minimum: saturation must be at least X to avoid noise
     const globalSatMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', saturation, globalSatMask, 18, 255, 0); // THRESH_BINARY
+    OpenCV.invoke('threshold', saturation, globalSatMask, cfg.colorMaskGlobalSatMin, 255, 0); // THRESH_BINARY
     OpenCV.invoke('bitwise_and', colorMask, globalSatMask, colorMask);
     
-    const brightThreshold = 60;
+    // Global direct saturation: pixels with very high absolute saturation are ALWAYS colored
+    // This preserves large uniformly-colored areas (stickers, logos, stamps) where local excess fails
+    if (cfg.colorMaskGlobalSatDirect > 0) {
+      const globalDirectMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
+      OpenCV.invoke('threshold', saturation, globalDirectMask, cfg.colorMaskGlobalSatDirect, 255, 0); // THRESH_BINARY
+      OpenCV.invoke('bitwise_or', colorMask, globalDirectMask, colorMask); // OR: either local excess OR high global sat
+      console.log('🎯 Global direct saturation threshold:', cfg.colorMaskGlobalSatDirect);
+    }
+    
+    const brightThreshold = cfg.colorMaskBrightMin;
     
     // Minimum brightness filter - túl sötét pixelek nem számítanak (árnyékok)
     const brightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -647,9 +673,9 @@ export const scanDocument = (
     
     // Maximum brightness filter - túl világos pixelek (fehér papír, flash tükröződés) nem számítanak
     // FONTOS: minChannel-t használjuk, nem maxChannel-t! Piros tintánál maxChannel (R) lehet 250+,
-    // de az nem "fehér" — igazi fehér pixelnél MINDEN csatorna magas (min > 220)
+    // de az nem "fehér" — igazi fehér pixelnél MINDEN csatorna magas (min > whiteMax)
     const notTooWhiteMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', minChannel, notTooWhiteMask, 220, 255, 1); // THRESH_BINARY_INV = 1, min < 220 → not white
+    OpenCV.invoke('threshold', minChannel, notTooWhiteMask, cfg.colorMaskWhiteMax, 255, 1); // THRESH_BINARY_INV = 1, min < whiteMax → not white
     
     // Combine saturation + brightness + not-too-white filters
     const colorMaskFiltered = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -681,23 +707,20 @@ export const scanDocument = (
     // Adaptive threshold a maxChannel-en: lokálisan nézi mi sötét → flash hotspot, árnyék nem zavar
     const darkInkTotalPixels = cropWidth * cropHeight;
     const darkInkHighRes = darkInkTotalPixels > 3_000_000;
-    const darkInkBlockSize = darkInkHighRes ? 51 : 31;
+    const darkInkBlockSize = darkInkHighRes ? cfg.blackMaskBlockSizeHighRes : cfg.blackMaskBlockSizeLowRes;
     const darkInkC = darkInkHighRes
-      ? (Platform.OS === 'android' ? 10 : 18)
-      : (Platform.OS === 'android' ? 6 : 10); // iOS highRes 18: notebook dots (~15 contrast) filtered, real ink (30+) kept
+      ? (Platform.OS === 'android' ? cfg.darkInkC_Android : cfg.darkInkC_iOS)
+      : (Platform.OS === 'android' ? cfg.darkInkCLowRes_Android : cfg.darkInkCLowRes_iOS); // iOS highRes 18: notebook dots (~15 contrast) filtered, real ink (30+) kept
     const darkInkBrightMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
     // ADAPTIVE_THRESH_GAUSSIAN_C = 1, THRESH_BINARY_INV = 1 (sötétebb mint környezete → white)
     OpenCV.invoke('adaptiveThreshold', maxChannel, darkInkBrightMask, 140, 1, 1, darkInkBlockSize, darkInkC);
     
     const lowSatMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    const lowSatThreshold = Platform.OS === 'android' ? 40 : 40; // Android: lower to avoid catching blue/green inks (sat 35-45)
-    OpenCV.invoke('threshold', saturation, lowSatMask, lowSatThreshold, 255, 1); // THRESH_BINARY_INV = 1, sat < threshold → nem színes
+    OpenCV.invoke('threshold', saturation, lowSatMask, cfg.darkInkLowSatMax, 255, 1); // THRESH_BINARY_INV = 1, sat < threshold → nem színes
     
-    // Abszolút fényerő szűrő: sötét pixelek (maxChannel < 145)
-    // 145: real ink strokes are <130, light pencil strokes ~130-145 still caught
-    // Notebook dots (~150-180) already filtered by adaptive threshold C=18
+    // Abszolút fényerő szűrő: sötét pixelek (maxChannel < darkInkAbsoluteDarkMax)
     const absoluteDarkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
-    OpenCV.invoke('threshold', maxChannel, absoluteDarkMask, 145, 255, 1); // THRESH_BINARY_INV = 1, dark < 145
+    OpenCV.invoke('threshold', maxChannel, absoluteDarkMask, cfg.darkInkAbsoluteDarkMax, 255, 1); // THRESH_BINARY_INV = 1
 
     // Combine: lokálisan sötét ÉS abszolút sötét ÉS nem színes = fekete tinta
     const darkInkMask = OpenCV.createObject(ObjectType.Mat, cropHeight, cropWidth, DataTypes.CV_8UC1);
@@ -706,7 +729,7 @@ export const scanDocument = (
     
     // Morphological opening: remove small isolated dots (notebook dots ~5-8px on high-res)
     // while keeping continuous ink strokes. Erode kills dots, dilate restores stroke edges.
-    const openKernelSize = darkInkHighRes ? 5 : 3;
+    const openKernelSize = darkInkHighRes ? cfg.darkInkOpenKernelHighRes : cfg.darkInkOpenKernelLowRes;
     const openKernel = OpenCV.invoke('getStructuringElement', 2, createSize(openKernelSize, openKernelSize)); // MORPH_ELLIPSE
     OpenCV.invoke('morphologyEx', darkInkMask, darkInkMask, 2, openKernel); // MORPH_OPEN = 2
     
@@ -820,11 +843,11 @@ export const scanDocument = (
     const isHighRes = totalPixels > 3_000_000;
     // Larger block = more robust to noise, smaller block = more detail
     // Must be odd number
-    const blockSize = isHighRes ? 51 : 31;
+    const blockSize = isHighRes ? cfg.blackMaskBlockSizeHighRes : cfg.blackMaskBlockSizeLowRes;
     // C constant: pixel must be C levels DARKER than local mean to be black
     // Notebook dots are ~20-40 levels darker than paper → C=50 filters them out
     // Real ink/text is ~80-150 levels darker → easily passes C=50
-    const adaptiveC = isHighRes ? 50 : 50;
+    const adaptiveC = cfg.blackMaskAdaptiveC;
     
     console.log('📐 Adaptive threshold params:', {
       totalPixels,
@@ -1439,7 +1462,7 @@ export const scanDocument = (
     // 1. GaussianBlur the color mask → soft alpha (0-255 gradient at edges)
     // Small kernel = narrow transition zone, avoids shadow-like halo from original photo background
     const softColorMask = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
-    const softBlurKsize = createSize(5, 5);
+    const softBlurKsize = createSize(cfg.colorMaskSoftBlendSize, cfg.colorMaskSoftBlendSize);
     OpenCV.invoke('GaussianBlur', colorMaskCropped, softColorMask, softBlurKsize, 0, 0, 4); // BORDER_DEFAULT=4
     
     // 2. Zero out dark ink areas from soft color mask (dark ink stays pure black)
@@ -1474,7 +1497,7 @@ export const scanDocument = (
     OpenCV.invoke('bitwise_and', originalCropped, originalCropped, darkInkOriginal, darkInkMaskCropped);
     // Darken to ~50% brightness: enough to see subtle shading, still dark overall
     const darkenedInk = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
-    OpenCV.invoke('convertScaleAbs', darkInkOriginal, darkenedInk, 0.9, 0);
+    OpenCV.invoke('convertScaleAbs', darkInkOriginal, darkenedInk, cfg.darkInkDarkenFactor, 0);
     
     // Combine: blended (with dark ink areas zeroed) + darkened ink
     const blendedNoDark = OpenCV.createObject(ObjectType.Mat, edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC3);
