@@ -132,7 +132,7 @@ export interface ScanQualityLevels {
 
 export const DEFAULT_QUALITY_LEVELS: ScanQualityLevels = {
   blackLevel: 5,
-  colorLevel: 5,
+  colorLevel: 10,
 };
 
 /** Linear interpolation helper */
@@ -147,6 +147,18 @@ const piecewiseLerp = (min: number, def: number, max: number, level: number) => 
     return lerp(min, def, (level - 1) / 4);
   } else {
     return lerp(def, max, (level - 5) / 5);
+  }
+};
+
+/**
+ * Extended piecewise lerp for 1–15 range.
+ * Level 1 = min, level 10 = def ("strong default"), level 15 = max (extreme).
+ */
+const piecewiseLerp15 = (min: number, def: number, max: number, level: number) => {
+  if (level <= 10) {
+    return lerp(min, def, (level - 1) / 9);
+  } else {
+    return lerp(def, max, (level - 10) / 5);
   }
 };
 
@@ -175,14 +187,14 @@ export const applyScanQualityPreset = (levels: ScanQualityLevels) => {
   // Dark ink darken factor: 0.95 (weak/1) → 0.9 (default/5) → 0.75 (strong/10)
   scanMaskConfig.darkInkDarkenFactor = piecewiseLerp(0.95, 0.9, 0.75, bl);
 
-  // Color mask: satExcess: 40 (weak/1) → 18 (default/5) → 3 (strong/10)
-  scanMaskConfig.colorMaskSatExcessThreshold = Math.round(piecewiseLerp(40, 18, 3, cl));
+  // Color mask: satExcess: 40 (weak/1) → 3 (default/10) → 1 (extreme/15)
+  scanMaskConfig.colorMaskSatExcessThreshold = Math.round(piecewiseLerp15(40, 3, 1, cl));
 
-  // Color mask: globalSatMin: 40 (weak/1) → 18 (default/5) → 5 (strong/10)
-  scanMaskConfig.colorMaskGlobalSatMin = Math.round(piecewiseLerp(40, 18, 5, cl));
+  // Color mask: globalSatMin: 40 (weak/1) → 5 (default/10) → 2 (extreme/15)
+  scanMaskConfig.colorMaskGlobalSatMin = Math.round(piecewiseLerp15(40, 5, 2, cl));
 
-  // Color mask: brightMin: 100 (weak/1) → 60 (default/5) → 30 (strong/10)
-  scanMaskConfig.colorMaskBrightMin = Math.round(piecewiseLerp(100, 60, 30, cl));
+  // Color mask: brightMin: 100 (weak/1) → 30 (default/10) → 15 (extreme/15)
+  scanMaskConfig.colorMaskBrightMin = Math.round(piecewiseLerp15(100, 30, 15, cl));
 };
 
 /**

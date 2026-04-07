@@ -24,6 +24,7 @@ export { default as HistoryMoreFunctions } from './molecules/HistoryMoreFunction
 export { default as SearchInput } from './molecules/SearchInput';
 export { default as HistorySelectOverlay } from './molecules/HistorySelectOverlay';
 export { default as HistorySelectAndReorder } from './molecules/HistorySelectAndReorder';
+export { default as GoogleDriveFolderPicker } from './molecules/GoogleDriveFolderPicker';
 
 // Icons
 export * from './icons';

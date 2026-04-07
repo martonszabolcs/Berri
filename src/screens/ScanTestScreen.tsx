@@ -152,7 +152,8 @@ const ScanTestScreen = () => {
         `\nLight: ${result.brightnessInfo?.lightCondition ?? 'N/A'}` +
         `\nSteps: ${result.stepImages?.length ?? 0}` +
         `\nIcons: ${result.selectedIconNames?.join(', ') ?? 'none'}` +
-        `\nIcon analysis: ${result.iconAnalysis?.map((ic: any) => `${ic.icon}: ${ic.darkPercent}%${ic.active ? ' ✓' : ''}`).join(' | ') ?? 'N/A'}`
+        `\nIcon analysis: ${result.iconAnalysis?.map((ic: any) => `${ic.icon}: ${ic.darkPercent}%${ic.active ? ' ✓' : ''}`).join(' | ') ?? 'N/A'}` +
+        `\n\n=== EDGE CORRECTION ===\n${result.edgeCorrectionInfo ?? 'N/A'}`
       );
     } catch (e: any) {
       console.error('🧪 Scan test error:', e);
@@ -252,7 +253,7 @@ const ScanTestScreen = () => {
               <Slider
                 style={styles.tuneSlider}
                 minimumValue={1}
-                maximumValue={10}
+                maximumValue={15}
                 step={1}
                 value={tuneColorLevel}
                 onValueChange={(val: number) => {

@@ -54,6 +54,7 @@ interface ScanDocumentResult {
     x: number;
     y: number;
   }[];
+  edgeCorrectionInfo?: string;
 }
 
 const SCALE_FACTOR = 1.0;
@@ -66,6 +67,166 @@ const TARGET_OUTPUT_HEIGHT = 3500; // ~300 DPI height (5:3 ratio)
 
 const createMat = (h: number, w: number, type: number) =>
   OpenCV.createObject(ObjectType.Mat, h, w, type);
+
+/**
+ * Find the closest point on the contour to a target point.
+ */
+const findClosestContourPoint = (
+  contourPoints: DocumentCorner[],
+  target: DocumentCorner,
+): DocumentCorner => {
+  let closest = contourPoints[0];
+  let minDist = Infinity;
+  for (const p of contourPoints) {
+    const d = Math.hypot(p.x - target.x, p.y - target.y);
+    if (d < minDist) {
+      minDist = d;
+      closest = p;
+    }
+  }
+  return closest;
+};
+
+/**
+ * Calculate signed distance from a point to a line defined by two points.
+ * Positive = point is to the LEFT of the line (A→B direction).
+ * Negative = point is to the RIGHT.
+ */
+const pointToLineSignedDist = (
+  point: DocumentCorner,
+  lineA: DocumentCorner,
+  lineB: DocumentCorner,
+): number => {
+  const dx = lineB.x - lineA.x;
+  const dy = lineB.y - lineA.y;
+  const len = Math.hypot(dx, dy);
+  if (len === 0) return 0;
+  // Cross product gives signed distance * length
+  return ((point.x - lineA.x) * dy - (point.y - lineA.y) * dx) / len;
+};
+
+/**
+ * Correct corners using contour midpoint analysis.
+ * For each edge (corner[i] → corner[j]), find the contour midpoint and check
+ * if it deviates inward from the straight line. If it does significantly,
+ * shift the problematic corner(s) inward to avoid black borders after warp.
+ *
+ * Corner order: [TL=0, TR=1, BR=2, BL=3]
+ * Edges: top(0→1), right(1→2), bottom(2→3), left(3→0)
+ */
+interface MidpointCorrectionResult {
+  corners: DocumentCorner[];
+  debugInfo: string;
+}
+
+const correctCornersWithMidpoints = (
+  corners: DocumentCorner[],
+  contourPoints: DocumentCorner[],
+): MidpointCorrectionResult => {
+  const debugLines: string[] = [];
+  debugLines.push(`Contour points: ${contourPoints.length}`);
+
+  if (contourPoints.length < 8) {
+    console.log('⚠️ Too few contour points for midpoint correction');
+    debugLines.push('⚠️ Too few contour points — skipped');
+    return { corners, debugInfo: debugLines.join('\n') };
+  }
+
+  const corrected = corners.map(c => ({ ...c }));
+
+  // Edge definitions: [startCornerIdx, endCornerIdx]
+  const edges: [number, number][] = [
+    [0, 1], // top edge: TL → TR
+    [1, 2], // right edge: TR → BR
+    [2, 3], // bottom edge: BR → BL
+    [3, 0], // left edge: BL → TL
+  ];
+
+  // For each edge, the "center" of the document is on the INSIDE
+  // We calculate the center to determine which direction is "inward"
+  const center: DocumentCorner = {
+    x: (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4,
+    y: (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4,
+  };
+
+    const edgeNames = ['top', 'right', 'bottom', 'left'];
+
+  for (let ei = 0; ei < edges.length; ei++) {
+    const [startIdx, endIdx] = edges[ei];
+    const edgeName = edgeNames[ei];
+    const startCorner = corners[startIdx];
+    const endCorner = corners[endIdx];
+
+    // Target midpoint: halfway between the two corners
+    const edgeMidTarget: DocumentCorner = {
+      x: (startCorner.x + endCorner.x) / 2,
+      y: (startCorner.y + endCorner.y) / 2,
+    };
+
+    // Find the closest contour point to the edge midpoint
+    const contourMid = findClosestContourPoint(contourPoints, edgeMidTarget);
+
+    // Distance from contour midpoint to the corner-to-corner line
+    const deviation = pointToLineSignedDist(contourMid, startCorner, endCorner);
+
+    // Distance from center to the same line (to determine inward direction)
+    const centerDist = pointToLineSignedDist(center, startCorner, endCorner);
+
+    // The edge length for threshold calculation
+    const edgeLen = Math.hypot(
+      endCorner.x - startCorner.x,
+      endCorner.y - startCorner.y,
+    );
+
+    // Threshold: deviation must be > 1.5% of edge length to be significant
+    const threshold = edgeLen * 0.015;
+
+    // "Inward" means the midpoint is on the same side as the center
+    // If deviation and centerDist have the same sign, midpoint is inward
+    const isInward = Math.sign(deviation) === Math.sign(centerDist);
+    const absDeviation = Math.abs(deviation);
+
+    if (absDeviation > threshold && isInward) {
+      // The contour edge bends inward at the midpoint — a corner is likely
+      // pulled outward by a book cover or similar artifact.
+      // Shift both corners of this edge inward by the deviation amount.
+      const shiftFactor = absDeviation;
+
+      // Direction from each corner toward the center
+      const shiftStart = {
+        x: (center.x - startCorner.x),
+        y: (center.y - startCorner.y),
+      };
+      const shiftEnd = {
+        x: (center.x - endCorner.x),
+        y: (center.y - endCorner.y),
+      };
+
+      // Normalize
+      const lenStart = Math.hypot(shiftStart.x, shiftStart.y);
+      const lenEnd = Math.hypot(shiftEnd.x, shiftEnd.y);
+
+      if (lenStart > 0 && lenEnd > 0) {
+        corrected[startIdx].x += Math.round((shiftStart.x / lenStart) * shiftFactor);
+        corrected[startIdx].y += Math.round((shiftStart.y / lenStart) * shiftFactor);
+        corrected[endIdx].x += Math.round((shiftEnd.x / lenEnd) * shiftFactor);
+        corrected[endIdx].y += Math.round((shiftEnd.y / lenEnd) * shiftFactor);
+
+        const msg = `📐 ${edgeName} (${startIdx}→${endIdx}): ${absDeviation.toFixed(1)}px INWARD (thresh: ${threshold.toFixed(1)}px) → CORRECTED`;
+        console.log(msg);
+        debugLines.push(msg);
+      }
+    } else if (absDeviation > threshold) {
+      const msg = `📐 ${edgeName} (${startIdx}→${endIdx}): ${absDeviation.toFixed(1)}px OUTWARD — OK`;
+      console.log(msg);
+      debugLines.push(msg);
+    } else {
+      debugLines.push(`📐 ${edgeName} (${startIdx}→${endIdx}): ${absDeviation.toFixed(1)}px (< ${threshold.toFixed(1)}px) — no correction`);
+    }
+  }
+
+  return { corners: corrected, debugInfo: debugLines.join('\n') };
+};
 
 const createSize = (w: number, h: number) =>
   OpenCV.createObject(ObjectType.Size, w, h);
@@ -404,12 +565,21 @@ export const scanDocument = (
     // Válasszuk ki a legjobb sarokpontokat
     let corners: DocumentCorner[];
     let cornerSource: string; // Leírja hogy honnan származnak a használt sarkok
+    let edgeCorrectionDebug = 'No contour data available';
     
     if (photoDetectionResult.corners) {
       // Fotó detektálás sikeres - MINDIG ezt használjuk (nincs mozgás ellenőrzés, nincs átlagolás)
       console.log('✅ Using photo-detected corners');
       corners = photoDetectionResult.corners;
       cornerSource = 'photo';
+
+      // Apply midpoint-based edge correction if contour data is available
+      if (photoDetectionResult.contourPoints && photoDetectionResult.contourPoints.length > 0) {
+        const correction = correctCornersWithMidpoints(corners, photoDetectionResult.contourPoints);
+        corners = correction.corners;
+        edgeCorrectionDebug = correction.debugInfo;
+        console.log('✅ Applied 8-point edge correction');
+      }
     } else {
       // Photo detection failed - RETURNING ERROR!
       // We cannot use frame corners because user might have moved during the shot!
@@ -450,11 +620,60 @@ export const scanDocument = (
     
     console.log(`📐 Using fixed output resolution: ${width}x${height} (detected: ${detectedWidth}x${detectedHeight})`);
 
+    // Apply inward nudge to all corners to eliminate black border artifacts.
+    // Each corner is shifted slightly toward the document center.
+    const INWARD_NUDGE_PERCENT = 0; // 0.5% of edge length
+    const nudgeCenter: DocumentCorner = {
+      x: (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4,
+      y: (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4,
+    };
+    const nudgedCorners = corners.map(c => {
+      const dx = nudgeCenter.x - c.x;
+      const dy = nudgeCenter.y - c.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist === 0) return c;
+      const nudgeAmount = dist * INWARD_NUDGE_PERCENT;
+      return {
+        x: c.x + (dx / dist) * nudgeAmount,
+        y: c.y + (dy / dist) * nudgeAmount,
+      };
+    });
+
+    console.log(`📐 Applied ${INWARD_NUDGE_PERCENT * 100}% inward nudge to corners`);
+
+    // Collect all edge correction debug info
+    let fullEdgeCorrectionInfo = [
+      `=== ORIGINAL CORNERS ===`,
+      `TL: (${photoDetectionResult.corners[0].x}, ${photoDetectionResult.corners[0].y})`,
+      `TR: (${photoDetectionResult.corners[1].x}, ${photoDetectionResult.corners[1].y})`,
+      `BR: (${photoDetectionResult.corners[2].x}, ${photoDetectionResult.corners[2].y})`,
+      `BL: (${photoDetectionResult.corners[3].x}, ${photoDetectionResult.corners[3].y})`,
+      ``,
+      `=== MIDPOINT CORRECTION ===`,
+      edgeCorrectionDebug,
+      ``,
+      `=== AFTER CORRECTION ===`,
+      `TL: (${corners[0].x}, ${corners[0].y})`,
+      `TR: (${corners[1].x}, ${corners[1].y})`,
+      `BR: (${corners[2].x}, ${corners[2].y})`,
+      `BL: (${corners[3].x}, ${corners[3].y})`,
+      ``,
+      `=== NUDGE ===`,
+      `Nudge: ${INWARD_NUDGE_PERCENT * 100}%`,
+      `Final TL: (${nudgedCorners[0].x.toFixed(1)}, ${nudgedCorners[0].y.toFixed(1)})`,
+      `Final TR: (${nudgedCorners[1].x.toFixed(1)}, ${nudgedCorners[1].y.toFixed(1)})`,
+      `Final BR: (${nudgedCorners[2].x.toFixed(1)}, ${nudgedCorners[2].y.toFixed(1)})`,
+      `Final BL: (${nudgedCorners[3].x.toFixed(1)}, ${nudgedCorners[3].y.toFixed(1)})`,
+      ``,
+      `Detected size: ${detectedWidth}x${detectedHeight}`,
+      `Output size: ${width}x${height}`,
+    ].join('\n');
+
     const srcPoints = OpenCV.createObject(ObjectType.Point2fVector, [
-      createPoint2f(corners[0].x, corners[0].y),
-      createPoint2f(corners[1].x, corners[1].y),
-      createPoint2f(corners[2].x, corners[2].y),
-      createPoint2f(corners[3].x, corners[3].y),
+      createPoint2f(nudgedCorners[0].x, nudgedCorners[0].y),
+      createPoint2f(nudgedCorners[1].x, nudgedCorners[1].y),
+      createPoint2f(nudgedCorners[2].x, nudgedCorners[2].y),
+      createPoint2f(nudgedCorners[3].x, nudgedCorners[3].y),
     ]);
 
     const dstPoints = OpenCV.createObject(ObjectType.Point2fVector, [
@@ -467,7 +686,7 @@ export const scanDocument = (
     const M = OpenCV.invoke('getPerspectiveTransform', srcPoints, dstPoints, 0);
     const dstMat = createMat(height, width, DataTypes.CV_8UC3);
     const dstSize = createSize(width, height);
-    const borderValue = OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0);
+    const borderValue = OpenCV.createObject(ObjectType.Scalar, 0, 0, 0, 0); // BLACK border (detected post-warp)
 
     OpenCV.invoke(
       'warpPerspective',
@@ -1392,7 +1611,7 @@ export const scanDocument = (
     }
 
     // === EDGE CROP - Remove 0.5% border to avoid black edges ===
-    const edgeCropPercent = 0.005;
+    const edgeCropPercent = 0;
     const edgeCropLeft = Math.round(cropWidth * edgeCropPercent);
     const edgeCropTop = Math.round(finalHeight * edgeCropPercent);
     const edgeCropWidth = cropWidth - 2 * edgeCropLeft;
@@ -1527,6 +1746,92 @@ export const scanDocument = (
     const finalSmoothedWithColor = finalWithColor; // Use directly without blur
     console.log(`✅ Final size: ${edgeCropWidth}x${edgeCropHeight} (no blur)`);
 
+    // === FLOOD FILL DARK EDGES ===
+    // Walk along all 4 edges. Only flood-fill from DARK seed pixels (< threshold).
+    // This avoids washing out light content (dots, pencil marks).
+    let floodFillCount = 0;
+    let floodFillSkipped = 0;
+    const FLOOD_DARK_THRESH = 200; // Only seed from pixels darker than this
+    try {
+      // Get grayscale to check seed pixel brightness
+      const ffGray = createMat(edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
+      OpenCV.invoke('cvtColor', finalSmoothedWithColor, ffGray, 6, 0);
+
+      // floodFill needs a mask that is 2px bigger than the image
+      const ffMaskH = edgeCropHeight + 2;
+      const ffMaskW = edgeCropWidth + 2;
+      const ffMask = createMat(ffMaskH, ffMaskW, DataTypes.CV_8UC1);
+
+      const ffWhite = OpenCV.createObject(ObjectType.Scalar, 255, 255, 255, 255);
+      const ffLoDiff = OpenCV.createObject(ObjectType.Scalar, 25, 25, 25, 0);
+      const ffUpDiff = OpenCV.createObject(ObjectType.Scalar, 25, 25, 25, 0);
+      const ffRect = OpenCV.createObject(ObjectType.Rect, 0, 0, 0, 0);
+      // flags: 8-connectivity | FLOODFILL_FIXED_RANGE
+      const ffFlags = 8 | 65536;
+
+      // Helper: check if seed pixel is dark enough
+      const isDarkSeed = (x: number, y: number): boolean => {
+        const pixRect = OpenCV.createObject(ObjectType.Rect, x, y, 1, 1);
+        const pixMat = OpenCV.createObject(ObjectType.Mat, 1, 1, DataTypes.CV_8UC1);
+        OpenCV.invoke('crop', ffGray, pixMat, pixRect);
+        const pixMean = OpenCV.invoke('mean', pixMat);
+        const pixData = OpenCV.toJSValue(pixMean);
+        return (pixData?.a ?? 255) < FLOOD_DARK_THRESH;
+      };
+
+      const step = 5; // Check every 5 pixels
+
+      // Left edge
+      for (let y = 0; y < edgeCropHeight; y += step) {
+        if (isDarkSeed(0, y)) {
+          const seedPt = OpenCV.createObject(ObjectType.Point, 0, y);
+          try {
+            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
+            floodFillCount++;
+          } catch (_e) {}
+        } else { floodFillSkipped++; }
+      }
+
+      // Right edge
+      for (let y = 0; y < edgeCropHeight; y += step) {
+        if (isDarkSeed(edgeCropWidth - 1, y)) {
+          const seedPt = OpenCV.createObject(ObjectType.Point, edgeCropWidth - 1, y);
+          try {
+            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
+            floodFillCount++;
+          } catch (_e) {}
+        } else { floodFillSkipped++; }
+      }
+
+      // Top edge
+      for (let x = 0; x < edgeCropWidth; x += step) {
+        if (isDarkSeed(x, 0)) {
+          const seedPt = OpenCV.createObject(ObjectType.Point, x, 0);
+          try {
+            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
+            floodFillCount++;
+          } catch (_e) {}
+        } else { floodFillSkipped++; }
+      }
+
+      // Bottom edge
+      for (let x = 0; x < edgeCropWidth; x += step) {
+        if (isDarkSeed(x, edgeCropHeight - 1)) {
+          const seedPt = OpenCV.createObject(ObjectType.Point, x, edgeCropHeight - 1);
+          try {
+            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
+            floodFillCount++;
+          } catch (_e) {}
+        } else { floodFillSkipped++; }
+      }
+
+      fullEdgeCorrectionInfo += `\n\n=== FLOOD FILL ===\nFilled: ${floodFillCount}, Skipped(bright): ${floodFillSkipped}, Thresh: ${FLOOD_DARK_THRESH}, LoDiff/UpDiff: 25`;
+      console.log(`🟩 Flood fill: ${floodFillCount} dark seeds filled, ${floodFillSkipped} bright seeds skipped`);
+    } catch (ffErr) {
+      fullEdgeCorrectionInfo += `\n\n=== FLOOD FILL ===\nError: ${ffErr}`;
+      console.warn('⚠️ Flood fill failed:', ffErr);
+    }
+
     // Step 9.8: After anti-aliasing
     if (enableDebugImages) {
       const step9_8Result = OpenCV.toJSValue(finalSmoothedWithColor);
@@ -1596,6 +1901,7 @@ export const scanDocument = (
       selectedIcons: detectedIcons,
       selectedIconNames: detectedIconNames,
       iconAnalysis: iconActive.map((a, i) => ({ slot: i + 1, icon: iconNames[i], active: a, darkPercent: iconDarkPercents[i] })),
+      edgeCorrectionInfo: fullEdgeCorrectionInfo,
     };
   } catch (error) {
     console.error('Scan error:', error);

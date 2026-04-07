@@ -19,6 +19,7 @@ import { uploadAndSendFile } from '../uploadSlice';
 import RNFS from 'react-native-fs';
 import { PDFDocument, rgb } from 'pdf-lib';
 import ImageResizer from 'react-native-image-resizer';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Helper to build full file path from filename or url
 const getFullFilePath = (urlOrFilename: string): string => {
@@ -697,7 +698,10 @@ const uniqSelectedDestinations = finalSelectedDestinations.filter(
 
       // Configure Google Sign-In (same as ChangeDestinationScreen)
       GoogleSignin.configure({
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
+        scopes: [
+          'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+        ],
         webClientId:
           '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
         iosClientId:
@@ -776,10 +780,25 @@ const uniqSelectedDestinations = finalSelectedDestinations.filter(
           ? 'application/pdf'
           : 'image/jpeg';
 
+        // Read saved Google Drive folder preference
+        let folderId: string | null = null;
+        try {
+          const folderData = await AsyncStorage.getItem('googleDriveFolder');
+          if (folderData) {
+            const parsed = JSON.parse(folderData);
+            folderId = parsed.id || null;
+          }
+        } catch (e) {
+          console.log('ℹ️ No saved Google Drive folder, uploading to root');
+        }
+
         // Create metadata for Google Drive
-        const metadata = {
+        const metadata: any = {
           name: image.fileName,
         };
+        if (folderId) {
+          metadata.parents = [folderId];
+        }
 
         // Create proper multipart boundary
         const boundary = `----formdata-berri-${Date.now()}`;

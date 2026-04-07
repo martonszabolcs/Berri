@@ -23,7 +23,6 @@ import {
   saveScanQualitySettings,
   loadAdvancedSettings,
   saveAdvancedSettings,
-  clearAdvancedSettings,
 } from '../utils/scan/scanSettingsStorage';
 import Slider from '@react-native-community/slider';
 import React, { useState, useRef, useCallback, useEffect, useMemo } from 'react';
@@ -316,7 +315,7 @@ export default function App() {
     loadScanQualitySettings().then(({ levels, isFirstTime }) => {
       setTuneBlackLevel(levels.blackLevel);
       setTuneColorLevel(levels.colorLevel);
-      isFirstTimeScanRef.current = isFirstTime;
+      isFirstTimeScanRef.current = true;
     });
     loadAdvancedSettings().then(adv => setAdvancedSettings(adv));
   }, []);
@@ -1055,6 +1054,14 @@ export default function App() {
           if (updated.length > 20) updated.shift();
           return updated;
         });
+
+        // Auto-open gallery modal on first ever scan
+        if (isFirstTimeScanRef.current) {
+          setGalleryStartIndex(0);
+          setShowGalleryModal(true);
+          showGalleryModalRef.current = true; // Update ref immediately for finally block
+          setIsFrameProcessorActive(false);
+        }
         
         // Reset for next capture - NO MODAL
         setCapturedImageUri(null);
@@ -1701,16 +1708,10 @@ export default function App() {
     }
     setIsTuneRescanning(false);
     await saveScanQualitySettings({ blackLevel: tuneBlackLevel, colorLevel: tuneColorLevel });
-    const hasAdvanced = Object.values(advancedSettings).some(v => v !== null);
-    if (hasAdvanced) {
-      await saveAdvancedSettings(advancedSettings);
-    } else {
-      await clearAdvancedSettings();
-    }
+    await saveAdvancedSettings(advancedSettings);
     isFirstTimeScanRef.current = false;
     setIsFirstTimeTuning(false);
     setShowTunePanel(false);
-    setShowAdvanced(false);
     setShowGalleryModal(false);
     setIsFrameProcessorActive(true);
   };
@@ -2409,8 +2410,6 @@ export default function App() {
             )}
 
             <View style={styles.tuneSlidersContainer}>
-              {!showAdvanced && (
-                <>
                   <View style={styles.tuneSliderRow}>
                     <View style={styles.tuneSliderHeader}>
                       <View style={styles.tuneLabelWithInfo}>
@@ -2456,7 +2455,7 @@ export default function App() {
                     <Slider
                       style={styles.tuneSlider}
                       minimumValue={1}
-                      maximumValue={10}
+                      maximumValue={15}
                       step={1}
                       value={tuneColorLevel}
                       onValueChange={(val: number) => {
@@ -2468,60 +2467,12 @@ export default function App() {
                       thumbTintColor="#FFFFFF"
                     />
                   </View>
-                </>
-              )}
 
-              <View style={styles.tuneButtonsRow}>
-                <TouchableOpacity
-                  style={styles.tuneResetButton}
-                  onPress={() => {
-                    setTuneBlackLevel(DEFAULT_QUALITY_LEVELS.blackLevel);
-                    setTuneColorLevel(DEFAULT_QUALITY_LEVELS.colorLevel);
-                    setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS });
-                    setShowAdvanced(false);
-                    handleTuneSliderChange(
-                      DEFAULT_QUALITY_LEVELS.blackLevel,
-                      DEFAULT_QUALITY_LEVELS.colorLevel,
-                      galleryStartIndex,
-                      { ...DEFAULT_ADVANCED_SETTINGS },
-                    );
-                  }}
-                >
-                  <Text style={styles.tuneResetText}>Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.advancedToggle}
-                  onPress={() => {
-                    if (showAdvanced) {
-                      // Switching to Simple: clear advanced overrides and re-scan with simple only
-                      setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS });
-                      setShowAdvanced(false);
-                      handleTuneSliderChange(
-                        tuneBlackLevel,
-                        tuneColorLevel,
-                        galleryStartIndex,
-                        { ...DEFAULT_ADVANCED_SETTINGS },
-                      );
-                    } else {
-                      setShowAdvanced(true);
-                    }
-                  }}
-                >
-                  <Text style={styles.advancedToggleText}>
-                    {showAdvanced ? 'Simple' : 'Advanced'}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.tuneSaveButton}
-                  onPress={handleTuneSave}
-                >
-                  <Text style={styles.tuneSaveText}>Save</Text>
-                </TouchableOpacity>
-              </View>
+              {/* Divider between basic and advanced */}
+              <View style={styles.tuneDivider} />
 
-              {/* === ADVANCED PANEL === */}
-              {showAdvanced && (
-                <View style={styles.advancedPanel}>
+              {/* === ADVANCED SLIDERS === */}
+              <View style={styles.advancedPanel}>
                   {[
                     { key: 'detailSensitivity' as const, label: 'Detail sensitivity', info: 'How much fine detail to capture — faint pencil marks, small dots, thin lines.' },
                     { key: 'lightStrokeCapture' as const, label: 'Light stroke capture', info: 'Keep faint or light strokes that are barely visible. Higher = keeps lighter marks.' },
@@ -2563,11 +2514,41 @@ export default function App() {
                       </View>
                     );
                   })}
-                </View>
-              )}
+              </View>
+
+
             </View>
           </View>
           </ScrollView>
+
+          {/* Sticky bottom buttons */}
+          <View style={styles.tuneStickyButtons}>
+              <View style={styles.tuneButtonsRow}>
+                <TouchableOpacity
+                  style={styles.tuneResetButton}
+                  onPress={() => {
+                    setTuneBlackLevel(DEFAULT_QUALITY_LEVELS.blackLevel);
+                    setTuneColorLevel(DEFAULT_QUALITY_LEVELS.colorLevel);
+                    setAdvancedSettings({ ...DEFAULT_ADVANCED_SETTINGS });
+                    handleTuneSliderChange(
+                      DEFAULT_QUALITY_LEVELS.blackLevel,
+                      DEFAULT_QUALITY_LEVELS.colorLevel,
+                      galleryStartIndex,
+                      { ...DEFAULT_ADVANCED_SETTINGS },
+                    );
+                  }}
+                >
+                  <Text style={styles.tuneResetText}>Reset</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.tuneSaveButton}
+                  onPress={handleTuneSave}
+                >
+                  <Text style={styles.tuneSaveText}>Save</Text>
+                </TouchableOpacity>
+              </View>
+          </View>
         </GestureHandlerRootView>
       )}
       {zoomCapturedImage && (
@@ -3442,7 +3423,14 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
     alignItems: 'center',
     gap: 10,
-    marginTop: 2,
+  },
+  tuneStickyButtons: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    paddingBottom: 30,
+    backgroundColor: '#000000',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
   },
   tuneResetButton: {
     paddingHorizontal: 14,
@@ -3475,11 +3463,12 @@ const styles = StyleSheet.create({
     color: 'rgba(196, 168, 255, 0.6)',
     fontSize: 13,
   },
+  tuneDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+    marginVertical: 10,
+  },
   advancedPanel: {
-    marginTop: 10,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255, 255, 255, 0.08)',
     gap: 2,
   },
   advancedRow: {

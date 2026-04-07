@@ -24,6 +24,8 @@ import { refreshUser } from '../store/appSlice';
 import sendFilesApiService from '../store/api/sendFilesApi';
 import { getDestinationName, destinations } from '../utils/helpers';
 import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import GoogleDriveFolderPicker from '../components/molecules/GoogleDriveFolderPicker';
 
 type RootStackParamList = {
   ChangeDestinationScreen: {
@@ -46,9 +48,39 @@ const ChangeDestinationScreen = () => {
   const { destination, access_token, token_type } = route.params || {};
   const destinationId = destination?.type?.toString() || '1';
   const user = useAppSelector(state => state.app.user);
+  const settings = useAppSelector(state => state.app.settings);
+  const connectionStatus = useAppSelector(state => state.settings.connectionStatus);
   const dispatch = useAppDispatch();
   const [selectedDestination, setSelectedDestination] =
     useState<DestinationType>('Email');
+  const [folderPickerVisible, setFolderPickerVisible] = useState(false);
+  const [selectedFolder, setSelectedFolder] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+
+  // Load saved Google Drive folder on mount
+  useEffect(() => {
+    AsyncStorage.getItem('googleDriveFolder').then(data => {
+      if (data) {
+        try {
+          setSelectedFolder(JSON.parse(data));
+        } catch (e) {}
+      }
+    });
+  }, []);
+
+  const handleFolderSelect = async (
+    folder: { id: string; name: string } | null,
+  ) => {
+    setSelectedFolder(folder);
+    setFolderPickerVisible(false);
+    if (folder) {
+      await AsyncStorage.setItem('googleDriveFolder', JSON.stringify(folder));
+    } else {
+      await AsyncStorage.removeItem('googleDriveFolder');
+    }
+  };
 
   // Helper function to save destination settings
   const saveDestinationSettings = useCallback(
@@ -378,7 +410,10 @@ const ChangeDestinationScreen = () => {
   const connectToGoogleDrive = async () => {
     if (Platform.OS === 'ios') {
       GoogleSignin.configure({
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
+        scopes: [
+          'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+        ],
         iosClientId:
           '827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76.apps.googleusercontent.com',
       });
@@ -454,7 +489,10 @@ const ChangeDestinationScreen = () => {
 
     try {
       GoogleSignin.configure({
-        scopes: ['https://www.googleapis.com/auth/drive.file'],
+        scopes: [
+          'https://www.googleapis.com/auth/drive.file',
+          'https://www.googleapis.com/auth/drive.metadata.readonly',
+        ],
         webClientId:
           '827173339361-j4l1hclopp7ja4oi38l858r0e58ctotc.apps.googleusercontent.com',
         offlineAccess: true,
@@ -510,6 +548,34 @@ const ChangeDestinationScreen = () => {
           ))}
         </View>
 
+        {selectedDestination === 'Google Drive' && (
+          <View style={styles.folderSection}>
+            <Text style={styles.folderLabel}>Save to folder:</Text>
+            <TouchableOpacity
+              style={styles.folderSelector}
+              onPress={() => {
+                const hasToken =
+                  user.googleDriveAccessToken ||
+                  settings?.googleDriveAccessToken ||
+                  connectionStatus.googleDrive;
+                if (hasToken) {
+                  setFolderPickerVisible(true);
+                } else {
+                  showErrorToast(
+                    'Not Connected',
+                    'Connect to Google Drive first by pressing Save.',
+                  );
+                }
+              }}
+            >
+              <Text style={styles.folderName}>
+                 {selectedFolder?.name || 'My Drive (root)'}
+              </Text>
+              <Text style={styles.folderChangeText}>Change</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
         <View style={styles.buttonContainer}>
           <Button title="Save" size="medium" onPress={handleSave} />
           <Button
@@ -520,6 +586,24 @@ const ChangeDestinationScreen = () => {
           />
         </View>
       </ScrollView>
+
+      <GoogleDriveFolderPicker
+        visible={folderPickerVisible}
+        accessToken={user.googleDriveAccessToken || settings?.googleDriveAccessToken || ''}
+        onSelect={handleFolderSelect}
+        onCancel={() => setFolderPickerVisible(false)}
+        onAuthNeeded={async () => {
+          try {
+            await connectToGoogleDrive();
+            // After re-auth, tokens are saved in Redux - get the fresh one
+            const tokens = await GoogleSignin.getTokens();
+            return tokens.accessToken || null;
+          } catch (e) {
+            console.error('❌ Re-auth failed:', e);
+            return null;
+          }
+        }}
+      />
     </Layout>
   );
 };
@@ -579,6 +663,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 100,
     gap: 20,
+  },
+  folderSection: {
+    marginBottom: 30,
+    paddingHorizontal: 20,
+  },
+  folderLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: 'rgba(255, 255, 255, 0.7)',
+    marginBottom: 8,
+  },
+  folderSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+  },
+  folderName: {
+    fontSize: 15,
+    color: 'white',
+    flex: 1,
+  },
+  folderChangeText: {
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.6)',
+    marginLeft: 8,
   },
 });
 

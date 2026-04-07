@@ -52,6 +52,7 @@ interface DetectionParams {
 
 interface DetectionResult {
   corners: DocumentCorner[] | null;
+  contourPoints: DocumentCorner[] | null; // Full original contour points for edge analysis
   confidence: number;
   debugInfo?: string;
   debugImage?: string; // Base64 encoded debug image (downscaled)
@@ -473,6 +474,7 @@ export const detectDocumentCorners = (
 
     // === STEP 3: Process contours (EXACT COPY from useInferenceLogic.tsx) ===
     let documentContour = null;
+    let bestOriginalContour: any = null; // Keep the full contour for midpoint analysis
     let maxValidArea = 0;
     let bestContourScore = 0;
     let validContourCount = 0;
@@ -654,6 +656,7 @@ export const detectDocumentCorners = (
 
             if (score > bestContourScore) {
               documentContour = approx;
+              bestOriginalContour = contour;
               maxValidArea = area;
               bestContourScore = score;
             }
@@ -697,8 +700,25 @@ export const detectDocumentCorners = (
 
           console.log(`✅ Photo detection SUCCESS! Upscaled ${FRAME_WIDTH}x${FRAME_HEIGHT} -> ${photoWidth}x${photoHeight} (scale: ${scaleX.toFixed(2)}x, ${scaleY.toFixed(2)}x)`);
 
+          // Upscale original contour points for edge midpoint analysis
+          let photoContourPoints: DocumentCorner[] | null = null;
+          if (bestOriginalContour) {
+            try {
+              const origContourData = OpenCV.toJSValue(bestOriginalContour);
+              if (origContourData?.array) {
+                photoContourPoints = origContourData.array.map((p: any) => ({
+                  x: Math.round(p.x * scaleX),
+                  y: Math.round(p.y * scaleY),
+                }));
+              }
+            } catch (e) {
+              console.warn('Failed to extract original contour points:', e);
+            }
+          }
+
           return {
             corners: photoCorners,
+            contourPoints: photoContourPoints,
             confidence,
             debugInfo: `Quality: ${validation.qualityScore.toFixed(0)}, Upscaled: ${scaleX.toFixed(2)}x`,
             debugImage: debugDownscaledImage || undefined,
@@ -720,6 +740,7 @@ export const detectDocumentCorners = (
     console.log(`❌ Photo detection failed: ${contoursSize} contours → ${tooSmallCount} tooSmall, ${tooBigCount} tooBig, ${edgeFilterCount} tooCloseEdge, ${aspectFilterCount} wrongAspect, ${validContourCount} valid, ${bestCornerCount} with4Corners`);
     return {
       corners: null,
+      contourPoints: null,
       confidence: 0,
       debugInfo: 'No valid document found',
       debugImage: debugDownscaledImage || undefined,
@@ -737,6 +758,7 @@ export const detectDocumentCorners = (
     console.error('detectDocumentCorners error:', error);
     return {
       corners: null,
+      contourPoints: null,
       confidence: 0,
       debugInfo: `Error: ${error}`,
     };
