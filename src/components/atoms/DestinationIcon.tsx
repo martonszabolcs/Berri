@@ -34,7 +34,7 @@ const DestinationIcon: React.FC<DestinationIconProps> = ({
         return 55;
       case 'history':
       case 'history-active':
-        return 32; // Increased from 40 to 60
+        return 32;
       default:
         return 32;
     }

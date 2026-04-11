@@ -523,12 +523,12 @@ const HistoryDetailScreen = () => {
       </Modal>
 
       {/* Bottom Action Bar */}
-      <View style={styles.actionBar}>
+      <View style={[styles.actionBar, screenWidth < 370 ? {gap: 2} : {gap: 5}]}>
         {/* Delete Button */}
-        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+        <TouchableOpacity style={screenWidth < 370 ? styles.bottomSmallButton : styles.bottomButton}  onPress={handleDelete}>
           <Image
             source={require('../assets/trash.png')}
-            style={styles.deleteIcon}
+            style={screenWidth < 370 ? styles.bottomSmallIcon : styles.bottomIcon}
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -553,10 +553,10 @@ const HistoryDetailScreen = () => {
         </View>
 
         {/* Resend Button */}
-        <TouchableOpacity style={styles.resendButton} onPress={handleResend}>
+        <TouchableOpacity style={screenWidth < 370 ? styles.bottomSmallButton : styles.bottomButton} onPress={handleResend}>
           <Image
             source={require('../assets/resend.png')}
-            style={styles.resendIcon}
+            style={screenWidth < 370 ? styles.bottomSmallIcon : styles.bottomIcon}
             resizeMode="contain"
           />
         </TouchableOpacity>
@@ -625,14 +625,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 20,
     backgroundColor: 'rgba(37, 37, 68, 1)',
-    gap: 5,
   },
-  deleteButton: {
+  bottomButton: {
     padding: 8,
   },
-  deleteIcon: {
+  bottomSmallButton: {
+    padding: 0
+  },
+  bottomIcon: {
     width: 24,
     height: 24,
+  },
+  bottomSmallIcon: {
+    width: 18,
+    height: 18,
   },
   destinationsContainer: {
     //flex: 1,
@@ -644,13 +650,6 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     marginHorizontal: 'auto',
     gap: 3,
-  },
-  resendButton: {
-    padding: 8,
-  },
-  resendIcon: {
-    width: 24,
-    height: 24,
   },
   // Zoom Modal Styles
   zoomModalContainer: {
