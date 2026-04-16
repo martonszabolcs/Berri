@@ -55,6 +55,7 @@ interface ScanDocumentResult {
     y: number;
   }[];
   edgeCorrectionInfo?: string;
+  contourPoints?: { x: number; y: number }[];
 }
 
 const SCALE_FACTOR = 1.0;
@@ -67,6 +68,105 @@ const TARGET_OUTPUT_HEIGHT = 3500; // ~300 DPI height (5:3 ratio)
 
 const createMat = (h: number, w: number, type: number) =>
   OpenCV.createObject(ObjectType.Mat, h, w, type);
+
+/**
+ * Compute a 3x3 perspective homography from 4 src→dst point pairs.
+ * Returns [h0..h7] where H = [[h0,h1,h2],[h3,h4,h5],[h6,h7,1]].
+ */
+function computeHomography(src: DocumentCorner[], dst: DocumentCorner[]): number[] {
+  const A: number[][] = [];
+  const b: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const { x, y } = src[i];
+    const { x: X, y: Y } = dst[i];
+    A.push([x, y, 1, 0, 0, 0, -x * X, -y * X]);
+    b.push(X);
+    A.push([0, 0, 0, x, y, 1, -x * Y, -y * Y]);
+    b.push(Y);
+  }
+  const n = 8;
+  const M = A.map((row, i) => [...row, b[i]]);
+  for (let col = 0; col < n; col++) {
+    let maxRow = col;
+    for (let row = col + 1; row < n; row++) {
+      if (Math.abs(M[row][col]) > Math.abs(M[maxRow][col])) maxRow = row;
+    }
+    [M[col], M[maxRow]] = [M[maxRow], M[col]];
+    const pivot = M[col][col];
+    if (Math.abs(pivot) < 1e-10) continue;
+    for (let j = col; j <= n; j++) M[col][j] /= pivot;
+    for (let row = 0; row < n; row++) {
+      if (row !== col) {
+        const factor = M[row][col];
+        for (let j = col; j <= n; j++) M[row][j] -= factor * M[col][j];
+      }
+    }
+  }
+  return M.map(row => row[n]);
+}
+
+/** Apply homography H=[h0..h7] to point (px,py). */
+function applyHomography(H: number[], px: number, py: number): DocumentCorner {
+  const w = H[6] * px + H[7] * py + 1;
+  return { x: (H[0] * px + H[1] * py + H[2]) / w, y: (H[3] * px + H[4] * py + H[5]) / w };
+}
+
+/**
+ * Tighten corners using contour: transform contour to warped space,
+ * find inner bounding box, map back to source → tighter source corners.
+ * Result: warp fills entire rectangle with document content, no background.
+ */
+function tightenCornersWithContour(
+  corners: DocumentCorner[],
+  contourPts: DocumentCorner[],
+  warpW: number,
+  warpH: number,
+): DocumentCorner[] {
+  const rect = [
+    { x: 0, y: 0 }, { x: warpW, y: 0 },
+    { x: warpW, y: warpH }, { x: 0, y: warpH },
+  ];
+  // Forward: source corners → rectangle
+  const Hfwd = computeHomography(corners, rect);
+  // Transform all contour points to warped space
+  const warped = contourPts.map(p => applyHomography(Hfwd, p.x, p.y));
+  // Find inner bounding box (most restrictive contour edges)
+  const xs = warped.map(p => p.x);
+  const ys = warped.map(p => p.y);
+
+  // For each edge, find the most intrusive contour point
+  // Use 40% zone from each side to catch all edge-relevant points
+  const leftPts = xs.filter(x => x < warpW * 0.4);
+  const rightPts = xs.filter(x => x > warpW * 0.6);
+  const topPts = ys.filter(y => y < warpH * 0.4);
+  const bottomPts = ys.filter(y => y > warpH * 0.6);
+
+  // Maximum tightening: 1.5% of dimension — prevent over-cropping
+  const maxTightenX = warpW * 0.015;
+  const maxTightenY = warpH * 0.015;
+
+  const rawMinX = leftPts.length > 0 ? Math.max(...leftPts) : 0;
+  const rawMaxX = rightPts.length > 0 ? Math.min(...rightPts) : warpW;
+  const rawMinY = topPts.length > 0 ? Math.max(...topPts) : 0;
+  const rawMaxY = bottomPts.length > 0 ? Math.min(...bottomPts) : warpH;
+
+  const minX = Math.min(rawMinX, maxTightenX);
+  const maxX = Math.max(rawMaxX, warpW - maxTightenX);
+  const minY = Math.min(rawMinY, maxTightenY);
+  const maxY = Math.max(rawMaxY, warpH - maxTightenY);
+
+  console.log(`🔍 Contour tighten: L=${minX.toFixed(0)}(raw:${rawMinX.toFixed(0)}) T=${minY.toFixed(0)}(raw:${rawMinY.toFixed(0)}) R=${maxX.toFixed(0)}(raw:${rawMaxX.toFixed(0)}) B=${maxY.toFixed(0)}(raw:${rawMaxY.toFixed(0)}) max=${maxTightenX.toFixed(0)}x${maxTightenY.toFixed(0)} (of ${warpW}x${warpH})`);
+
+  // Inverse: rectangle → source corners
+  const Hinv = computeHomography(rect, corners);
+  // Map inner bounding box corners back to source photo space
+  return [
+    applyHomography(Hinv, minX, minY), // TL
+    applyHomography(Hinv, maxX, minY), // TR
+    applyHomography(Hinv, maxX, maxY), // BR
+    applyHomography(Hinv, minX, maxY), // BL
+  ];
+}
 
 /**
  * Find the closest point on the contour to a target point.
@@ -627,7 +727,7 @@ export const scanDocument = (
       x: (corners[0].x + corners[1].x + corners[2].x + corners[3].x) / 4,
       y: (corners[0].y + corners[1].y + corners[2].y + corners[3].y) / 4,
     };
-    const nudgedCorners = corners.map(c => {
+    const nudgedCornersBase = corners.map(c => {
       const dx = nudgeCenter.x - c.x;
       const dy = nudgeCenter.y - c.y;
       const dist = Math.hypot(dx, dy);
@@ -638,6 +738,23 @@ export const scanDocument = (
         y: c.y + (dy / dist) * nudgeAmount,
       };
     });
+
+    // Tighten corners using contour: ensures warp captures only document content
+    let nudgedCorners = nudgedCornersBase;
+    if (photoDetectionResult.contourPoints && photoDetectionResult.contourPoints.length >= 4) {
+      try {
+        nudgedCorners = tightenCornersWithContour(
+          nudgedCornersBase,
+          photoDetectionResult.contourPoints,
+          width,
+          height,
+        );
+        console.log('✅ Corners tightened based on contour');
+      } catch (e) {
+        console.warn('⚠️ Contour tightening failed, using original corners:', e);
+        nudgedCorners = nudgedCornersBase;
+      }
+    }
 
     console.log(`📐 Applied ${INWARD_NUDGE_PERCENT * 100}% inward nudge to corners`);
 
@@ -669,6 +786,49 @@ export const scanDocument = (
       `Output size: ${width}x${height}`,
     ].join('\n');
 
+    // === DEBUG 0.14: Draw contour cut line on original photo ===
+    if (enableDebugImages && photoDetectionResult.contourPoints && photoDetectionResult.contourPoints.length > 4) {
+      try {
+        // Work on a downscaled copy to avoid huge base64
+        const dbgScale = 0.25;
+        const dbgW = Math.round(photoWidth * dbgScale);
+        const dbgH = Math.round(photoHeight * dbgScale);
+        const dbgSrcMat = createMat(dbgH, dbgW, DataTypes.CV_8UC3);
+        OpenCV.invoke('resize', rotatedSrcMat, dbgSrcMat, createSize(dbgW, dbgH), 0, 0, 2);
+
+        const contourDbgPts: DocumentCorner[] = photoDetectionResult.contourPoints;
+        const magentaScalar = OpenCV.createObject(ObjectType.Scalar, 255, 0, 255, 255);
+        // Draw contour polygon (scaled)
+        for (let i = 0; i < contourDbgPts.length; i++) {
+          const cp1 = contourDbgPts[i];
+          const cp2 = contourDbgPts[(i + 1) % contourDbgPts.length];
+          const cpt1 = OpenCV.createObject(ObjectType.Point, Math.round(cp1.x * dbgScale), Math.round(cp1.y * dbgScale));
+          const cpt2 = OpenCV.createObject(ObjectType.Point, Math.round(cp2.x * dbgScale), Math.round(cp2.y * dbgScale));
+          OpenCV.invoke('line', dbgSrcMat, cpt1, cpt2, magentaScalar, 4, 8);
+        }
+        // Also draw the 4 warp corners (yellow)
+        const yellowScalar = OpenCV.createObject(ObjectType.Scalar, 0, 255, 255, 255);
+        for (let i = 0; i < 4; i++) {
+          const wc1 = nudgedCorners[i];
+          const wc2 = nudgedCorners[(i + 1) % 4];
+          const wpt1 = OpenCV.createObject(ObjectType.Point, Math.round(wc1.x * dbgScale), Math.round(wc1.y * dbgScale));
+          const wpt2 = OpenCV.createObject(ObjectType.Point, Math.round(wc2.x * dbgScale), Math.round(wc2.y * dbgScale));
+          OpenCV.invoke('line', dbgSrcMat, wpt1, wpt2, yellowScalar, 3, 8);
+        }
+        const dbg09Result = OpenCV.toJSValue(dbgSrcMat);
+        if (dbg09Result?.base64) {
+          stepImages.push({ label: '0.14. Contour cut line (magenta) + warp corners (yellow)', image: dbg09Result.base64 });
+          console.log('✅ Debug 0.14: Contour cut line image added');
+        } else {
+          console.warn('⚠️ Debug 0.14: toJSValue returned no base64');
+        }
+      } catch (dbg09Err) {
+        console.warn('⚠️ Debug 0.14 contour drawing failed:', dbg09Err);
+      }
+    } else {
+      console.log('ℹ️ Debug 0.14 skipped: enableDebugImages=' + enableDebugImages + ', contourPoints=' + (photoDetectionResult.contourPoints?.length ?? 0));
+    }
+
     const srcPoints = OpenCV.createObject(ObjectType.Point2fVector, [
       createPoint2f(nudgedCorners[0].x, nudgedCorners[0].y),
       createPoint2f(nudgedCorners[1].x, nudgedCorners[1].y),
@@ -699,6 +859,9 @@ export const scanDocument = (
       borderValue,
     );
     console.log('✅ Perspective transform completed');
+
+    // Contour mask is applied later at crop resolution (Instance B) and final resolution (Instance C).
+    // No early masking here — downstream processing handles it cleanly.
 
     const stableDstMat = OpenCV.invoke('clone', dstMat);
 
@@ -743,6 +906,9 @@ export const scanDocument = (
       DataTypes.CV_8UC3,
     );
     OpenCV.invoke('crop', scaledMat, croppedMat, cropRect);
+
+    // === DEBUG: Contour mask boundary on cropped image ===
+    // (removed — contour mask is now only applied at crop and final resolution)
 
     // Step 0: Original photo (no rotation)
     const step0Result = OpenCV.toJSValue(rotatedSrcMat);
@@ -813,6 +979,10 @@ export const scanDocument = (
         image: step1Result.base64 
       });
     }
+
+    // Contour-based crop is handled by tightenCornersWithContour() before warp.
+    // No white-fill masking needed.
+    const contourMaskAtCrop: any = null;
 
     // === COLOR MASK DETECTION - Detektáljuk a színes területeket ===
     console.log('🎨 Detecting VIBRANT colored regions for preservation');
@@ -966,6 +1136,28 @@ export const scanDocument = (
     OpenCV.invoke('bitwise_and', darkInkMaskDilated, notColorMask, darkInkMaskDilated);
     
     console.log('✅ Dark ink mask created - adaptive blockSize:', darkInkBlockSize, 'C:', darkInkC);
+
+    // === APPLY CONTOUR MASK to exclude outside-contour areas from color + dark ink masks ===
+    // This prevents border artifacts from being detected as dark ink or color.
+    if (contourMaskAtCrop) {
+      OpenCV.invoke('bitwise_and', colorMaskDilated, contourMaskAtCrop, colorMaskDilated);
+      OpenCV.invoke('bitwise_and', darkInkMaskDilated, contourMaskAtCrop, darkInkMaskDilated);
+      // Also mask the stored colored regions
+      const cmInv = createMat(cropHeight, cropWidth, DataTypes.CV_8UC1);
+      OpenCV.invoke('bitwise_not', contourMaskAtCrop, cmInv);
+      // White-fill outside contour on coloredRegions
+      const cmWhiteBg = createMat(cropHeight, cropWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('rectangle', cmWhiteBg,
+        OpenCV.createObject(ObjectType.Point, 0, 0),
+        OpenCV.createObject(ObjectType.Point, cropWidth, cropHeight),
+        OpenCV.createObject(ObjectType.Scalar, 255, 255, 255), -1, 8);
+      const cmInnerColor = createMat(cropHeight, cropWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('bitwise_and', coloredRegions, coloredRegions, cmInnerColor, contourMaskAtCrop);
+      const cmOuterColor = createMat(cropHeight, cropWidth, DataTypes.CV_8UC3);
+      OpenCV.invoke('bitwise_and', cmWhiteBg, cmWhiteBg, cmOuterColor, cmInv);
+      OpenCV.invoke('add', cmInnerColor, cmOuterColor, coloredRegions);
+      console.log('✅ Contour mask applied to color + dark ink masks');
+    }
 
     // Step 1.6: Dark ink mask visualization
     if (enableDebugImages) {
@@ -1585,6 +1777,8 @@ export const scanDocument = (
       }
     }
 
+    // === APPLY CONTOUR MASK TO B&W RESULT ===
+    // Adaptive threshold creates dark artifacts at the contour boundary.
     const finalCropRect = OpenCV.createObject(
       ObjectType.Rect,
       0, // x
@@ -1611,7 +1805,7 @@ export const scanDocument = (
     }
 
     // === EDGE CROP - Remove 0.5% border to avoid black edges ===
-    const edgeCropPercent = 0;
+    const edgeCropPercent = 0.0001;
     const edgeCropLeft = Math.round(cropWidth * edgeCropPercent);
     const edgeCropTop = Math.round(finalHeight * edgeCropPercent);
     const edgeCropWidth = cropWidth - 2 * edgeCropLeft;
@@ -1746,92 +1940,6 @@ export const scanDocument = (
     const finalSmoothedWithColor = finalWithColor; // Use directly without blur
     console.log(`✅ Final size: ${edgeCropWidth}x${edgeCropHeight} (no blur)`);
 
-    // === FLOOD FILL DARK EDGES ===
-    // Walk along all 4 edges. Only flood-fill from DARK seed pixels (< threshold).
-    // This avoids washing out light content (dots, pencil marks).
-    let floodFillCount = 0;
-    let floodFillSkipped = 0;
-    const FLOOD_DARK_THRESH = 200; // Only seed from pixels darker than this
-    try {
-      // Get grayscale to check seed pixel brightness
-      const ffGray = createMat(edgeCropHeight, edgeCropWidth, DataTypes.CV_8UC1);
-      OpenCV.invoke('cvtColor', finalSmoothedWithColor, ffGray, 6, 0);
-
-      // floodFill needs a mask that is 2px bigger than the image
-      const ffMaskH = edgeCropHeight + 2;
-      const ffMaskW = edgeCropWidth + 2;
-      const ffMask = createMat(ffMaskH, ffMaskW, DataTypes.CV_8UC1);
-
-      const ffWhite = OpenCV.createObject(ObjectType.Scalar, 255, 255, 255, 255);
-      const ffLoDiff = OpenCV.createObject(ObjectType.Scalar, 25, 25, 25, 0);
-      const ffUpDiff = OpenCV.createObject(ObjectType.Scalar, 25, 25, 25, 0);
-      const ffRect = OpenCV.createObject(ObjectType.Rect, 0, 0, 0, 0);
-      // flags: 8-connectivity | FLOODFILL_FIXED_RANGE
-      const ffFlags = 8 | 65536;
-
-      // Helper: check if seed pixel is dark enough
-      const isDarkSeed = (x: number, y: number): boolean => {
-        const pixRect = OpenCV.createObject(ObjectType.Rect, x, y, 1, 1);
-        const pixMat = OpenCV.createObject(ObjectType.Mat, 1, 1, DataTypes.CV_8UC1);
-        OpenCV.invoke('crop', ffGray, pixMat, pixRect);
-        const pixMean = OpenCV.invoke('mean', pixMat);
-        const pixData = OpenCV.toJSValue(pixMean);
-        return (pixData?.a ?? 255) < FLOOD_DARK_THRESH;
-      };
-
-      const step = 5; // Check every 5 pixels
-
-      // Left edge
-      for (let y = 0; y < edgeCropHeight; y += step) {
-        if (isDarkSeed(0, y)) {
-          const seedPt = OpenCV.createObject(ObjectType.Point, 0, y);
-          try {
-            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
-            floodFillCount++;
-          } catch (_e) {}
-        } else { floodFillSkipped++; }
-      }
-
-      // Right edge
-      for (let y = 0; y < edgeCropHeight; y += step) {
-        if (isDarkSeed(edgeCropWidth - 1, y)) {
-          const seedPt = OpenCV.createObject(ObjectType.Point, edgeCropWidth - 1, y);
-          try {
-            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
-            floodFillCount++;
-          } catch (_e) {}
-        } else { floodFillSkipped++; }
-      }
-
-      // Top edge
-      for (let x = 0; x < edgeCropWidth; x += step) {
-        if (isDarkSeed(x, 0)) {
-          const seedPt = OpenCV.createObject(ObjectType.Point, x, 0);
-          try {
-            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
-            floodFillCount++;
-          } catch (_e) {}
-        } else { floodFillSkipped++; }
-      }
-
-      // Bottom edge
-      for (let x = 0; x < edgeCropWidth; x += step) {
-        if (isDarkSeed(x, edgeCropHeight - 1)) {
-          const seedPt = OpenCV.createObject(ObjectType.Point, x, edgeCropHeight - 1);
-          try {
-            OpenCV.invoke('floodFill', finalSmoothedWithColor, ffMask, seedPt, ffWhite, ffRect, ffLoDiff, ffUpDiff, ffFlags);
-            floodFillCount++;
-          } catch (_e) {}
-        } else { floodFillSkipped++; }
-      }
-
-      fullEdgeCorrectionInfo += `\n\n=== FLOOD FILL ===\nFilled: ${floodFillCount}, Skipped(bright): ${floodFillSkipped}, Thresh: ${FLOOD_DARK_THRESH}, LoDiff/UpDiff: 25`;
-      console.log(`🟩 Flood fill: ${floodFillCount} dark seeds filled, ${floodFillSkipped} bright seeds skipped`);
-    } catch (ffErr) {
-      fullEdgeCorrectionInfo += `\n\n=== FLOOD FILL ===\nError: ${ffErr}`;
-      console.warn('⚠️ Flood fill failed:', ffErr);
-    }
-
     // Step 9.8: After anti-aliasing
     if (enableDebugImages) {
       const step9_8Result = OpenCV.toJSValue(finalSmoothedWithColor);
@@ -1870,6 +1978,8 @@ export const scanDocument = (
     // Note: react-native-fast-opencv uses built-in JPEG encoding (~95% quality)
     // This is the maximum quality available with this library
     console.log('📸 Exporting with maximum available JPEG quality');
+
+    // Contour-based crop is handled by tightenCornersWithContour() — no masking needed.
     
     const result = OpenCV.toJSValue(finalSmoothedWithColor);
 
@@ -1902,6 +2012,7 @@ export const scanDocument = (
       selectedIconNames: detectedIconNames,
       iconAnalysis: iconActive.map((a, i) => ({ slot: i + 1, icon: iconNames[i], active: a, darkPercent: iconDarkPercents[i] })),
       edgeCorrectionInfo: fullEdgeCorrectionInfo,
+      contourPoints: photoDetectionResult?.contourPoints || undefined,
     };
   } catch (error) {
     console.error('Scan error:', error);

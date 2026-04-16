@@ -135,7 +135,7 @@ export const processFileNameTemplate = (template: string): string => {
  * @param imageBase64 - Base64 encoded scanned document
  * @returns Promise<string | null> - Returns the permanent file path on success, null on failure
  */
-export const saveScannedDocument = async (imageBase64: string, settings: any): Promise<string | null> => {
+export const saveScannedDocument = async (imageBase64: string, settings: any, sequenceIndex?: number): Promise<string | null> => {
   try {
     const fileNameTemplate = settings?.fileNaming || '{Berri}_{Year}_{Month}_{Day}';
     
@@ -147,9 +147,12 @@ export const saveScannedDocument = async (imageBase64: string, settings: any): P
     const hh = String(now.getHours()).padStart(2, '0');
     const mm = String(now.getMinutes()).padStart(2, '0');
     const ss = String(now.getSeconds()).padStart(2, '0');
+    const ms = String(now.getMilliseconds()).padStart(3, '0');
 
-    const timeString = `${hh}${mm}${ss}`; // pl. "142305"
-    const fileName = `${processedTemplate}_${timeString}.jpg`;
+    const timeString = `${hh}${mm}${ss}`;
+    // Use sequenceIndex if provided, otherwise use milliseconds for uniqueness
+    const uniqueSuffix = sequenceIndex !== undefined ? `_${String(sequenceIndex + 1).padStart(2, '0')}` : `_${ms}`;
+    const fileName = `${processedTemplate}_${timeString}${uniqueSuffix}.jpg`;
     
     console.log('📄 Original template:', fileNameTemplate);
     console.log('📄 Processed template:', processedTemplate);

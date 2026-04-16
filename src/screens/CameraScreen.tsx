@@ -55,6 +55,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { setHistory } from '../store/appSlice';
 import { DestinationIcon, ZoomableImage } from '../components';
 import Sound from 'react-native-sound';
+import Svg, { Polygon as SvgPolygon, Circle as SvgCircle } from 'react-native-svg';
 
 // Respect silent switch (like native camera shutter)
 Sound.setCategory('Ambient');
@@ -265,6 +266,7 @@ export default function App() {
   interface ScanParams {
     frameCorners: { x: number; y: number }[];
     processedCorners: { x: number; y: number }[];
+    contourPoints?: { x: number; y: number }[];
     qrValue: string | null;
     qrPosition: 'left' | 'right' | null;
     qrBounds: { left: number; top: number; width: number; height: number } | null;
@@ -296,6 +298,7 @@ export default function App() {
 
   const [galleryStartIndex, setGalleryStartIndex] = useState(0);
   const [isGalleryZoomed, setIsGalleryZoomed] = useState(false);
+  const [showContourOverlay, setShowContourOverlay] = useState(false);
 
   // === SCAN QUALITY TUNING ===
   const [showTunePanel, setShowTunePanel] = useState(false);
@@ -309,13 +312,16 @@ export default function App() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [advancedSettings, setAdvancedSettings] = useState<AdvancedScanSettings>({ ...DEFAULT_ADVANCED_SETTINGS });
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(true);
+  const galleryScrollRef = useRef<ScrollView>(null);
+  const scrollHintOpacity = useRef(new Animated.Value(1)).current;
 
   // Load saved scan quality settings on mount
   useEffect(() => {
     loadScanQualitySettings().then(({ levels, isFirstTime }) => {
       setTuneBlackLevel(levels.blackLevel);
       setTuneColorLevel(levels.colorLevel);
-      isFirstTimeScanRef.current = true;
+      isFirstTimeScanRef.current = isFirstTime;
     });
     loadAdvancedSettings().then(adv => setAdvancedSettings(adv));
   }, []);
@@ -1038,6 +1044,7 @@ export default function App() {
           scanParams: {
             frameCorners: captureFrameCorners,
             processedCorners: captureProcessedCorners,
+            contourPoints: scanResult.contourPoints || undefined,
             qrValue: captureQrValue || null,
             qrPosition: captureQrPosition || null,
             qrBounds: captureQrBounds || null,
@@ -1061,6 +1068,8 @@ export default function App() {
           setShowGalleryModal(true);
           showGalleryModalRef.current = true; // Update ref immediately for finally block
           setIsFrameProcessorActive(false);
+          setShowScrollHint(true);
+          scrollHintOpacity.setValue(1);
         }
         
         // Reset for next capture - NO MODAL
@@ -1662,6 +1671,10 @@ export default function App() {
                   imageBase64: result.imageBase64!,
                   fileUri: `file://${tempUri}?t=${Date.now()}`,
                   selectedIcons: result.selectedIcons || p.selectedIcons,
+                  scanParams: {
+                    ...p.scanParams,
+                    contourPoints: result.contourPoints || p.scanParams.contourPoints,
+                  },
                 }
               : p,
           ),
@@ -1977,6 +1990,8 @@ export default function App() {
                       setGalleryStartIndex(index);
                       setShowGalleryModal(true);
                       setIsFrameProcessorActive(false);
+                      setShowScrollHint(true);
+                      scrollHintOpacity.setValue(1);
                     }}
                   >
                     <Image
@@ -2001,8 +2016,9 @@ export default function App() {
                     try {
                       const savedPaths: string[] = [];
                       
-                      for (const image of capturedImages) {
-                        const savedPath = await saveScannedDocument(image.imageBase64, settings);
+                      for (let i = 0; i < capturedImages.length; i++) {
+                        const image = capturedImages[i];
+                        const savedPath = await saveScannedDocument(image.imageBase64, settings, i);
                         if (savedPath) {
                           savedPaths.push(savedPath);
                         }
@@ -2055,19 +2071,20 @@ export default function App() {
                     try {
                       const savedPaths: string[] = [];
                       
-                      for (const image of capturedImages) {
-                        const savedPath = await saveScannedDocument(image.imageBase64, settings);
+                      for (let i = 0; i < capturedImages.length; i++) {
+                        const image = capturedImages[i];
+                        const savedPath = await saveScannedDocument(image.imageBase64, settings, i);
                         if (savedPath) {
                           savedPaths.push(savedPath);
                         }
                       }
                       
                       if (savedPaths.length > 0) {
-                        setCapturedImages([]);
-                        
                         const allDetectedIcons = [...new Set(
                           capturedImages.flatMap(img => img.selectedIcons.map(i => i + 1))
                         )];
+                        
+                        setCapturedImages([]);
                         
                         (navigation as any).navigate('DestinationSelectScreen', {
                           savedFilePaths: savedPaths,
@@ -2334,10 +2351,21 @@ export default function App() {
           </View>
 
           <ScrollView
+            ref={galleryScrollRef}
             style={styles.galleryScrollView}
             contentContainerStyle={styles.galleryScrollContent}
             showsVerticalScrollIndicator={false}
             bounces={false}
+            onScroll={(e) => {
+              if (showScrollHint && e.nativeEvent.contentOffset.y > 30) {
+                Animated.timing(scrollHintOpacity, {
+                  toValue: 0,
+                  duration: 300,
+                  useNativeDriver: true,
+                }).start(() => setShowScrollHint(false));
+              }
+            }}
+            scrollEventThrottle={16}
           >
           {/* Swipeable gallery */}
           <FlatList
@@ -2360,13 +2388,76 @@ export default function App() {
               setGalleryStartIndex(newIndex);
             }}
             keyExtractor={item => item.id}
-            renderItem={({ item, index }) => (
+            renderItem={({ item, index }) => {
+              // Calculate contour overlay points for this image
+              const displayW = screenWidth * 0.85;
+              const displayH = screenHeight * 0.4;
+              const sp = item.scanParams;
+              const isLandscape = sp.photoWidth > sp.photoHeight;
+
+              // After EXIF auto-rotation, the displayed image is portrait
+              const imgPortraitW = isLandscape ? sp.photoHeight : sp.photoWidth;
+              const imgPortraitH = isLandscape ? sp.photoWidth : sp.photoHeight;
+
+              // resizeMode="contain" → fit inside container, calculate rendered rect
+              const imgAspect = imgPortraitW / imgPortraitH;
+              const containerAspect = displayW / displayH;
+              let renderedW: number, renderedH: number, offsetX: number, offsetY: number;
+              if (imgAspect < containerAspect) {
+                // Height-limited (letterbox on sides)
+                renderedH = displayH;
+                renderedW = displayH * imgAspect;
+                offsetX = (displayW - renderedW) / 2;
+                offsetY = 0;
+              } else {
+                // Width-limited (letterbox top/bottom)
+                renderedW = displayW;
+                renderedH = displayW / imgAspect;
+                offsetX = 0;
+                offsetY = (displayH - renderedH) / 2;
+              }
+
+              // processedCorners are ALREADY in portrait coordinates (frame.height x frame.width)
+              // contourPoints (from scanDocument) are in rotated photo coordinates (photoPortraitW x photoPortraitH)
+              const hasContour = sp.contourPoints && sp.contourPoints.length > 4;
+              console.log('🔍 CONTOUR DEBUG:', {
+                hasContour,
+                contourLength: sp.contourPoints?.length ?? 0,
+                imgPortraitW, imgPortraitH,
+                processedCorners0: sp.processedCorners[0],
+                contourPoints0: sp.contourPoints?.[0],
+              });
+
+              // Map corners (4 points) for circle markers
+              const cornerDisplayPoints = sp.processedCorners.map((c: {x: number; y: number}) => {
+                const normX = isLandscape ? c.x / sp.frameHeight : c.x / sp.frameWidth;
+                const normY = isLandscape ? c.y / sp.frameWidth : c.y / sp.frameHeight;
+                return {
+                  x: offsetX + normX * renderedW,
+                  y: offsetY + normY * renderedH,
+                };
+              });
+
+              // Map contour (many points) or fall back to corners for polygon
+              let polygonPoints: string;
+              if (hasContour) {
+                // contourPoints are in photo portrait coords (imgPortraitW x imgPortraitH)
+                polygonPoints = sp.contourPoints!.map((c: {x: number; y: number}) => {
+                  const px = offsetX + (c.x / imgPortraitW) * renderedW;
+                  const py = offsetY + (c.y / imgPortraitH) * renderedH;
+                  return `${px},${py}`;
+                }).join(' ');
+              } else {
+                polygonPoints = cornerDisplayPoints.map((p: {x: number; y: number}) => `${p.x},${p.y}`).join(' ');
+              }
+
+              return (
               <View style={[styles.galleryImageContainer, { width: screenWidth }]}>
                 <View style={styles.zoomScrollContent}>
                   <ZoomableImage
                     uri={item.fileUri}
-                    width={screenWidth * 0.85}
-                    height={screenHeight * 0.4}
+                    width={displayW}
+                    height={displayH}
                     onZoomChange={(zoomed) => setIsGalleryZoomed(zoomed)}
                   />
                   {/* Re-scan loading overlay */}
@@ -2377,10 +2468,12 @@ export default function App() {
                   )}
                 </View>
                 {/* Page indicator */}
-                <View style={styles.galleryPageIndicator}>
-                  <Text style={styles.galleryPageText}>
-                    {index + 1} / {capturedImages.length}
-                  </Text>
+                <View style={styles.galleryPageIndicatorRow}>
+                  <View style={styles.galleryPageIndicator}>
+                    <Text style={styles.galleryPageText}>
+                      {index + 1} / {capturedImages.length}
+                    </Text>
+                  </View>
                 </View>
                 {/* Selected Icons */}
                 <View style={styles.galleryIconRow}>
@@ -2398,7 +2491,8 @@ export default function App() {
                   ))}
                 </View>
               </View>
-            )}
+              );
+            }}
           />
 
           {/* === TUNE PANEL (always visible) === */}
@@ -2524,6 +2618,24 @@ export default function App() {
           {/* Sticky bottom buttons */}
           <View style={styles.tuneStickyButtons}>
               <View style={styles.tuneButtonsRow}>
+                {showScrollHint && (
+                  <Animated.View style={[styles.scrollHintLeft, { opacity: scrollHintOpacity }]}>
+                    <TouchableOpacity
+                      style={styles.scrollHintButton}
+                      onPress={() => {
+                        galleryScrollRef.current?.scrollToEnd({ animated: true });
+                        Animated.timing(scrollHintOpacity, {
+                          toValue: 0,
+                          duration: 300,
+                          useNativeDriver: true,
+                        }).start(() => setShowScrollHint(false));
+                      }}
+                    >
+                      <Text style={styles.scrollHintText}>More options</Text>
+                      <Text style={styles.scrollHintArrow}>▼</Text>
+                    </TouchableOpacity>
+                  </Animated.View>
+                )}
                 <TouchableOpacity
                   style={styles.tuneResetButton}
                   onPress={() => {
@@ -3215,8 +3327,14 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
   },
-  galleryPageIndicator: {
+  galleryPageIndicatorRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginTop: 16,
+    gap: 12,
+  },
+  galleryPageIndicator: {
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
     paddingHorizontal: 20,
     paddingVertical: 8,
@@ -3226,6 +3344,26 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 16,
     fontWeight: '600',
+  },
+  contourToggleButton: {
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  contourToggleActive: {
+    borderColor: 'rgba(196, 168, 255, 0.5)',
+    backgroundColor: 'rgba(196, 168, 255, 0.15)',
+  },
+  contourToggleText: {
+    color: 'rgba(255, 255, 255, 0.7)',
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  contourToggleTextActive: {
+    color: '#C4A8FF',
   },
   galleryIconRow: {
     flexDirection: 'row',
@@ -3467,6 +3605,28 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
     marginVertical: 10,
+  },
+  scrollHintLeft: {
+    marginRight: 'auto',
+  },
+  scrollHintButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(196, 168, 255, 0.3)',
+  },
+  scrollHintText: {
+    color: 'rgba(196, 168, 255, 0.7)',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  scrollHintArrow: {
+    color: 'rgba(196, 168, 255, 0.7)',
+    fontSize: 9,
   },
   advancedPanel: {
     gap: 2,

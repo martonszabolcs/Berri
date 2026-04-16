@@ -704,12 +704,28 @@ export const detectDocumentCorners = (
           let photoContourPoints: DocumentCorner[] | null = null;
           if (bestOriginalContour) {
             try {
-              const origContourData = OpenCV.toJSValue(bestOriginalContour);
-              if (origContourData?.array) {
-                photoContourPoints = origContourData.array.map((p: any) => ({
+              // toJSValue doesn't work on raw contour Mats (Nx1 CV_32SC2).
+              // Use approxPolyDP with a very small epsilon to convert to PointVector
+              // while keeping almost all original points.
+              const perimeter2 = OpenCV.invoke('arcLength', bestOriginalContour, true);
+              const tinyEpsilon = 0.0005 * (perimeter2?.value ?? perimeter2);
+              const denseApprox = OpenCV.createObject(ObjectType.PointVector);
+              OpenCV.invoke('approxPolyDP', bestOriginalContour, denseApprox, tinyEpsilon, true);
+
+              // Apply moderate simplification to smooth out finger intrusions
+              // while keeping the actual document edge shape
+              const perimeter3 = OpenCV.invoke('arcLength', denseApprox, true);
+              const smoothEpsilon = 0.001 * (perimeter3?.value ?? perimeter3);
+              const smoothApprox = OpenCV.createObject(ObjectType.PointVector);
+              OpenCV.invoke('approxPolyDP', denseApprox, smoothApprox, smoothEpsilon, true);
+              const smoothData = OpenCV.toJSValue(smoothApprox);
+
+              if (smoothData?.array && smoothData.array.length >= 4) {
+                photoContourPoints = smoothData.array.map((p: any) => ({
                   x: Math.round(p.x * scaleX),
                   y: Math.round(p.y * scaleY),
                 }));
+                console.log(`✅ Extracted ${photoContourPoints.length} smoothed contour points`);
               }
             } catch (e) {
               console.warn('Failed to extract original contour points:', e);
