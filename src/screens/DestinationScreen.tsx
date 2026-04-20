@@ -110,6 +110,7 @@ const [selectedDestination, setSelectedDestination] =
 
         // Refresh user data to get updated destinations
         await dispatch(refreshUser());
+        navigation.navigate("Destinations");
         console.log('✅ User data refreshed after destination settings save');
       } else {
         console.error('❌ Failed to save destination settings');

@@ -56,9 +56,9 @@ const styles = StyleSheet.create({
   menuItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    marginBottom: 10,
     borderRadius: 99,
     overflow: 'hidden',
     position: 'relative',
@@ -74,9 +74,9 @@ const styles = StyleSheet.create({
     opacity: 0.5
   },
   menuImage: {
-    width: 72,
-    height: 72,
-    borderRadius: 72,
+    width: 60,
+    height: 60,
+    borderRadius: 60,
     marginRight: 16,
     zIndex: 1,
   },
