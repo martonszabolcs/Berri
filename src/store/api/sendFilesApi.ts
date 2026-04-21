@@ -21,6 +21,10 @@ import { PDFDocument, rgb } from 'pdf-lib';
 import ImageResizer from 'react-native-image-resizer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const PDF_EXPORT_WIDTH = 1500;
+const PDF_EXPORT_HEIGHT = 2250;
+const PDF_EXPORT_JPEG_QUALITY = 85;
+
 // Helper to build full file path from filename or url
 const getFullFilePath = (urlOrFilename: string): string => {
   // If it's already a full path (contains /), use it as-is
@@ -1013,10 +1017,10 @@ const uniqSelectedDestinations = finalSelectedDestinations.filter(
         // Resize the image to reduce its dimensions and size
         const resizedImage = await ImageResizer.createResizedImage(
           imagePath, // Path to the image
-          600, // Target width
-          900, // Target height
+          PDF_EXPORT_WIDTH, // Target width
+          PDF_EXPORT_HEIGHT, // Target height
           'JPEG', // Format
-          70, // Quality (0-100)
+          PDF_EXPORT_JPEG_QUALITY, // Quality (0-100)
           0, // Rotation
           RNFS.DocumentDirectoryPath, // Output directory
         );
