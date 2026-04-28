@@ -83,8 +83,8 @@ android {
         applicationId "com.scan_prototype"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.0"
+        versionCode 11
+        versionName "1.1"
         manifestPlaceholders = [
             appAuthRedirectScheme: "com.googleusercontent.apps.571222670623-rdp5qs8o32pgfcv9oqce9i35pmcqk7lq"
         ]

@@ -32,7 +32,7 @@
     "react": "19.1.0",
     "react-native": "0.81.1",
     "react-native-base64": "^0.2.1",
-    "react-native-fast-opencv": "^0.4.6",
+    "react-native-fast-opencv": "^0.4.8",
     "react-native-file-access": "^3.2.0",
     "react-native-fs": "^2.20.0",
     "react-native-gesture-handler": "^2.29.0",
