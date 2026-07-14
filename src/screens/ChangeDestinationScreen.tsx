@@ -25,7 +25,7 @@ import sendFilesApiService from '../store/api/sendFilesApi';
 import { getDestinationName, destinations } from '../utils/helpers';
 import { DROPBOX_CLIENT, ONEDRIVE_CLIENT } from '../config';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import GoogleDriveFolderPicker from '../components/molecules/GoogleDriveFolderPicker';
+// import GoogleDriveFolderPicker from '../components/molecules/GoogleDriveFolderPicker';
 
 type RootStackParamList = {
   ChangeDestinationScreen: {
@@ -412,7 +412,7 @@ const ChangeDestinationScreen = () => {
       GoogleSignin.configure({
         scopes: [
           'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          //'https://www.googleapis.com/auth/drive.metadata.readonly',
         ],
         iosClientId:
           '827173339361-rdo6pt9b7tcn9kacr22qltvc6d462a76.apps.googleusercontent.com',
@@ -491,7 +491,7 @@ const ChangeDestinationScreen = () => {
       GoogleSignin.configure({
         scopes: [
           'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          //'https://www.googleapis.com/auth/drive.metadata.readonly',
         ],
         webClientId:
           '827173339361-j4l1hclopp7ja4oi38l858r0e58ctotc.apps.googleusercontent.com',
@@ -548,7 +548,7 @@ const ChangeDestinationScreen = () => {
           ))}
         </View>
 
-        {selectedDestination === 'Google Drive' && (
+        {/*selectedDestination === 'Google Drive' && (
           <View style={styles.folderSection}>
             <Text style={styles.folderLabel}>Save to folder:</Text>
             <TouchableOpacity
@@ -574,7 +574,7 @@ const ChangeDestinationScreen = () => {
               <Text style={styles.folderChangeText}>Change</Text>
             </TouchableOpacity>
           </View>
-        )}
+        )*/}
 
         <View style={styles.buttonContainer}>
           <Button title="Save" size="medium" onPress={handleSave} />
@@ -587,7 +587,7 @@ const ChangeDestinationScreen = () => {
         </View>
       </ScrollView>
 
-      <GoogleDriveFolderPicker
+      {/*<GoogleDriveFolderPicker
         visible={folderPickerVisible}
         accessToken={user.googleDriveAccessToken || settings?.googleDriveAccessToken || ''}
         onSelect={handleFolderSelect}
@@ -603,7 +603,7 @@ const ChangeDestinationScreen = () => {
             return null;
           }
         }}
-      />
+      />*/}
     </Layout>
   );
 };

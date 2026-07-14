@@ -704,7 +704,7 @@ const uniqSelectedDestinations = finalSelectedDestinations.filter(
       GoogleSignin.configure({
         scopes: [
           'https://www.googleapis.com/auth/drive.file',
-          'https://www.googleapis.com/auth/drive.metadata.readonly',
+          //'https://www.googleapis.com/auth/drive.metadata.readonly',
         ],
         webClientId:
           '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
