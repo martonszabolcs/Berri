@@ -425,13 +425,13 @@ const ChangeDestinationScreen = () => {
 
       saveTokens(tokens.accessToken, tokens.refreshToken || '');
     } else {
-      // GoogleSignin.configure({
-      //     scopes: ['https://www.googleapis.com/auth/drive.file'],
-      //     webClientId:
-      //      '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
-      //     offlineAccess: true,
-      //     forceCodeForRefreshToken: true,
-      //   });
+      GoogleSignin.configure({
+          scopes: ['https://www.googleapis.com/auth/drive.file'],
+          webClientId:
+           '827173339361-qgnb9f192crfqc2frvv7d3kkjkv9cnne.apps.googleusercontent.com',
+          offlineAccess: true,
+          forceCodeForRefreshToken: true,
+        });
 
       try {
         await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
